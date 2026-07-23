@@ -1,0 +1,12 @@
+JK Empire Operations v2.1.1 - Scan Recovery
+
+Changes
+- Removed two invalid action-level <delay> nodes reported by X4.
+- Restored a clean station-scan and menu-refresh execution path.
+- Corrected the investigation logbook placeholder mapping.
+- Updated diagnostic tags to [JKSM][V211].
+
+Important
+- This build does not claim to fix construction detection yet.
+- The purpose is to restore trustworthy scanning before the construction gate is redesigned.
+- Save compatible; same extension ID; advisory-only.

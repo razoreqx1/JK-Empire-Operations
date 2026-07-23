@@ -1,0 +1,35 @@
+JK Empire Operations v2.1.0 - Test Plan
+========================================
+
+INSTALL
+1. Keep your existing JK_Station_Manager folder as a backup by renaming it JK_Station_Manager_backup_v200.
+2. Extract this ZIP into your X4 extensions folder.
+3. Confirm the installed folder is exactly: extensions/JK_Station_Manager
+4. Load the same save you used with v2.0.0. No new game is required.
+
+TEST
+1. Wait about 15 seconds after the save finishes loading.
+2. Confirm the v2.1.0 startup notification appears.
+3. Open the Empire Operations menu and press Refresh once.
+4. Let the game run for at least 10 minutes, with or without SETA.
+5. Check whether a station that is visibly still under construction appears as the leading shortage/storage investigation.
+6. Check that mature operational stations still produce investigations normally.
+7. Exit the game and send debuglog.txt.
+
+EXPECTED DEBUG LINES
+[JKSM][V210] INTELLIGENCE SCAN START
+[JKSM][V210][CONSTRUCTION_SKIP] <station> | ... reason=station_not_operational
+[JKSM][V210] SCAN COMPLETE | ... ConstructionSkipped=<number> ...
+
+SUCCESS CRITERIA
+- Game and save load normally.
+- No duplicate Empire Operations menu or notification.
+- At least one unfinished/non-operational station is logged as CONSTRUCTION_SKIP, when such a station exists.
+- Skipped stations do not generate RESOURCE_EMPTY, CARGO_90, RECOMMEND, or STATION analysis lines during that scan.
+- Operational stations continue to be analyzed.
+
+IMPORTANT LIMITATION OF THIS ALPHA
+v2.1.0 uses X4's station.isoperational state as the first construction gate. The test will tell us whether X4 marks your long-running construction station non-operational. If the station is still treated as operational while modules remain queued, the log will make that clear and the next build will use a deeper build-plan test.
+
+SAVE COMPATIBILITY
+The extension ID and MD script/cue names are unchanged. This build updates the existing mod in place and is intended to load existing saves safely. It remains advisory-only and changes no station or ship settings.

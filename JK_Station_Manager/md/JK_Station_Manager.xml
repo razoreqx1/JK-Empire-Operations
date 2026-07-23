@@ -1,0 +1,541 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- V210 FOUNDATION / CONSTRUCTION GATE ALPHA
+Core principles:
+1 Player is CEO; advisor explains before acting.
+2 Persistence triggers investigation, never an automatic conclusion.
+3 Strategic construction is recommendation-only.
+4 Operational changes require explicit player approval.
+5 No action is offered until root cause evidence is sufficient.
+6 Every future operation must be verified after execution.
+
+This alpha adds a construction gate before operational investigation.
+Stations that are not yet operational are excluded from shortage and storage analysis.
+It remains advisory-only and changes no station or ship settings.
+-->
+
+<mdscript name="JK_Station_Manager"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:noNamespaceSchemaLocation="md.xsd">
+  <cues>
+
+    <!-- Shared analysis actions. Called at game load and from the Refresh menu. -->
+    <cue name="JKSM_RunIntelligenceScan" namespace="this" instantiate="true">
+      <conditions>
+        <event_cue_signalled />
+      </conditions>
+      <actions>
+        <find_station name="$stations" multiple="true" space="player.galaxy" owner="faction.player" />
+
+        <set_value name="$totalships" exact="0" />
+        <set_value name="$totalfunds" exact="0" />
+        <set_value name="$operational" exact="0" />
+        <set_value name="$productive" exact="0" />
+        <set_value name="$mixed" exact="0" />
+        <set_value name="$tradehubs" exact="0" />
+        <set_value name="$emptyresources" exact="0" />
+        <set_value name="$fullcargo" exact="0" />
+        <set_value name="$nostorage" exact="0" />
+        <set_value name="$nosupport" exact="0" />
+        <set_value name="$populated" exact="0" />
+        <set_value name="$recommendations" exact="0" />
+        <set_value name="$critical" exact="0" />
+        <set_value name="$warning" exact="0" />
+        <set_value name="$advisory" exact="0" />
+        <set_value name="$skippedconstruction" exact="0" />
+        <remove_value name="global.$JKSM_FirstEmptyStation" />
+        <remove_value name="global.$JKSM_FirstEmptyWare" />
+        <remove_value name="global.$JKSM_FirstFullStation" />
+        <remove_value name="global.$JKSM_FirstFullWare" />
+        <remove_value name="$currentemptykey" />
+        <remove_value name="$currentfullkey" />
+
+        <debug_text text="'[JKSM][V211] =================================================='" filter="general" />
+        <debug_text text="'[JKSM][V211] INTELLIGENCE SCAN START | Stations: %1'.[$stations.count]" filter="general" />
+
+        <do_all exact="$stations.count" counter="$i">
+          <set_value name="$station" exact="$stations.{$i}" />
+          <set_value name="$products" exact="$station.products.list" />
+          <set_value name="$resources" exact="$station.resources.list" />
+          <set_value name="$tradewares" exact="$station.tradewares.list" />
+          <set_value name="$cargo" exact="$station.cargo.list" />
+          <set_value name="$shipcount" exact="$station.subordinates.count" />
+          <set_value name="$storagecount" exact="$station.storagemodules.count" />
+          <set_value name="$stationempty" exact="0" />
+          <set_value name="$stationfull" exact="0" />
+          <set_value name="$stationrecs" exact="0" />
+          <set_value name="$profile" exact="'GENERAL / SPECIAL'" />
+
+          <!-- v2.1 Construction Gate: operational investigations must not judge stations that are still being built. -->
+          <do_if value="not $station.isoperational">
+            <set_value name="$skippedconstruction" exact="$skippedconstruction + 1" />
+            <debug_text text="'[JKSM][V211][CONSTRUCTION_SKIP] %1 | Sector=%2 | reason=station_not_operational'.[$station.name, $station.sector.name]" filter="general" />
+          </do_if>
+          <do_else>
+
+          <set_value name="$totalships" exact="$totalships + $shipcount" />
+          <set_value name="$totalfunds" exact="$totalfunds + $station.money" />
+          <do_if value="$station.isoperational">
+            <set_value name="$operational" exact="$operational + 1" />
+          </do_if>
+          <do_if value="$station.people.count gt 0">
+            <set_value name="$populated" exact="$populated + 1" />
+          </do_if>
+
+          <!-- Production-based identity, deliberately broad for this probe. -->
+          <do_if value="$products.count gt 0">
+            <set_value name="$productive" exact="$productive + 1" />
+            <set_value name="$profile" exact="'PRODUCTION STATION'" />
+            <do_if value="$products.count ge 4">
+              <set_value name="$mixed" exact="$mixed + 1" />
+              <set_value name="$profile" exact="'MIXED INDUSTRIAL COMPLEX'" />
+            </do_if>
+          </do_if>
+          <do_elseif value="$tradewares.count gt 0">
+            <set_value name="$tradehubs" exact="$tradehubs + 1" />
+            <set_value name="$profile" exact="'TRADE / DISTRIBUTION HUB'" />
+          </do_elseif>
+          <do_elseif value="$station.name == 'Defence Platform' or $station.name == 'Defensive Platform' or $station.name == 'Defence Platform I'">
+            <set_value name="$profile" exact="'DEFENSE PLATFORM'" />
+          </do_elseif>
+
+          <!-- Rule 1: required resource currently empty. -->
+          <do_all exact="$resources.count" counter="$r">
+            <set_value name="$ware" exact="$resources.{$r}" />
+            <set_value name="$amount" exact="$station.cargo.{$ware}.count" />
+            <set_value name="$maximum" exact="$station.cargo.{$ware}.max" />
+            <do_if value="$maximum gt 0 and $amount le 0">
+              <set_value name="$stationempty" exact="$stationempty + 1" />
+              <set_value name="$emptyresources" exact="$emptyresources + 1" />
+              <do_if value="not global.$JKSM_FirstEmptyStation?">
+                <set_value name="global.$JKSM_FirstEmptyStation" exact="$station.name" />
+                <set_value name="global.$JKSM_FirstEmptyWare" exact="$ware.name" />
+                <set_value name="global.$JKSM_FirstEmptyAmount" exact="$amount" />
+                <set_value name="global.$JKSM_FirstEmptyMaximum" exact="$maximum" />
+                <set_value name="global.$JKSM_FirstEmptyTarget" exact="$station.cargo.{$ware}.target" />
+                <set_value name="global.$JKSM_FirstEmptyShipCount" exact="$shipcount" />
+                <set_value name="global.$JKSM_FirstEmptyStorageModules" exact="$storagecount" />
+                <set_value name="global.$JKSM_FirstEmptyStationFunds" exact="$station.money" />
+                <set_value name="global.$JKSM_FirstEmptyProductCount" exact="$products.count" />
+                <set_value name="global.$JKSM_FirstEmptyResourceCount" exact="$resources.count" />
+                <set_value name="$currentemptykey" exact="'%1|%2|RESOURCE_EMPTY'.[$station.name, $ware.name]" />
+              </do_if>
+              <debug_text text="'[JKSM][V211][RESOURCE_EMPTY] %1 | %2 | amount=%3 max=%4 target=%5'.[$station.name, $ware.name, $amount, $maximum, $station.cargo.{$ware}.target]" filter="general" />
+            </do_if>
+          </do_all>
+
+          <!-- Rule 2: any known cargo entry at or above 90% capacity. -->
+          <do_all exact="$cargo.count" counter="$c">
+            <set_value name="$ware" exact="$cargo.{$c}" />
+            <set_value name="$amount" exact="$station.cargo.{$ware}.count" />
+            <set_value name="$maximum" exact="$station.cargo.{$ware}.max" />
+            <do_if value="$maximum gt 0 and $amount * 10 ge $maximum * 9">
+              <set_value name="$stationfull" exact="$stationfull + 1" />
+              <set_value name="$fullcargo" exact="$fullcargo + 1" />
+              <do_if value="not global.$JKSM_FirstFullStation?">
+                <set_value name="global.$JKSM_FirstFullStation" exact="$station.name" />
+                <set_value name="global.$JKSM_FirstFullWare" exact="$ware.name" />
+                <set_value name="global.$JKSM_FirstFullAmount" exact="$amount" />
+                <set_value name="global.$JKSM_FirstFullMaximum" exact="$maximum" />
+                <set_value name="global.$JKSM_FirstFullTarget" exact="$station.cargo.{$ware}.target" />
+                <set_value name="$currentfullkey" exact="'%1|%2|STORAGE_PRESSURE'.[$station.name, $ware.name]" />
+              </do_if>
+              <debug_text text="'[JKSM][V211][CARGO_90] %1 | %2 | amount=%3 max=%4 target=%5'.[$station.name, $ware.name, $amount, $maximum, $station.cargo.{$ware}.target]" filter="general" />
+            </do_if>
+          </do_all>
+
+          <!-- First conservative recommendation rules. -->
+          <do_if value="($products.count gt 0 or $resources.count gt 0) and $storagecount == 0">
+            <set_value name="$nostorage" exact="$nostorage + 1" />
+            <set_value name="$stationrecs" exact="$stationrecs + 1" />
+            <debug_text text="'[JKSM][V211][RECOMMEND] %1 | Review storage: productive/resource station reports zero storage modules'.[$station.name]" filter="general" />
+          </do_if>
+          <do_if value="$products.count gt 0 and $shipcount == 0">
+            <set_value name="$nosupport" exact="$nosupport + 1" />
+            <set_value name="$stationrecs" exact="$stationrecs + 1" />
+            <debug_text text="'[JKSM][V211][RECOMMEND] %1 | Review logistics: production station has no assigned support ships'.[$station.name]" filter="general" />
+          </do_if>
+          <do_if value="$stationempty gt 0">
+            <set_value name="$stationrecs" exact="$stationrecs + 1" />
+          </do_if>
+          <do_if value="$stationfull gt 0">
+            <set_value name="$stationrecs" exact="$stationrecs + 1" />
+          </do_if>
+          <set_value name="$recommendations" exact="$recommendations + $stationrecs" />
+
+          <debug_text text="'[JKSM][V211][STATION] %1/%2 | %3 | Sector=%4 | Profile=%5 | Products=%6 | Resources=%7 | TradeWares=%8 | CargoEntries=%9 | StorageModules=%10 | People=%11 | Ships=%12 | EmptyResources=%13 | Cargo90=%14 | Recs=%15'.[$i, $stations.count, $station.name, $station.sector.name, $profile, $products.count, $resources.count, $tradewares.count, $cargo.count, $storagecount, $station.people.count, $shipcount, $stationempty, $stationfull, $stationrecs]" filter="general" />
+
+          </do_else>
+        </do_all>
+
+        <!-- v1.1.1 Issue Engine: track the leading shortage and storage-pressure issue across scans. -->
+        <do_if value="global.$JKSM_ScanCount?">
+          <set_value name="global.$JKSM_ScanCount" exact="global.$JKSM_ScanCount + 1" />
+        </do_if>
+        <do_else>
+          <set_value name="global.$JKSM_ScanCount" exact="1" />
+        </do_else>
+
+        <!-- Leading required-resource shortage lifecycle. -->
+        <!-- Migrate an active v1.1.0 record without changing its tracked condition. -->
+        <do_if value="global.$JKSM_TrackedEmptyKey? and not global.$JKSM_EmptyIssueID?">
+          <set_value name="global.$JKSM_EmptyIssueID" exact="'SHORTAGE-%1'.[global.$JKSM_ScanCount]" />
+          <set_value name="global.$JKSM_EmptyFirstSeenScan" exact="global.$JKSM_ScanCount" />
+          <set_value name="global.$JKSM_EmptyLastSeenScan" exact="global.$JKSM_ScanCount" />
+          <debug_text text="'[JKSM][V211][ISSUE_MIGRATED] id=%1 type=RESOURCE_EMPTY key=%2'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey]" filter="general" />
+        </do_if>
+        <do_if value="$currentemptykey?">
+          <do_if value="global.$JKSM_TrackedEmptyKey? and global.$JKSM_TrackedEmptyKey == $currentemptykey">
+            <set_value name="global.$JKSM_EmptyConsecutiveScans" exact="global.$JKSM_EmptyConsecutiveScans + 1" />
+            <set_value name="global.$JKSM_EmptyIssueStatus" exact="'ACTIVE'" />
+            <debug_text text="'[JKSM][V211][ISSUE_UPDATED] id=%1 type=RESOURCE_EMPTY key=%2 status=%3 duration=%4'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey, global.$JKSM_EmptyIssueStatus, global.$JKSM_EmptyConsecutiveScans]" filter="general" />
+          </do_if>
+          <do_else>
+            <!-- The scanner currently tracks only the leading issue. A changed key is replaced, not falsely marked resolved. -->
+            <do_if value="global.$JKSM_TrackedEmptyKey?">
+              <debug_text text="'[JKSM][V211][ISSUE_REPLACED] id=%1 type=RESOURCE_EMPTY oldkey=%2 newkey=%3'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey, $currentemptykey]" filter="general" />
+            </do_if>
+            <set_value name="global.$JKSM_TrackedEmptyKey" exact="$currentemptykey" />
+            <set_value name="global.$JKSM_EmptyIssueID" exact="'SHORTAGE-%1'.[global.$JKSM_ScanCount]" />
+            <set_value name="global.$JKSM_EmptyConsecutiveScans" exact="1" />
+            <set_value name="global.$JKSM_EmptyIssueStatus" exact="'NEW'" />
+            <set_value name="global.$JKSM_EmptyFirstSeen" exact="player.age" />
+            <set_value name="global.$JKSM_EmptyFirstSeenScan" exact="global.$JKSM_ScanCount" />
+            <debug_text text="'[JKSM][V211][ISSUE_CREATED] id=%1 type=RESOURCE_EMPTY key=%2 station=%3 ware=%4 scan=%5'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey, global.$JKSM_FirstEmptyStation, global.$JKSM_FirstEmptyWare, global.$JKSM_ScanCount]" filter="general" />
+          </do_else>
+          <set_value name="global.$JKSM_EmptyLastSeen" exact="player.age" />
+          <set_value name="global.$JKSM_EmptyLastSeenScan" exact="global.$JKSM_ScanCount" />
+          <set_value name="global.$JKSM_EmptyPriority" exact="90" />
+          <set_value name="global.$JKSM_EmptyConfidence" exact="'LOW'" />
+          <do_if value="global.$JKSM_EmptyConsecutiveScans ge 2">
+            <set_value name="global.$JKSM_EmptyPriority" exact="94" />
+            <set_value name="global.$JKSM_EmptyConfidence" exact="'MEDIUM'" />
+          </do_if>
+          <do_if value="global.$JKSM_EmptyConsecutiveScans ge 3">
+            <set_value name="global.$JKSM_EmptyConfidence" exact="'HIGH'" />
+          </do_if>
+          <do_if value="global.$JKSM_EmptyConsecutiveScans ge 5">
+            <set_value name="global.$JKSM_EmptyPriority" exact="98" />
+          </do_if>
+
+          <!-- Investigation stage reflects evidence maturity, not root-cause certainty. -->
+          <set_value name="global.$JKSM_EmptyInvestigationStage" exact="'DETECTED'" />
+          <set_value name="global.$JKSM_EmptyDiagnosisConfidence" exact="'INSUFFICIENT EVIDENCE'" />
+          <set_value name="global.$JKSM_EmptyRecommendedDisposition" exact="'OBSERVE — no corrective action yet'" />
+          <do_if value="global.$JKSM_EmptyConsecutiveScans ge 2">
+            <set_value name="global.$JKSM_EmptyInvestigationStage" exact="'OBSERVING'" />
+            <set_value name="global.$JKSM_EmptyRecommendedDisposition" exact="'Continue collecting stock, allocation and logistics evidence'" />
+          </do_if>
+          <do_if value="global.$JKSM_EmptyConsecutiveScans ge 4">
+            <set_value name="global.$JKSM_EmptyInvestigationStage" exact="'PERSISTENT'" />
+            <set_value name="global.$JKSM_EmptyRecommendedDisposition" exact="'Investigate root cause before dispatching more cargo'" />
+          </do_if>
+          <do_if value="global.$JKSM_EmptyConsecutiveScans ge 6">
+            <set_value name="global.$JKSM_EmptyInvestigationStage" exact="'DIAGNOSING'" />
+            <set_value name="global.$JKSM_EmptyRecommendedDisposition" exact="'Compare storage allocation, supply reach, budget, rules and transport capacity'" />
+          </do_if>
+          <debug_text text="'[JKSM][V211][INVESTIGATION] id=%1 stage=%2 scans=%3 diagnosis_confidence=%4 allocation=%5 target=%6 ships=%7 storage_modules=%8'.[global.$JKSM_EmptyIssueID, global.$JKSM_EmptyInvestigationStage, global.$JKSM_EmptyConsecutiveScans, global.$JKSM_EmptyDiagnosisConfidence, global.$JKSM_FirstEmptyMaximum, global.$JKSM_FirstEmptyTarget, global.$JKSM_FirstEmptyShipCount, global.$JKSM_FirstEmptyStorageModules]" filter="general" />
+        </do_if>
+        <do_elseif value="global.$JKSM_TrackedEmptyKey?">
+          <set_value name="global.$JKSM_EmptyIssueStatus" exact="'RESOLVED'" />
+          <set_value name="global.$JKSM_EmptyResolvedAt" exact="player.age" />
+          <set_value name="global.$JKSM_LastResolvedIssueID" exact="global.$JKSM_EmptyIssueID" />
+          <set_value name="global.$JKSM_LastResolvedIssueType" exact="'RESOURCE SHORTAGE'" />
+          <set_value name="global.$JKSM_LastResolvedIssueKey" exact="global.$JKSM_TrackedEmptyKey" />
+          <set_value name="global.$JKSM_LastResolvedIssueDuration" exact="global.$JKSM_EmptyConsecutiveScans" />
+          <set_value name="global.$JKSM_LastResolvedIssueScan" exact="global.$JKSM_ScanCount" />
+          <debug_text text="'[JKSM][V211][ISSUE_RESOLVED] id=%1 type=RESOURCE_EMPTY key=%2 lifetime=%3 reason=condition_cleared'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey, global.$JKSM_EmptyConsecutiveScans]" filter="general" />
+          <remove_value name="global.$JKSM_TrackedEmptyKey" />
+        </do_elseif>
+
+        <!-- Leading storage-pressure lifecycle, including an IMPROVING state while still above threshold. -->
+        <!-- Migrate an active v1.1.0 record without changing its tracked condition. -->
+        <do_if value="global.$JKSM_TrackedFullKey? and not global.$JKSM_FullIssueID?">
+          <set_value name="global.$JKSM_FullIssueID" exact="'STORAGE-%1'.[global.$JKSM_ScanCount]" />
+          <set_value name="global.$JKSM_FullFirstSeenScan" exact="global.$JKSM_ScanCount" />
+          <set_value name="global.$JKSM_FullLastSeenScan" exact="global.$JKSM_ScanCount" />
+          <set_value name="global.$JKSM_FullPreviousAmount" exact="global.$JKSM_FirstFullAmount" />
+          <debug_text text="'[JKSM][V211][ISSUE_MIGRATED] id=%1 type=STORAGE_PRESSURE key=%2'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey]" filter="general" />
+        </do_if>
+        <do_if value="$currentfullkey?">
+          <do_if value="global.$JKSM_TrackedFullKey? and global.$JKSM_TrackedFullKey == $currentfullkey">
+            <set_value name="global.$JKSM_FullConsecutiveScans" exact="global.$JKSM_FullConsecutiveScans + 1" />
+            <set_value name="global.$JKSM_FullIssueStatus" exact="'ACTIVE'" />
+            <do_if value="global.$JKSM_FullPreviousAmount? and global.$JKSM_FirstFullAmount lt global.$JKSM_FullPreviousAmount">
+              <set_value name="global.$JKSM_FullIssueStatus" exact="'IMPROVING'" />
+            </do_if>
+            <debug_text text="'[JKSM][V211][ISSUE_UPDATED] id=%1 type=STORAGE_PRESSURE key=%2 status=%3 duration=%4 previous=%5 current=%6'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, global.$JKSM_FullIssueStatus, global.$JKSM_FullConsecutiveScans, global.$JKSM_FullPreviousAmount, global.$JKSM_FirstFullAmount]" filter="general" />
+          </do_if>
+          <do_else>
+            <do_if value="global.$JKSM_TrackedFullKey?">
+              <debug_text text="'[JKSM][V211][ISSUE_REPLACED] id=%1 type=STORAGE_PRESSURE oldkey=%2 newkey=%3'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, $currentfullkey]" filter="general" />
+            </do_if>
+            <set_value name="global.$JKSM_TrackedFullKey" exact="$currentfullkey" />
+            <set_value name="global.$JKSM_FullIssueID" exact="'STORAGE-%1'.[global.$JKSM_ScanCount]" />
+            <set_value name="global.$JKSM_FullConsecutiveScans" exact="1" />
+            <set_value name="global.$JKSM_FullIssueStatus" exact="'NEW'" />
+            <set_value name="global.$JKSM_FullFirstSeen" exact="player.age" />
+            <set_value name="global.$JKSM_FullFirstSeenScan" exact="global.$JKSM_ScanCount" />
+            <debug_text text="'[JKSM][V211][ISSUE_CREATED] id=%1 type=STORAGE_PRESSURE key=%2 station=%3 ware=%4 scan=%5'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, global.$JKSM_FirstFullStation, global.$JKSM_FirstFullWare, global.$JKSM_ScanCount]" filter="general" />
+          </do_else>
+          <set_value name="global.$JKSM_FullLastSeen" exact="player.age" />
+          <set_value name="global.$JKSM_FullLastSeenScan" exact="global.$JKSM_ScanCount" />
+          <set_value name="global.$JKSM_FullPreviousAmount" exact="global.$JKSM_FirstFullAmount" />
+          <set_value name="global.$JKSM_FullPriority" exact="60" />
+          <set_value name="global.$JKSM_FullConfidence" exact="'LOW'" />
+          <do_if value="global.$JKSM_FullConsecutiveScans ge 2">
+            <set_value name="global.$JKSM_FullPriority" exact="66" />
+            <set_value name="global.$JKSM_FullConfidence" exact="'MEDIUM'" />
+          </do_if>
+          <do_if value="global.$JKSM_FullConsecutiveScans ge 3">
+            <set_value name="global.$JKSM_FullConfidence" exact="'HIGH'" />
+          </do_if>
+          <do_if value="global.$JKSM_FullConsecutiveScans ge 5">
+            <set_value name="global.$JKSM_FullPriority" exact="72" />
+          </do_if>
+        </do_if>
+        <do_elseif value="global.$JKSM_TrackedFullKey?">
+          <set_value name="global.$JKSM_FullIssueStatus" exact="'RESOLVED'" />
+          <set_value name="global.$JKSM_FullResolvedAt" exact="player.age" />
+          <set_value name="global.$JKSM_LastResolvedIssueID" exact="global.$JKSM_FullIssueID" />
+          <set_value name="global.$JKSM_LastResolvedIssueType" exact="'STORAGE PRESSURE'" />
+          <set_value name="global.$JKSM_LastResolvedIssueKey" exact="global.$JKSM_TrackedFullKey" />
+          <set_value name="global.$JKSM_LastResolvedIssueDuration" exact="global.$JKSM_FullConsecutiveScans" />
+          <set_value name="global.$JKSM_LastResolvedIssueScan" exact="global.$JKSM_ScanCount" />
+          <debug_text text="'[JKSM][V211][ISSUE_RESOLVED] id=%1 type=STORAGE_PRESSURE key=%2 lifetime=%3 reason=condition_cleared'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, global.$JKSM_FullConsecutiveScans]" filter="general" />
+          <remove_value name="global.$JKSM_TrackedFullKey" />
+          <remove_value name="global.$JKSM_FullPreviousAmount" />
+        </do_elseif>
+
+        <!-- Advisor priority model. Empty required resources are critical. Storage/logistics findings are warnings. -->
+        <set_value name="$critical" exact="$emptyresources" />
+        <set_value name="$warning" exact="$fullcargo + $nostorage + $nosupport" />
+        <set_value name="$advisory" exact="$productive" />
+        <set_value name="$recommendations" exact="$critical + $warning" />
+
+        <set_value name="global.$JKSM_Version" exact="'2.1.0'" />
+        <set_value name="global.$JKSM_LastStationCount" exact="$stations.count" />
+        <set_value name="global.$JKSM_TotalAssignedShips" exact="$totalships" />
+        <set_value name="global.$JKSM_TotalStationFunds" exact="$totalfunds" />
+        <set_value name="global.$JKSM_OperationalCount" exact="$operational" />
+        <set_value name="global.$JKSM_NonOperationalCount" exact="$skippedconstruction" />
+        <set_value name="global.$JKSM_ConstructionSkippedCount" exact="$skippedconstruction" />
+        <set_value name="global.$JKSM_ProductiveCount" exact="$productive" />
+        <set_value name="global.$JKSM_MixedComplexCount" exact="$mixed" />
+        <set_value name="global.$JKSM_TradeHubCount" exact="$tradehubs" />
+        <set_value name="global.$JKSM_EmptyResourceCount" exact="$emptyresources" />
+        <set_value name="global.$JKSM_FullCargoCount" exact="$fullcargo" />
+        <set_value name="global.$JKSM_NoStorageCount" exact="$nostorage" />
+        <set_value name="global.$JKSM_NoSupportCount" exact="$nosupport" />
+        <set_value name="global.$JKSM_PopulatedCount" exact="$populated" />
+        <set_value name="global.$JKSM_RecommendationCount" exact="$recommendations" />
+        <set_value name="global.$JKSM_CriticalCount" exact="$critical" />
+        <set_value name="global.$JKSM_WarningCount" exact="$warning" />
+        <set_value name="global.$JKSM_AdvisoryCount" exact="$advisory" />
+        <set_value name="global.$JKSM_LastScanTime" exact="player.age" />
+        <set_value name="global.$JKSM_MonitorInitialized" exact="true" />
+
+        <debug_text text="'[JKSM][V211] SCAN COMPLETE | Stations=%1 Operational=%2 ConstructionSkipped=%3 Productive=%4 Mixed=%5 TradeHubs=%6 EmptyResources=%7 Cargo90=%8 NoStorage=%9 NoSupport=%10 Populated=%11 Recommendations=%12'.[$stations.count, $operational, $skippedconstruction, $productive, $mixed, $tradehubs, $emptyresources, $fullcargo, $nostorage, $nosupport, $populated, $recommendations]" filter="general" />
+        <debug_text text="'[JKSM][V211] =================================================='" filter="general" />
+      </actions>
+    </cue>
+
+    <cue name="JKSM_OnGameLoaded" namespace="this" version="80" instantiate="true">
+      <conditions>
+        <event_game_loaded />
+      </conditions>
+      <delay exact="10s" />
+      <actions>
+        <signal_cue_instantly cue="JKSM_RunIntelligenceScan" />
+        <show_notification text="'Empire Operations v2.1.1: %1 stations | %2 productive | %3 initial recommendations'.[global.$JKSM_LastStationCount, global.$JKSM_ProductiveCount, global.$JKSM_RecommendationCount, global.$JKSM_ConstructionSkippedCount]" timeout="12s" />
+        <write_to_logbook category="tips"
+                          title="'Empire Operations v2.1.1 - Scan Recovery'"
+                          text="'First production-based analysis complete.\n\nStations: %1\nOperational: %2\nConstruction/non-operational stations skipped: %3\nProduction stations: %4\nMixed industrial complexes: %5\nTrade/distribution hubs: %6\nPopulated stations: %7\n\nSignals requiring review:\nEmpty required-resource entries: %8\nCargo entries at 90%% or more: %9\nProductive stations reporting no storage modules: %10\nProduction stations with no assigned support ships: %11\nInitial recommendations: %12\n\nThese are conservative first-pass rules. No automatic action was taken. Detailed station and ware results are written to debuglog.txt.'.[global.$JKSM_LastStationCount, global.$JKSM_OperationalCount, global.$JKSM_ConstructionSkippedCount, global.$JKSM_ProductiveCount, global.$JKSM_MixedComplexCount, global.$JKSM_TradeHubCount, global.$JKSM_PopulatedCount, global.$JKSM_EmptyResourceCount, global.$JKSM_FullCargoCount, global.$JKSM_NoStorageCount, global.$JKSM_NoSupportCount, global.$JKSM_RecommendationCount]" />
+      </actions>
+    </cue>
+
+    <cue name="JKSM_PeriodicMonitor" namespace="this" version="80" instantiate="true" checktime="player.age + 300s" checkinterval="300s">
+      <conditions>
+        <check_value value="global.$JKSM_MonitorInitialized?" />
+      </conditions>
+      <actions>
+        <signal_cue_instantly cue="JKSM_RunIntelligenceScan" />
+      </actions>
+    </cue>
+
+    <!-- Shared development activation. Ctrl+H currently maps to cockpit toggle. -->
+    <cue name="JKSM_MenuActivation" namespace="this" instantiate="true">
+      <conditions>
+        <event_player_toggled_cockpit />
+      </conditions>
+      <actions>
+        <start_conversation actor="player.computer" conversation="JKSM_EmpireOperations" />
+      </actions>
+    </cue>
+
+    <!-- v2.1.0: evidence-driven investigation UI for persistent issues. -->
+    <cue name="JKSM_EmpireOperations" namespace="this" instantiate="true">
+      <conditions>
+        <check_any>
+          <event_conversation_started conversation="JKSM_EmpireOperations" />
+          <event_conversation_next_section actor="player.computer" section="JKSM_EmpireOperations" />
+          <event_conversation_returned_to_section section="JKSM_EmpireOperations" />
+        </check_any>
+      </conditions>
+      <actions>
+        <debug_text text="'[JKSM][V211][MENU] Main opened'" filter="general" />
+        <add_player_choice_sub text="'EMPIRE HEALTH — %1 critical | %2 warnings'.[global.$JKSM_CriticalCount, global.$JKSM_WarningCount]" position="top_left" section="JKSM_MenuHealth" />
+        <add_player_choice_sub text="'PRODUCTION INTELLIGENCE — %1 stations'.[global.$JKSM_ProductiveCount]" position="left" section="JKSM_MenuProduction" />
+        <add_player_choice_sub text="'STORAGE &amp; RESOURCES — %1 signals'.[global.$JKSM_EmptyResourceCount + global.$JKSM_FullCargoCount]" position="bottom_left" section="JKSM_MenuStorage" />
+        <add_player_choice_sub text="'ADVISOR RECOMMENDATIONS — %1'.[global.$JKSM_RecommendationCount]" position="top_right" section="JKSM_MenuRecommendations" />
+        <add_player_choice_sub text="'REFRESH ANALYSIS'" position="right" section="JKSM_MenuRefresh" />
+        <add_player_choice_return text="'CLOSE EMPIRE OPERATIONS'" position="bottom_right" />
+      </actions>
+    </cue>
+
+    <cue name="JKSM_MenuHealth" namespace="this" instantiate="true">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKSM_MenuHealth" /></conditions>
+      <actions>
+        <debug_text text="'[JKSM][V211][SELECT] health'" filter="general" />
+        <do_if value="global.$JKSM_CriticalCount gt 0">
+          <add_player_choice_sub text="'STATUS: ACTION REQUIRED — %1 critical shortages'.[global.$JKSM_CriticalCount]" position="top_left" section="JKSM_MenuHealth" />
+        </do_if>
+        <do_elseif value="global.$JKSM_WarningCount gt 0">
+          <add_player_choice_sub text="'STATUS: STABLE WITH %1 WARNINGS'.[global.$JKSM_WarningCount]" position="top_left" section="JKSM_MenuHealth" />
+        </do_elseif>
+        <do_else>
+          <add_player_choice_sub text="'STATUS: EMPIRE OPERATING NORMALLY'" position="top_left" section="JKSM_MenuHealth" />
+        </do_else>
+        <add_player_choice_sub text="'Stations: %1 | Operational: %2'.[global.$JKSM_LastStationCount, global.$JKSM_OperationalCount]" position="left" section="JKSM_MenuHealth" />
+        <add_player_choice_sub text="'Production: %1 stations | Assigned ships: %2'.[global.$JKSM_ProductiveCount, global.$JKSM_TotalAssignedShips]" position="bottom_left" section="JKSM_MenuHealth" />
+        <add_player_choice_sub text="'CRITICAL: %1 | WARNINGS: %2'.[global.$JKSM_CriticalCount, global.$JKSM_WarningCount]" position="top_right" section="JKSM_MenuHealth" />
+        <add_player_choice_sub text="'Open Advisor Recommendations for the highest-priority action'" position="right" section="JKSM_MenuRecommendations" />
+        <add_player_choice_sub text="'BACK TO EMPIRE OPERATIONS'" position="bottom_right" section="JKSM_EmpireOperations" />
+      </actions>
+    </cue>
+
+    <cue name="JKSM_MenuProduction" namespace="this" instantiate="true">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKSM_MenuProduction" /></conditions>
+      <actions>
+        <debug_text text="'[JKSM][V211][SELECT] production'" filter="general" />
+        <add_player_choice_sub text="'PRODUCTION STATUS: %1 operational production stations'.[global.$JKSM_ProductiveCount]" position="top_left" section="JKSM_MenuProduction" />
+        <add_player_choice_sub text="'Required-resource shortages: %1'.[global.$JKSM_EmptyResourceCount]" position="left" section="JKSM_MenuProduction" />
+        <add_player_choice_sub text="'Stations without support ships: %1'.[global.$JKSM_NoSupportCount]" position="bottom_left" section="JKSM_MenuProduction" />
+        <add_player_choice_sub text="'Mixed industrial complexes: %1'.[global.$JKSM_MixedComplexCount]" position="top_right" section="JKSM_MenuProduction" />
+        <do_if value="global.$JKSM_FirstEmptyStation?">
+          <add_player_choice_sub text="'TOP CONSTRAINT: %1 lacks %2'.[global.$JKSM_FirstEmptyStation, global.$JKSM_FirstEmptyWare]" position="right" section="JKSM_WhyShortage" />
+        </do_if>
+        <do_else>
+          <add_player_choice_sub text="'No empty required-resource entries detected'" position="right" section="JKSM_MenuProduction" />
+        </do_else>
+        <add_player_choice_sub text="'BACK TO EMPIRE OPERATIONS'" position="bottom_right" section="JKSM_EmpireOperations" />
+      </actions>
+    </cue>
+
+    <cue name="JKSM_MenuStorage" namespace="this" instantiate="true">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKSM_MenuStorage" /></conditions>
+      <actions>
+        <debug_text text="'[JKSM][V211][SELECT] storage'" filter="general" />
+        <add_player_choice_sub text="'CRITICAL SHORTAGES: %1'.[global.$JKSM_EmptyResourceCount]" position="top_left" section="JKSM_MenuStorage" />
+        <add_player_choice_sub text="'STORAGE PRESSURE WARNINGS: %1'.[global.$JKSM_FullCargoCount]" position="left" section="JKSM_MenuStorage" />
+        <add_player_choice_sub text="'Stations reporting no storage: %1'.[global.$JKSM_NoStorageCount]" position="bottom_left" section="JKSM_MenuStorage" />
+        <do_if value="global.$JKSM_FirstEmptyStation?">
+          <add_player_choice_sub text="'SHORTAGE: %1 needs %2 — WHY?'.[global.$JKSM_FirstEmptyStation, global.$JKSM_FirstEmptyWare]" position="top_right" section="JKSM_WhyShortage" />
+        </do_if>
+        <do_else>
+          <add_player_choice_sub text="'No empty required resources detected'" position="top_right" section="JKSM_MenuStorage" />
+        </do_else>
+        <do_if value="global.$JKSM_FirstFullStation?">
+          <add_player_choice_sub text="'PRESSURE: %1 — %2 — WHY?'.[global.$JKSM_FirstFullStation, global.$JKSM_FirstFullWare]" position="right" section="JKSM_WhyStorage" />
+        </do_if>
+        <do_else>
+          <add_player_choice_sub text="'No cargo entries at 90 percent or more'" position="right" section="JKSM_MenuStorage" />
+        </do_else>
+        <add_player_choice_sub text="'BACK TO EMPIRE OPERATIONS'" position="bottom_right" section="JKSM_EmpireOperations" />
+      </actions>
+    </cue>
+
+    <cue name="JKSM_MenuRecommendations" namespace="this" instantiate="true">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKSM_MenuRecommendations" /></conditions>
+      <actions>
+        <debug_text text="'[JKSM][V211][SELECT] recommendations'" filter="general" />
+        <add_player_choice_sub text="'CRITICAL: %1 | WARNINGS: %2'.[global.$JKSM_CriticalCount, global.$JKSM_WarningCount]" position="top_left" section="JKSM_MenuRecommendations" />
+        <do_if value="global.$JKSM_FirstEmptyStation?">
+          <do_if value="global.$JKSM_EmptyConsecutiveScans ge 4">
+            <add_player_choice_sub text="'PRIORITY %1: Investigate persistent %2 shortage at %3'.[global.$JKSM_EmptyPriority, global.$JKSM_FirstEmptyWare, global.$JKSM_FirstEmptyStation]" position="left" section="JKSM_WhyShortage" />
+          </do_if>
+          <do_else>
+            <add_player_choice_sub text="'PRIORITY %1: Observe %2 shortage at %3'.[global.$JKSM_EmptyPriority, global.$JKSM_FirstEmptyWare, global.$JKSM_FirstEmptyStation]" position="left" section="JKSM_WhyShortage" />
+          </do_else>
+        </do_if>
+        <do_else>
+          <add_player_choice_sub text="'No critical resource shortage detected'" position="left" section="JKSM_MenuRecommendations" />
+        </do_else>
+        <do_if value="global.$JKSM_FirstFullStation?">
+          <add_player_choice_sub text="'PRIORITY %1: Review %2 storage at %3'.[global.$JKSM_FullPriority, global.$JKSM_FirstFullWare, global.$JKSM_FirstFullStation]" position="bottom_left" section="JKSM_WhyStorage" />
+        </do_if>
+        <do_else>
+          <add_player_choice_sub text="'No immediate storage-pressure warning'" position="bottom_left" section="JKSM_MenuRecommendations" />
+        </do_else>
+        <add_player_choice_sub text="'Logistics gaps: %1 stations without support ships'.[global.$JKSM_NoSupportCount]" position="top_right" section="JKSM_MenuRecommendations" />
+        <do_if value="global.$JKSM_LastResolvedIssueID?">
+          <add_player_choice_sub text="'LAST RESOLVED: %1 | %2 scans'.[global.$JKSM_LastResolvedIssueType, global.$JKSM_LastResolvedIssueDuration]" position="right" section="JKSM_MenuRecommendations" />
+        </do_if>
+        <do_else>
+          <add_player_choice_sub text="'Advisor only — no automatic action taken'" position="right" section="JKSM_MenuRecommendations" />
+        </do_else>
+        <add_player_choice_sub text="'BACK TO EMPIRE OPERATIONS'" position="bottom_right" section="JKSM_EmpireOperations" />
+      </actions>
+    </cue>
+
+    <cue name="JKSM_WhyShortage" namespace="this" instantiate="true">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKSM_WhyShortage" /></conditions>
+      <actions>
+        <debug_text text="'[JKSM][V211][WHY] shortage investigation'" filter="general" />
+        <add_player_choice_sub text="'INVESTIGATION: %1 shortage at %2'.[global.$JKSM_FirstEmptyWare, global.$JKSM_FirstEmptyStation]" position="top_left" section="JKSM_WhyShortageEvidence" />
+        <add_player_choice_sub text="'STAGE: %1 | ACTIVE: %2 scans'.[global.$JKSM_EmptyInvestigationStage, global.$JKSM_EmptyConsecutiveScans]" position="left" section="JKSM_WhyShortageEvidence" />
+        <add_player_choice_sub text="'ISSUE ID: %1 | PRIORITY: %2'.[global.$JKSM_EmptyIssueID, global.$JKSM_EmptyPriority]" position="bottom_left" section="JKSM_WhyShortageEvidence" />
+        <add_player_choice_sub text="'STOCK: %1 | ALLOCATED CAPACITY: %2 | TARGET: %3'.[global.$JKSM_FirstEmptyAmount, global.$JKSM_FirstEmptyMaximum, global.$JKSM_FirstEmptyTarget]" position="top_right" section="JKSM_WhyShortageEvidence" />
+        <add_player_choice_sub text="'ROOT CAUSE: NOT YET CONFIRMED — view evidence'.[]" position="right" section="JKSM_WhyShortageEvidence" />
+        <add_player_choice_sub text="'BACK TO RECOMMENDATIONS'" position="bottom_right" section="JKSM_MenuRecommendations" />
+      </actions>
+    </cue>
+
+    <cue name="JKSM_WhyShortageEvidence" namespace="this" instantiate="true">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKSM_WhyShortageEvidence" /></conditions>
+      <actions>
+        <debug_text text="'[JKSM][V211][EVIDENCE] shortage'" filter="general" />
+        <add_player_choice_sub text="'CONFIRMED FACT: Required input %1 has remained empty for %2 scans'.[global.$JKSM_FirstEmptyWare, global.$JKSM_EmptyConsecutiveScans]" position="top_left" section="JKSM_WhyShortageEvidence" />
+        <add_player_choice_sub text="'STORAGE FACTS: allocation %1 | target %2 | storage modules %3'.[global.$JKSM_FirstEmptyMaximum, global.$JKSM_FirstEmptyTarget, global.$JKSM_FirstEmptyStorageModules]" position="left" section="JKSM_WhyShortageEvidence" />
+        <add_player_choice_sub text="'LOGISTICS FACTS: assigned station ships %1 | station funds %2 Cr'.[global.$JKSM_FirstEmptyShipCount, global.$JKSM_FirstEmptyStationFunds]" position="bottom_left" section="JKSM_WhyShortageEvidence" />
+        <add_player_choice_sub text="'NOT YET PROVEN: reachable supply, trade-rule access, delivery attempts, demand rate'.[]" position="top_right" section="JKSM_WhyShortageEvidence" />
+        <add_player_choice_sub text="'ADVISOR DISPOSITION: %1'.[global.$JKSM_EmptyRecommendedDisposition]" position="right" section="JKSM_WhyShortageEvidence" />
+        <add_player_choice_sub text="'BACK TO SHORTAGE SUMMARY'" position="bottom_right" section="JKSM_WhyShortage" />
+      </actions>
+    </cue>
+
+    <cue name="JKSM_WhyStorage" namespace="this" instantiate="true">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKSM_WhyStorage" /></conditions>
+      <actions>
+        <debug_text text="'[JKSM][V211][WHY] storage'" filter="general" />
+        <add_player_choice_sub text="'WHY: %1 has reached at least 90 percent of allocated capacity'.[global.$JKSM_FirstFullWare]" position="top_left" section="JKSM_WhyStorage" />
+        <add_player_choice_sub text="'STATION: %1'.[global.$JKSM_FirstFullStation]" position="left" section="JKSM_WhyStorage" />
+        <add_player_choice_sub text="'STATUS: %1 | AGE: %2 scans | ID: %3'.[global.$JKSM_FullIssueStatus, global.$JKSM_FullConsecutiveScans, global.$JKSM_FullIssueID]" position="bottom_left" section="JKSM_WhyStorage" />
+        <add_player_choice_sub text="'CURRENT: %1 | CAPACITY: %2'.[global.$JKSM_FirstFullAmount, global.$JKSM_FirstFullMaximum]" position="top_right" section="JKSM_WhyStorage" />
+        <add_player_choice_sub text="'PRIORITY: %1 | CONFIDENCE: %2 | FIRST/LAST SCAN: %3/%4'.[global.$JKSM_FullPriority, global.$JKSM_FullConfidence, global.$JKSM_FullFirstSeenScan, global.$JKSM_FullLastSeenScan]" position="right" section="JKSM_WhyStorage" />
+        <add_player_choice_sub text="'BACK TO RECOMMENDATIONS'" position="bottom_right" section="JKSM_MenuRecommendations" />
+      </actions>
+    </cue>
+
+    <cue name="JKSM_MenuRefresh" namespace="this" instantiate="true">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKSM_MenuRefresh" /></conditions>
+      <actions>
+        <debug_text text="'[JKSM][V211][SELECT] refresh'" filter="general" />
+        <signal_cue_instantly cue="JKSM_RunIntelligenceScan" />
+        <show_notification text="'Empire Operations refreshed: %1 stations | %2 critical | %3 warnings'.[global.$JKSM_LastStationCount, global.$JKSM_CriticalCount, global.$JKSM_WarningCount]" timeout="6s" />
+        <add_player_choice_sub text="'REFRESH COMPLETE — RETURN TO EMPIRE OPERATIONS'" position="bottom_right" section="JKSM_EmpireOperations" />
+      </actions>
+    </cue>
+
+  </cues>
+</mdscript>
