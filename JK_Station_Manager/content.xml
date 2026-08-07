@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <content id="jk_station_manager"
          name="JK Empire Operations"
-         description="Empire Operations v2.1.1 Scan Recovery. Removes invalid action-level delay nodes so the station scan and menu refresh execute cleanly. Construction detection remains under investigation. Remains advisory-only and uninstall-safe."
+         description="EOC 1.0 GA. Empire operations intelligence, reporting, remediation and player-authorized management."
          author="RazorEQX"
-         version="211"
-         date="2026-07-23"
+         version="100"
+         date="2026-08-06"
          save="0">
   <text language="44"
         name="JK Empire Operations"
-        description="Empire Operations v2.1.1 Scan Recovery. Removes invalid action-level delay nodes so the station scan and menu refresh execute cleanly. Construction detection remains under investigation. Remains advisory-only and uninstall-safe." />
+        description="EOC 1.0 GA. Empire operations intelligence, reporting, remediation and player-authorized management." />
 </content>

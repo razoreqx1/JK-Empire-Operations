@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<mdscript name="JKEOC_Operational_Remediation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- Build 70: repeated-evidence remediation. Recommendations and teaching are
+       automatic; gameplay mutations remain behind the existing proof/authority gate. -->
+  <cues>
+    <cue name="JKEOC_B70_Initialize" instantiate="true" namespace="this">
+      <conditions><event_game_loaded /></conditions>
+      <delay exact="35s" />
+      <actions>
+        <do_if value="not global.$JKEOC_B70Schema? or global.$JKEOC_B70Schema lt 1"><set_value name="global.$JKEOC_B70Schema" exact="1" /></do_if>
+        <do_if value="not global.$JKEOC_B70Remediations?"><set_value name="global.$JKEOC_B70Remediations" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B70UnlinkedShips?"><set_value name="global.$JKEOC_B70UnlinkedShips" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B70NextIdentity?"><set_value name="global.$JKEOC_B70NextIdentity" exact="1" /></do_if>
+        <set_value name="global.$JKEOC_B70NextCycle" exact="player.age" />
+        <signal_cue_instantly cue="JKEOC_B70_Analyze" />
+        <debug_text text="'[JKEOC][B70][REMEDIATION_READY] records=%1 schema=%2'.[global.$JKEOC_B70Remediations.count, global.$JKEOC_B70Schema]" filter="general" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B70_Scheduler" instantiate="true" namespace="this" checktime="player.age + 5min" checkinterval="5min">
+      <conditions><check_value value="global.$JKEOC_B70Schema? and player.age ge global.$JKEOC_B70NextCycle" /></conditions>
+      <actions><signal_cue_instantly cue="JKEOC_B70_Analyze" /></actions>
+    </cue>
+
+    <cue name="JKEOC_B70_Analyze" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="global.$JKEOC_B70NextCycle" exact="player.age + 5min" />
+        <set_value name="$created" exact="0" /><set_value name="$updated" exact="0" /><set_value name="$open" exact="0" /><set_value name="$verifying" exact="0" /><set_value name="$resolved" exact="0" />
+        <do_if value="global.$JKEOC_SPOSRecords?">
+          <do_for_each name="$evidence" in="global.$JKEOC_SPOSRecords">
+            <remove_value name="$remediation" />
+            <do_for_each name="$candidate" in="global.$JKEOC_B70Remediations"><do_if value="not $remediation? and $candidate.$station == $evidence.$station and $candidate.$category == $evidence.$category and $candidate.$subjectkey == $evidence.$subjectkey"><set_value name="$remediation" exact="$candidate" /></do_if></do_for_each>
+            <set_value name="$eligible" exact="($evidence.$state == 'RECURRING' or $evidence.$state == 'SYSTEMIC') and ($evidence.$confidence == 'MEDIUM' or $evidence.$confidence == 'HIGH') and $evidence.$quality == 'COMPLETE'" />
+            <do_if value="$eligible or $remediation?">
+              <set_value name="$windowhits" exact="0" /><do_for_each name="$hit" in="$evidence.$window"><set_value name="$windowhits" exact="$windowhits + $hit" /></do_for_each>
+              <do_if value="not $remediation? and global.$JKEOC_B70Remediations.count lt 128">
+                <set_value name="$identity" exact="'B70-R%1'.[global.$JKEOC_B70NextIdentity]" /><set_value name="global.$JKEOC_B70NextIdentity" exact="global.$JKEOC_B70NextIdentity + 1" />
+                <set_value name="$remediation" exact="table[$identity=$identity, $station=$evidence.$station, $stationname=$evidence.$stationname, $category=$evidence.$category, $subject=$evidence.$subject, $subjectkey=$evidence.$subjectkey, $created=player.age, $updated=player.age, $state='OPEN', $priorstate='NONE', $evidence='', $diagnosis='', $recommendation='', $instruction='', $shipcapability='NONE', $assignment='NONE', $policy='NONE', $verification='MONITORING', $matchedship=null, $matchedidentity='', $lastamount=$evidence.$amount, $lasttarget=$evidence.$target, $lastwindowhits=$windowhits]" />
+                <append_to_list name="global.$JKEOC_B70Remediations" exact="$remediation" /><set_value name="$created" exact="$created + 1" />
+                <debug_text text="'[JKEOC][B70][REMEDIATION_CREATED] id=%1 station=%2 category=%3 subject=%4'.[$identity, $evidence.$stationname, $evidence.$category, $evidence.$subject]" filter="general" />
+              </do_if>
+              <do_if value="$remediation?">
+                <set_value name="$remediation.$priorstate" exact="$remediation.$state" /><set_value name="$remediation.$updated" exact="player.age" />
+                <set_value name="$remediation.$evidence" exact="'%1 of the last %2 bounded observations matched; total hits=%3 samples=%4; amount=%5 target=%6; suppliers=%7 suitable ships=%8 relevant activity=%9 idle/unknown=%10; confidence=%11.'.[$windowhits, $evidence.$window.count, $evidence.$hits, $evidence.$samples, $evidence.$amount, $evidence.$target, $evidence.$suppliers, $evidence.$suitable, $evidence.$relevant, $evidence.$idle, $evidence.$confidence]" />
+                <set_value name="$remediation.$diagnosis" exact="'%1: %2 remained %3 under repeated observation. Verified cause evidence: %4'.[$evidence.$category, $evidence.$subject, $evidence.$state, $evidence.$cause]" />
+                <set_value name="$remediation.$shipcapability" exact="'NONE'" /><set_value name="$remediation.$assignment" exact="'NONE'" /><set_value name="$remediation.$policy" exact="'NONE'" />
+                <do_if value="$evidence.$category == 'LOGISTICS COVERAGE'">
+                  <set_value name="$role" exact="'UNDEFINED'" /><do_for_each name="$profile" in="global.$JKEOC_B67Profiles"><do_if value="$profile.$station == $evidence.$station"><set_value name="$role" exact="$profile.$role" /></do_if></do_for_each>
+                  <set_value name="$remediation.$shipcapability" exact="if $role == 'MINING' or $role == 'MINING HUB' then if $windowhits ge 16 then 'Add two Large Miners' else 'Add one Large Miner' else if $windowhits ge 16 then 'Add two Large Traders' else 'Add one Large Trader'" />
+                  <set_value name="$remediation.$assignment" exact="if $role == 'MINING' or $role == 'MINING HUB' then 'Mine for Commander' else 'Trade for Commander'" />
+                  <set_value name="$remediation.$recommendation" exact="'%1; assign to %2 only after the player verifies the completed ship has the required cargo capability.'.[$remediation.$shipcapability, $remediation.$assignment]" />
+                  <set_value name="$remediation.$instruction" exact="'Build or free the recommended capability using any race, variant and equipment the player chooses. EOC does not require blueprint ownership evidence.'" />
+                </do_if>
+                <do_elseif value="$evidence.$category == 'STORAGE PRESSURE'">
+                  <set_value name="$remediation.$shipcapability" exact="if $evidence.$suitable == 0 then if $windowhits ge 16 then 'Add two Large Traders' else 'Add one Large Trader' else 'REASSIGN EXISTING CAPABILITY'" /><set_value name="$remediation.$assignment" exact="'Trade for Commander'" />
+                  <set_value name="$remediation.$policy" exact="'Create or review the product Sell Order; set a deliberate sell amount, preserve a verified production reserve, and move from Automatic pricing only when evidence supports a controlled price.'" />
+                  <set_value name="$remediation.$recommendation" exact="'%1. %2'.[$remediation.$shipcapability, $remediation.$policy]" /><set_value name="$remediation.$instruction" exact="'Open Station Logical Overview, select the affected product, verify storage allocation, enable a Sell Offer, choose the amount to keep, then set a controlled price only after comparing current demand.'" />
+                </do_elseif>
+                <do_elseif value="$evidence.$category == 'PRODUCTION SHORTAGE' or $evidence.$category == 'STALLED PRODUCTION' or $evidence.$category == 'WORKFORCE SUPPLY FAILURE' or $evidence.$category == 'WORKFORCE SUPPLY INTELLIGENCE'">
+                  <set_value name="$remediation.$policy" exact="'Review Automatic trade policy; create or correct the Buy Order for %1, preserve a verified reserve, and use a controlled buy price only when supplier evidence supports it.'.[$evidence.$subject]" />
+                  <set_value name="$remediation.$shipcapability" exact="if $evidence.$suitable == 0 and $evidence.$suppliers gt 0 then 'Add one Large Trader' else 'NONE'" /><set_value name="$remediation.$assignment" exact="if $remediation.$shipcapability != 'NONE' then 'Trade for Commander' else 'NONE'" />
+                  <set_value name="$remediation.$recommendation" exact="'%1 %2'.[$remediation.$policy, if $remediation.$shipcapability != 'NONE' then $remediation.$shipcapability else 'Use existing logistics first.']" />
+                  <set_value name="$remediation.$instruction" exact="'Open Station Logical Overview, select %1, verify allocated storage and consumption, enable a Buy Offer, set the target amount, review allowed factions, then choose a price supported by observed reachable supply.'.[$evidence.$subject]" />
+                </do_elseif>
+                <do_elseif value="$evidence.$category == 'TRADE RESTRICTION REVIEW'">
+                  <set_value name="$remediation.$policy" exact="'Change Automatic trade-rule handling to a deliberate Controlled rule only after confirming which factions must be allowed.'" /><set_value name="$remediation.$recommendation" exact="$remediation.$policy" /><set_value name="$remediation.$instruction" exact="'Open the station information and Logical Overview, inspect the ware Buy and Sell Offers, review assigned trade rules and blacklists, then select a controlled rule that preserves required supplier and customer access.'" />
+                </do_elseif>
+                <do_elseif value="$evidence.$category == 'SHIP ACTIVITY MISMATCH'">
+                  <set_value name="$remediation.$shipcapability" exact="'REASSIGN EXISTING SUITABLE TRADER'" /><set_value name="$remediation.$assignment" exact="'Trade for Commander'" /><set_value name="$remediation.$recommendation" exact="'Reassign an existing suitable trader before adding new construction.'" /><set_value name="$remediation.$instruction" exact="'Select a suitable idle player trader, choose Assign to Commander, select this station, and choose Trade for Commander. Request a recheck after assignment.'" />
+                </do_elseif>
+                <do_else><set_value name="$remediation.$recommendation" exact="$evidence.$recommendation" /><set_value name="$remediation.$instruction" exact="'Review the cited evidence and station policy manually. No automated change is authorized or supported for this diagnosis.'" /></do_else>
+                <do_if value="$evidence.$state == 'RECOVERING'"><set_value name="$remediation.$state" exact="'VERIFYING'" /><set_value name="$remediation.$verification" exact="'Improvement observed; continue monitoring until six healthy observations and 60 active minutes confirm resolution'" /></do_if>
+                <do_elseif value="$evidence.$state == 'RESOLVED'"><set_value name="$remediation.$state" exact="'RESOLVED'" /><set_value name="$remediation.$verification" exact="'Verified resolved by the bounded SPOS recovery gate'" /></do_elseif>
+                <do_elseif value="$remediation.$priorstate == 'VERIFYING' or $remediation.$priorstate == 'RESOLVED'"><set_value name="$remediation.$state" exact="'ESCALATED'" /><set_value name="$remediation.$verification" exact="'Remediation did not remain effective; continue diagnosis and apply the next evidence-supported action'" /></do_elseif>
+                <do_else><set_value name="$remediation.$state" exact="'OPEN'" /><set_value name="$remediation.$verification" exact="'Awaiting remediation; monitoring continues'" /></do_else>
+                <set_value name="$remediation.$lastamount" exact="$evidence.$amount" /><set_value name="$remediation.$lasttarget" exact="$evidence.$target" /><set_value name="$remediation.$lastwindowhits" exact="$windowhits" /><set_value name="$updated" exact="$updated + 1" />
+              </do_if>
+            </do_if>
+          </do_for_each>
+        </do_if>
+        <do_for_each name="$r" in="global.$JKEOC_B70Remediations"><do_if value="$r.$state == 'OPEN' or $r.$state == 'ESCALATED'"><set_value name="$open" exact="$open + 1" /></do_if><do_elseif value="$r.$state == 'VERIFYING'"><set_value name="$verifying" exact="$verifying + 1" /></do_elseif><do_elseif value="$r.$state == 'RESOLVED'"><set_value name="$resolved" exact="$resolved + 1" /></do_elseif></do_for_each>
+        <set_value name="global.$JKEOC_B70Open" exact="$open" /><set_value name="global.$JKEOC_B70Verifying" exact="$verifying" /><set_value name="global.$JKEOC_B70Resolved" exact="$resolved" />
+        <debug_text text="'[JKEOC][B70][REMEDIATION_CYCLE] created=%1 updated=%2 open=%3 verifying=%4 resolved=%5 total=%6'.[$created, $updated, $open, $verifying, $resolved, global.$JKEOC_B70Remediations.count]" filter="general" />
+      </actions>
+    </cue>
+
+    <!-- Completion recognition never guesses capability or intent. A lifecycle may
+         close a recommendation only when its station intent was independently proven. -->
+    <cue name="JKEOC_B70_RecognizeCompletedShip" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="$life" exact="event.param" /><set_value name="$matched" exact="false" /><set_value name="$ship" exact="$life.$resultship" />
+        <do_for_each name="$remediation" in="global.$JKEOC_B70Remediations">
+          <set_value name="$capable" exact="$ship.exists and $ship.owner == faction.player and $ship.isclass.ship and $ship.isoperational and not $ship.isunit and not $ship.isclass.ship_xs and not $ship.assignment? and (($remediation.$assignment == 'Trade for Commander' and $ship.primarypurpose == purpose.trade and $ship.waretransport.indexof.{waretransport.container}) or ($remediation.$assignment == 'Mine for Commander' and $ship.primarypurpose == purpose.mine and $remediation.$subjectkey? and $ship.waretransport.indexof.{$remediation.$subjectkey.waretransport})) and (global.$JKEOC_B76AssignmentMode != 'AUTO-ASSIGN REGISTERED' or global.$JKEOC_B76EligibleShips.indexof.{$ship})" />
+          <do_if value="not $matched and $capable and ($remediation.$state == 'OPEN' or $remediation.$state == 'ESCALATED') and $remediation.$shipcapability != 'NONE' and not $remediation.$matchedship.exists">
+            <set_value name="$remediation.$matchedship" exact="$ship" /><set_value name="$remediation.$matchedidentity" exact="$life.$identity" /><set_value name="$remediation.$verification" exact="'Completed compatible ship recognized; awaiting player authorization for station assignment'" /><set_value name="$remediation.$recommendation" exact="'%1 is compatible. Authorize %2 assignment to %3 from Executive Advisor > Operational Remediation / Trade Control.'.[$life.$shipname, $remediation.$assignment, $remediation.$stationname]" /><set_value name="global.$JKEOC_B74PendingRemediation" exact="$remediation" /><set_value name="global.$JKEOC_B74PendingShip" exact="$ship" /><set_value name="$matched" exact="true" /><show_notification text="'ACTION REQUIRED: EOC recognized %1 for %2. Open Ship Assignment Authorization to approve %3.'.[$life.$shipname, $remediation.$stationname, $remediation.$assignment]" timeout="15s" />
+          </do_if>
+        </do_for_each>
+        <do_if value="not $matched"><do_if value="global.$JKEOC_B70UnlinkedShips.count ge 32"><remove_value name="global.$JKEOC_B70UnlinkedShips.{1}" /></do_if><append_to_list name="global.$JKEOC_B70UnlinkedShips" exact="table[$identity=$life.$identity, $ship=$life.$resultship, $shipname=$life.$shipname, $completed=player.age, $reason='Completion recognized; no independently proven remediation intent link']" /></do_if>
+        <debug_text text="'[JKEOC][B74][SHIP_RECOGNIZED] id=%1 ship=%2 matched=%3 purpose=%4'.[$life.$identity, $life.$shipname, $matched, if $ship.exists then $ship.primarypurpose else 'UNAVAILABLE']" filter="general" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B74_AssignmentMenu" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B74_AssignmentMenu" /></conditions><actions>
+      <do_if value="global.$JKEOC_B74PendingRemediation? and global.$JKEOC_B74PendingShip? and global.$JKEOC_B74PendingShip.exists and global.$JKEOC_B74PendingShip.isclass.ship and not global.$JKEOC_B74PendingShip.isunit and not global.$JKEOC_B74PendingShip.isclass.ship_xs and not global.$JKEOC_B74PendingShip.assignment? and global.$JKEOC_B74PendingRemediation.$station.exists">
+        <add_player_choice_sub text="'SHIP: %1 | ROLE: %2'.[global.$JKEOC_B74PendingShip.name, global.$JKEOC_B74PendingRemediation.$assignment]" position="top_left" section="JKEOC_B74_AssignmentMenu" />
+        <add_player_choice_sub text="'STATION: %1'.[global.$JKEOC_B74PendingRemediation.$stationname]" position="left" section="JKEOC_B74_AssignmentMenu" />
+        <add_player_choice_sub text="'AUTHORIZE THIS ASSIGNMENT'" position="right" section="JKEOC_B74_Assign" />
+      </do_if><do_else><add_player_choice_sub text="'INFO: NO COMPLETED RECOMMENDED SHIP IS AWAITING ASSIGNMENT'" position="top_left" section="JKEOC_B74_AssignmentMenu" /></do_else>
+      <add_player_choice_sub text="'BACK - NO CHANGE'" position="bottom_right" section="JKEOC_B72_OperationsHub" />
+    </actions></cue>
+
+    <cue name="JKEOC_B74_Assign" instantiate="true" namespace="this"><conditions><check_any><event_conversation_next_section actor="player.computer" section="JKEOC_B74_Assign" /><event_cue_signalled /></check_any></conditions><actions>
+      <set_value name="$r" exact="global.$JKEOC_B74PendingRemediation" /><set_value name="$ship" exact="global.$JKEOC_B74PendingShip" /><set_value name="$assignment" exact="if $r.$assignment == 'Mine for Commander' then assignment.mining else assignment.trade" />
+      <set_value name="$registeredok" exact="global.$JKEOC_B76AssignmentMode != 'AUTO-ASSIGN REGISTERED' or global.$JKEOC_B76EligibleShips.indexof.{$ship}" /><set_value name="$cargo" exact="($r.$assignment == 'Trade for Commander' and $ship.waretransport.indexof.{waretransport.container}) or ($r.$assignment == 'Mine for Commander' and $r.$subjectkey? and $ship.waretransport.indexof.{$r.$subjectkey.waretransport})" />
+      <do_if value="$ship.exists and $ship.owner == faction.player and $ship.isclass.ship and $ship.isoperational and not $ship.isunit and not $ship.isclass.ship_xs and not $ship.assignment? and (($r.$assignment == 'Trade for Commander' and $ship.primarypurpose == purpose.trade) or ($r.$assignment == 'Mine for Commander' and $ship.primarypurpose == purpose.mine)) and $registeredok and $cargo and $r.$station.exists and $r.$station.owner == faction.player"><set_object_commander object="$ship" commander="$r.$station" assignment="$assignment" /><set_value name="$r.$verification" exact="'Assignment authorized; verifying commander and role'" /><debug_text text="'[JKEOC][B82][ASSIGNMENT_EXECUTED] ship=%1 station=%2 role=%3 mode=%4 registered=%5'.[$ship.name, $r.$stationname, $assignment, global.$JKEOC_B76AssignmentMode, global.$JKEOC_B76EligibleShips.indexof.{$ship}]" filter="general" /><signal_cue_instantly cue="JKEOC_B74_VerifyAssignment" /></do_if><do_else><show_notification text="'WARNING: Assignment target is invalid, incompatible or not registered. No change made.'" timeout="10s" /><debug_text text="'[JKEOC][B82][ASSIGNMENT_BLOCKED] registered=%1 cargo=%2 purpose=%3 assigned=%4'.[$registeredok, $cargo, if $ship.exists then $ship.primarypurpose else 'UNAVAILABLE', if $ship.exists then $ship.assignment? else false]" filter="general" /></do_else>
+    </actions></cue>
+
+    <cue name="JKEOC_B74_VerifyAssignment" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="3s" /><actions>
+      <set_value name="$r" exact="global.$JKEOC_B74PendingRemediation" /><set_value name="$ship" exact="global.$JKEOC_B74PendingShip" /><set_value name="$expected" exact="if $r.$assignment == 'Mine for Commander' then assignment.mining else assignment.trade" /><set_value name="$ok" exact="$ship.exists and $ship.commander == $r.$station and $ship.assignment == $expected" />
+      <do_if value="$ok"><set_value name="$r.$verification" exact="'Assignment verified; monitoring operational recovery'" /><set_value name="$r.$state" exact="'VERIFYING'" /><remove_from_list name="global.$JKEOC_B76EligibleShips" exact="$ship" /><do_for_each name="$life" in="global.$JKEOC_B66Active"><do_if value="$life.$identity == $r.$matchedidentity or $life.$resultship == $ship"><set_value name="$life.$terminal" exact="'ASSIGNED AND VERIFIED'" /><set_value name="$life.$assignmentexpires" exact="0" /><set_value name="$life.$state" exact="'ASSIGNED'" /></do_if></do_for_each><show_notification text="'ACTION COMPLETE: %1 assigned to %2 as %3. EOC is monitoring recovery.'.[$ship.name, $r.$stationname, $r.$assignment]" timeout="12s" /><debug_text text="'[JKEOC][B78][ASSIGNMENT_VERIFY] result=PASS ship=%1 station=%2 role=%3 lifecycle=ASSIGNED'.[$ship.name, $r.$stationname, $expected]" filter="general" /><remove_value name="global.$JKEOC_B74PendingRemediation" /><remove_value name="global.$JKEOC_B74PendingShip" /></do_if>
+      <do_else><set_value name="$r.$verification" exact="'Assignment verification failed; no remediation credit granted'" /><show_notification text="'WARNING: EOC could not verify the ship assignment. Review the ship and station manually.'" timeout="12s" /><debug_text text="'[JKEOC][B74][ASSIGNMENT_VERIFY] result=FAIL'" filter="general" /></do_else>
+    </actions></cue>
+
+    <cue name="JKEOC_B70_WriteReport" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B70_WriteReport" /></conditions>
+      <actions>
+        <signal_cue_instantly cue="JKEOC_B70_Analyze" />
+        <set_value name="$details" exact="''" /><set_value name="$written" exact="0" />
+        <do_for_each name="$r" in="global.$JKEOC_B70Remediations"><do_if value="$written lt 1 and $r.$state != 'RESOLVED'"><set_value name="$written" exact="$written + 1" /><set_value name="$details" exact="'%1\n\n%2. %3 | %4\nDiagnosis: %5\nEvidence: %6\nRecommendation: %7\nPlayer instructions: %8\nVerification: %9'.[$details, $r.$identity, $r.$stationname, $r.$state, $r.$diagnosis, $r.$evidence, $r.$recommendation, $r.$instruction, $r.$verification]" /></do_if></do_for_each>
+        <!-- Tips Log is newest-first: write last page first so Page 1 is displayed first. -->
+        <write_to_logbook category="tips" title="'EOC Operational Remediation - Page 3 of 3'" text="'ENGINEERING AND AUTHORITY\nAutomation remains proof-gated. Policy, order, price, storage and assignment recommendations are player instructions unless a capability has passed mailbox validation and the existing authorization model. No race, blueprint, variant or equipment is prescribed.\n\nRecognized completed ships without proven remediation intent: %1\nMailbox purpose: bounded validation of create/change, verification and rollback capability.\n\nTips page design maximum: 3,500 characters.\n\nPage 3 of 3\nEND OF REPORT'.[global.$JKEOC_B70UnlinkedShips.count]" />
+        <write_to_logbook category="tips" title="'EOC Operational Remediation - Page 2 of 3'" text="'ACTIVE REMEDIATION DETAILS%1\n\nOnly repeated, complete, medium/high-confidence evidence creates a remediation. Unsupported causes remain unknown.\n\nPage 2 of 3'.[$details]" />
+        <write_to_logbook category="tips" title="'EOC Operational Remediation - Page 1 of 3'" text="'OPERATIONAL REMEDIATION STATUS\nOpen or escalated: %1\nVerifying: %2\nResolved: %3\nTotal retained: %4 / 128\n\nCycle: Observe -> Diagnose -> Recommend -> Teach -> Verify. Safe execution remains authorization-gated.\n\nPage 1 of 3'.[global.$JKEOC_B70Open, global.$JKEOC_B70Verifying, global.$JKEOC_B70Resolved, global.$JKEOC_B70Remediations.count]" />
+        <show_notification text="'ACTION: Operational remediation report saved. INFO: Read Page 1 first in the Tips Log.'" timeout="10s" /><debug_text text="'[JKEOC][B70][REPORT_WRITTEN] pages=3 order=3,2,1 details=%1 max_chars=3500'.[$written]" filter="general" /><add_player_choice_sub text="'REPORT SAVED - RETURN'" position="bottom_right" section="JKEOC_B67_Hub" />
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

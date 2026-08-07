@@ -1,8 +1,0 @@
-JK Empire Operations v1.2.0 Test Plan
-
-Goals:
-- Verify mod loads.
-- Verify recommendations unchanged.
-- Verify no regressions.
-- Confirm Operations Framework documentation/version.
-Future versions will activate Auto Resolve.

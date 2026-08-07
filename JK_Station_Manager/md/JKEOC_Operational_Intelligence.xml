@@ -1,0 +1,781 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<mdscript name="JKEOC_Operational_Intelligence"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <!--
+    EOC v6.0.0 Build 64 - Autonomous Station Stabilization
+
+    Read-only boundary:
+    This script records observations, classifies evidence, writes reports and
+    accepts bounded diagnostic configuration. It contains no station, ship,
+    order, trade, price, cargo, construction, ownership or assignment action.
+
+    The observer consumes the verified Build 60C station directory and direct
+    subordinate assignment model. It does not duplicate the primary EOC scan.
+  -->
+
+  <cues>
+
+    <library name="JKEOC_SPOS_SetDefaults">
+      <actions>
+        <set_value name="global.$JKEOC_ObservationConfig" exact="table[
+          $schema=1,
+          $revision=1,
+          $profile='STANDARD',
+          $interval=5min,
+          $c1=true, $c2=true, $c3=true, $c4=true, $c5=true,
+          $c6=true, $c7=true, $c8=true, $c9=true,
+          $recurrenceprofile='STANDARD',
+          $confidenceprofile='STANDARD',
+          $debuglevel='TRANSITIONS',
+          $notifications='SYSTEMIC',
+          $lastchanged=player.age,
+          $lastappliedrevision=0]" />
+      </actions>
+    </library>
+
+    <library name="JKEOC_SPOS_ValidateConfig">
+      <actions>
+        <set_value name="$configvalid" exact="true" />
+        <do_if value="not global.$JKEOC_ObservationConfig? or not global.$JKEOC_ObservationConfig.$schema? or global.$JKEOC_ObservationConfig.$schema != 1">
+          <set_value name="$configvalid" exact="false" />
+        </do_if>
+        <do_if value="$configvalid and global.$JKEOC_ObservationConfig.$profile != 'LIGHT' and global.$JKEOC_ObservationConfig.$profile != 'STANDARD' and global.$JKEOC_ObservationConfig.$profile != 'FOCUSED TEST'">
+          <set_value name="$configvalid" exact="false" />
+        </do_if>
+        <do_if value="$configvalid and global.$JKEOC_ObservationConfig.$interval lt 2min">
+          <set_value name="$configvalid" exact="false" />
+        </do_if>
+        <do_if value="$configvalid and global.$JKEOC_ObservationConfig.$interval gt 10min">
+          <set_value name="$configvalid" exact="false" />
+        </do_if>
+        <do_if value="$configvalid and global.$JKEOC_ObservationConfig.$recurrenceprofile != 'CONSERVATIVE' and global.$JKEOC_ObservationConfig.$recurrenceprofile != 'STANDARD' and global.$JKEOC_ObservationConfig.$recurrenceprofile != 'RESPONSIVE TEST'">
+          <set_value name="$configvalid" exact="false" />
+        </do_if>
+        <do_if value="$configvalid and global.$JKEOC_ObservationConfig.$confidenceprofile != 'CONSERVATIVE' and global.$JKEOC_ObservationConfig.$confidenceprofile != 'STANDARD' and global.$JKEOC_ObservationConfig.$confidenceprofile != 'RESPONSIVE TEST'">
+          <set_value name="$configvalid" exact="false" />
+        </do_if>
+        <do_if value="$configvalid and global.$JKEOC_ObservationConfig.$debuglevel != 'OFF' and global.$JKEOC_ObservationConfig.$debuglevel != 'TRANSITIONS' and global.$JKEOC_ObservationConfig.$debuglevel != 'SUMMARY' and global.$JKEOC_ObservationConfig.$debuglevel != 'FOCUSED DETAIL'">
+          <set_value name="$configvalid" exact="false" />
+        </do_if>
+        <do_if value="$configvalid and global.$JKEOC_ObservationConfig.$notifications != 'SYSTEMIC' and global.$JKEOC_ObservationConfig.$notifications != 'SYSTEMIC AND RESOLVED' and global.$JKEOC_ObservationConfig.$notifications != 'SILENT'">
+          <set_value name="$configvalid" exact="false" />
+        </do_if>
+        <do_if value="$configvalid and (not global.$JKEOC_ObservationConfig.$c1? or not global.$JKEOC_ObservationConfig.$c2? or not global.$JKEOC_ObservationConfig.$c3? or not global.$JKEOC_ObservationConfig.$c4? or not global.$JKEOC_ObservationConfig.$c5? or not global.$JKEOC_ObservationConfig.$c6? or not global.$JKEOC_ObservationConfig.$c7? or not global.$JKEOC_ObservationConfig.$c8? or not global.$JKEOC_ObservationConfig.$c9?)">
+          <set_value name="$configvalid" exact="false" />
+        </do_if>
+        <do_if value="$configvalid and global.$JKEOC_ObservationConfig.$request? and global.$JKEOC_ObservationConfig.$request != 'OBSERVE FOCUS' and global.$JKEOC_ObservationConfig.$request != 'RECHECK PLAYER ACTION'">
+          <set_value name="$configvalid" exact="false" />
+        </do_if>
+        <do_if value="$configvalid and global.$JKEOC_ObservationConfig.$focusstation? and (not global.$JKEOC_ObservationConfig.$focusstation.exists or global.$JKEOC_ObservationConfig.$focusstation.owner != faction.player)">
+          <remove_value name="global.$JKEOC_ObservationConfig.$focusstation" />
+          <remove_value name="global.$JKEOC_ObservationConfig.$focusstationname" />
+        </do_if>
+        <do_if value="not $configvalid">
+          <include_actions ref="JKEOC_SPOS_SetDefaults" />
+          <debug_text text="'[JKEOC][V600][SPOS_CONFIG_RESET] invalid or unsupported configuration replaced with safe defaults'" filter="general" />
+        </do_if>
+      </actions>
+    </library>
+
+    <!--
+      Caller inputs:
+        $obsstation, $obscategory, $obssubject, $obssubjectkey, $obshit, $obsevidence,
+        $obscause, $obsrecommendation, $obsconfidence, $obsquality,
+        $obsamount, $obstarget, $obssuppliers, $obssuitable,
+        $obsrelevant, $obsidle, $obscorrelation
+    -->
+    <library name="JKEOC_SPOS_UpdateRecord">
+      <actions>
+        <remove_value name="$obsrecord" />
+        <do_for_each name="$candidate" in="global.$JKEOC_SPOSRecords">
+          <do_if value="not $obsrecord? and $candidate.$station == $obsstation and $candidate.$category == $obscategory and $candidate.$subjectkey == $obssubjectkey">
+            <set_value name="$obsrecord" exact="$candidate" />
+          </do_if>
+        </do_for_each>
+
+        <do_if value="not $obsrecord? and $obshit">
+          <set_value name="$capacityblocked" exact="false" />
+          <set_value name="$stationrecordcount" exact="0" />
+          <do_for_each name="$stationcandidate" in="global.$JKEOC_SPOSRecords">
+            <do_if value="$stationcandidate.$station == $obsstation">
+              <set_value name="$stationrecordcount" exact="$stationrecordcount + 1" />
+            </do_if>
+          </do_for_each>
+
+          <!-- Deterministic per-station rotation: oldest resolved record first,
+               then oldest baseline/candidate. Active findings are never displaced. -->
+          <do_if value="$stationrecordcount ge 12">
+            <remove_value name="$rotationrecord" />
+            <do_for_each name="$rotationcandidate" in="global.$JKEOC_SPOSRecords">
+              <do_if value="$rotationcandidate.$station == $obsstation and $rotationcandidate.$state == 'RESOLVED'">
+                <do_if value="not $rotationrecord?"><set_value name="$rotationrecord" exact="$rotationcandidate" /></do_if>
+                <do_elseif value="$rotationrecord.$state != 'RESOLVED' or $rotationcandidate.$resolvedat lt $rotationrecord.$resolvedat"><set_value name="$rotationrecord" exact="$rotationcandidate" /></do_elseif>
+              </do_if>
+              <do_elseif value="$rotationcandidate.$station == $obsstation and ($rotationcandidate.$state == 'BASELINE' or $rotationcandidate.$state == 'CANDIDATE')">
+                <do_if value="not $rotationrecord?"><set_value name="$rotationrecord" exact="$rotationcandidate" /></do_if>
+                <do_elseif value="$rotationrecord.$state != 'RESOLVED' and $rotationcandidate.$lastseen lt $rotationrecord.$lastseen"><set_value name="$rotationrecord" exact="$rotationcandidate" /></do_elseif>
+              </do_elseif>
+            </do_for_each>
+            <do_if value="$rotationrecord?">
+              <remove_from_list name="global.$JKEOC_SPOSRecords" exact="$rotationrecord" />
+              <set_value name="global.$JKEOC_SPOSRotations" exact="global.$JKEOC_SPOSRotations + 1" />
+              <set_value name="$stationrecordcount" exact="$stationrecordcount - 1" />
+            </do_if>
+            <do_else><set_value name="$capacityblocked" exact="true" /></do_else>
+          </do_if>
+
+          <!-- Deterministic global rotation uses the same priority and ordering. -->
+          <do_if value="not $capacityblocked and global.$JKEOC_SPOSRecords.count ge 256">
+            <remove_value name="$rotationrecord" />
+            <do_for_each name="$rotationcandidate" in="global.$JKEOC_SPOSRecords">
+              <do_if value="$rotationcandidate.$state == 'RESOLVED'">
+                <do_if value="not $rotationrecord?"><set_value name="$rotationrecord" exact="$rotationcandidate" /></do_if>
+                <do_elseif value="$rotationrecord.$state != 'RESOLVED' or $rotationcandidate.$resolvedat lt $rotationrecord.$resolvedat"><set_value name="$rotationrecord" exact="$rotationcandidate" /></do_elseif>
+              </do_if>
+              <do_elseif value="$rotationcandidate.$state == 'BASELINE' or $rotationcandidate.$state == 'CANDIDATE'">
+                <do_if value="not $rotationrecord?"><set_value name="$rotationrecord" exact="$rotationcandidate" /></do_if>
+                <do_elseif value="$rotationrecord.$state != 'RESOLVED' and $rotationcandidate.$lastseen lt $rotationrecord.$lastseen"><set_value name="$rotationrecord" exact="$rotationcandidate" /></do_elseif>
+              </do_elseif>
+            </do_for_each>
+            <do_if value="$rotationrecord?">
+              <remove_from_list name="global.$JKEOC_SPOSRecords" exact="$rotationrecord" />
+              <set_value name="global.$JKEOC_SPOSRotations" exact="global.$JKEOC_SPOSRotations + 1" />
+            </do_if>
+            <do_else><set_value name="$capacityblocked" exact="true" /></do_else>
+          </do_if>
+
+          <do_if value="not $capacityblocked and $stationrecordcount lt 12 and global.$JKEOC_SPOSRecords.count lt 256">
+            <set_value name="$obsrecord" exact="table[
+              $schema=2, $station=$obsstation, $stationname=$obsstation.name,
+              $category=$obscategory, $subject=$obssubject, $subjectkey=$obssubjectkey,
+              $state='BASELINE', $priorstate='BASELINE', $confidence='LOW',
+              $firstseen=player.age, $lastseen=player.age, $lastsampled=player.age, $resolvedat=0,
+              $samples=0, $hits=0, $misses=0, $consecutivehits=0,
+              $healthy=0, $relapses=0, $recoveries=0, $window=[],
+              $evidence='', $cause='', $recommendation='', $quality='',
+              $amount=0, $target=0, $firstamount=$obsamount, $worstamount=$obsamount,
+              $lastamount=$obsamount, $suppliers=0, $suitable=0,
+              $relevant=0, $idle=0, $correlation='UNKNOWN',
+              $assessmentimport='UNAVAILABLE', $assessmentproduction='UNAVAILABLE',
+              $assessmentnewproduction='UNAVAILABLE', $assessmentlogistics='UNAVAILABLE',
+              $assessmentunavailable='UNAVAILABLE', $assessmentconclusion='INSUFFICIENT EVIDENCE TO CHOOSE',
+              $assessmentwhy='Insufficient verified evidence', $assessmentcost='UNAVAILABLE', $builderreserve=0,
+              $awaitingplayer=false, $verification='NOT REQUESTED',
+              $reportedstate='NONE', $playervisible=false, $lastnotified=0,
+              $lastnotifiedstate='NONE', $lastnotifiedsignature='', $suspended=false]" />
+            <append_to_list name="global.$JKEOC_SPOSRecords" exact="$obsrecord" />
+          </do_if>
+          <do_else>
+            <set_value name="global.$JKEOC_SPOSOverflow" exact="global.$JKEOC_SPOSOverflow + 1" />
+          </do_else>
+        </do_if>
+
+        <do_if value="$obsrecord?">
+          <set_value name="$oldstate" exact="$obsrecord.$state" />
+          <set_value name="$obsrecord.$lastsampled" exact="player.age" />
+          <set_value name="$obsrecord.$samples" exact="$obsrecord.$samples + 1" />
+          <set_value name="$obsrecord.$evidence" exact="$obsevidence" />
+          <set_value name="$obsrecord.$cause" exact="$obscause" />
+          <set_value name="$obsrecord.$recommendation" exact="$obsrecommendation" />
+          <set_value name="$obsrecord.$quality" exact="$obsquality" />
+          <set_value name="$obsrecord.$amount" exact="$obsamount" />
+          <set_value name="$obsrecord.$target" exact="$obstarget" />
+          <set_value name="$obsrecord.$lastamount" exact="$obsamount" />
+          <do_if value="$obsamount lt $obsrecord.$worstamount"><set_value name="$obsrecord.$worstamount" exact="$obsamount" /></do_if>
+          <set_value name="$obsrecord.$suppliers" exact="$obssuppliers" />
+          <set_value name="$obsrecord.$suitable" exact="$obssuitable" />
+          <set_value name="$obsrecord.$relevant" exact="$obsrelevant" />
+          <set_value name="$obsrecord.$idle" exact="$obsidle" />
+          <set_value name="$obsrecord.$correlation" exact="$obscorrelation" />
+          <do_if value="$obscategory == 'WORKFORCE SUPPLY INTELLIGENCE'">
+            <set_value name="$obsrecord.$assessmentimport" exact="$obsassessmentimport" />
+            <set_value name="$obsrecord.$assessmentproduction" exact="$obsassessmentproduction" />
+            <set_value name="$obsrecord.$assessmentnewproduction" exact="$obsassessmentnewproduction" />
+            <set_value name="$obsrecord.$assessmentlogistics" exact="$obsassessmentlogistics" />
+            <set_value name="$obsrecord.$assessmentunavailable" exact="$obsassessmentunavailable" />
+            <set_value name="$obsrecord.$assessmentconclusion" exact="$obsassessmentconclusion" />
+            <set_value name="$obsrecord.$assessmentwhy" exact="$obsassessmentwhy" />
+            <set_value name="$obsrecord.$assessmentcost" exact="$obsassessmentcost" />
+            <set_value name="$obsrecord.$builderreserve" exact="$obsbuilderreserve" />
+          </do_if>
+          <set_value name="$obsrecord.$suspended" exact="false" />
+          <append_to_list name="$obsrecord.$window" exact="if $obshit then 1 else 0" />
+          <do_if value="$obsrecord.$window.count gt 18">
+            <remove_from_list name="$obsrecord.$window" exact="$obsrecord.$window.{1}" />
+          </do_if>
+
+          <do_if value="$obshit">
+            <set_value name="$obsrecord.$hits" exact="$obsrecord.$hits + 1" />
+            <set_value name="$obsrecord.$consecutivehits" exact="$obsrecord.$consecutivehits + 1" />
+            <set_value name="$obsrecord.$healthy" exact="0" />
+            <set_value name="$obsrecord.$lastseen" exact="player.age" />
+          </do_if>
+          <do_else>
+            <set_value name="$obsrecord.$misses" exact="$obsrecord.$misses + 1" />
+            <set_value name="$obsrecord.$consecutivehits" exact="0" />
+            <set_value name="$obsrecord.$healthy" exact="$obsrecord.$healthy + 1" />
+          </do_else>
+
+          <set_value name="$hits4" exact="0" />
+          <set_value name="$hits9" exact="0" />
+          <set_value name="$hits18" exact="0" />
+          <set_value name="$windowindex" exact="0" />
+          <do_for_each name="$windowhit" in="$obsrecord.$window" counter="$windowindex">
+            <set_value name="$hits18" exact="$hits18 + $windowhit" />
+            <do_if value="$windowindex gt $obsrecord.$window.count - 9"><set_value name="$hits9" exact="$hits9 + $windowhit" /></do_if>
+            <do_if value="$windowindex gt $obsrecord.$window.count - 4"><set_value name="$hits4" exact="$hits4 + $windowhit" /></do_if>
+          </do_for_each>
+
+          <set_value name="$recurringhits" exact="6" />
+          <set_value name="$recurringtime" exact="80min" />
+          <set_value name="$systemichits" exact="12" />
+          <set_value name="$systemictime" exact="3h" />
+          <do_if value="global.$JKEOC_ObservationConfig.$recurrenceprofile == 'CONSERVATIVE'">
+            <set_value name="$recurringhits" exact="7" /><set_value name="$recurringtime" exact="100min" /><set_value name="$systemichits" exact="14" /><set_value name="$systemictime" exact="4h" />
+          </do_if>
+          <do_elseif value="global.$JKEOC_ObservationConfig.$recurrenceprofile == 'RESPONSIVE TEST'">
+            <set_value name="$recurringhits" exact="5" /><set_value name="$recurringtime" exact="40min" /><set_value name="$systemichits" exact="10" /><set_value name="$systemictime" exact="90min" />
+          </do_elseif>
+
+          <do_if value="$obshit and ($oldstate == 'RECOVERING' or $oldstate == 'RESOLVED')">
+            <set_value name="$obsrecord.$relapses" exact="$obsrecord.$relapses + 1" />
+            <set_value name="$obsrecord.$state" exact="if $obsrecord.$priorstate == 'SYSTEMIC' then 'SYSTEMIC' else 'RECURRING'" />
+          </do_if>
+          <do_elseif value="$obsrecord.$healthy ge 6 and player.age - $obsrecord.$lastseen ge 60min">
+            <set_value name="$obsrecord.$state" exact="'RESOLVED'" />
+          </do_elseif>
+          <do_elseif value="$obsrecord.$healthy ge 2 and ($oldstate == 'RECURRING' or $oldstate == 'SYSTEMIC' or $oldstate == 'RECOVERING')">
+            <do_if value="$oldstate != 'RECOVERING'"><set_value name="$obsrecord.$recoveries" exact="$obsrecord.$recoveries + 1" /></do_if>
+            <set_value name="$obsrecord.$priorstate" exact="$oldstate" />
+            <set_value name="$obsrecord.$state" exact="'RECOVERING'" />
+          </do_elseif>
+          <do_elseif value="$obshit and (($hits18 ge $systemichits and player.age - $obsrecord.$firstseen ge $systemictime) or $obsrecord.$relapses ge 2)">
+            <set_value name="$obsrecord.$state" exact="'SYSTEMIC'" />
+          </do_elseif>
+          <do_elseif value="$obshit and $hits9 ge $recurringhits and player.age - $obsrecord.$firstseen ge $recurringtime">
+            <set_value name="$obsrecord.$state" exact="'RECURRING'" />
+          </do_elseif>
+          <do_elseif value="$obshit and ($obsrecord.$consecutivehits ge 2 or $hits4 ge 3)">
+            <set_value name="$obsrecord.$state" exact="'CANDIDATE'" />
+          </do_elseif>
+          <do_elseif value="$obsrecord.$samples lt 3 or player.age - $obsrecord.$firstseen lt 30min">
+            <set_value name="$obsrecord.$state" exact="'BASELINE'" />
+          </do_elseif>
+
+          <do_if value="$oldstate != 'RESOLVED' and $obsrecord.$state == 'RESOLVED'">
+            <set_value name="$obsrecord.$resolvedat" exact="player.age" />
+          </do_if>
+          <do_elseif value="$oldstate == 'RESOLVED' and $obsrecord.$state != 'RESOLVED'">
+            <set_value name="$obsrecord.$resolvedat" exact="0" />
+          </do_elseif>
+
+          <set_value name="$obsrecord.$confidence" exact="$obsconfidence" />
+          <do_if value="global.$JKEOC_ObservationConfig.$confidenceprofile == 'CONSERVATIVE'">
+            <set_value name="$obsrecord.$confidence" exact="if $obsconfidence == 'HIGH' then 'MEDIUM' else if $obsconfidence == 'MEDIUM' then 'LOW' else $obsconfidence" />
+          </do_if>
+          <do_elseif value="global.$JKEOC_ObservationConfig.$confidenceprofile == 'RESPONSIVE TEST' and $obsquality == 'COMPLETE' and $obsconfidence == 'LOW'">
+            <set_value name="$obsrecord.$confidence" exact="'MEDIUM'" />
+          </do_elseif>
+          <do_if value="$obsquality != 'COMPLETE' and ($obsrecord.$state == 'RECURRING' or $obsrecord.$state == 'SYSTEMIC')">
+            <set_value name="$obsrecord.$confidence" exact="'INSUFFICIENT EVIDENCE'" />
+          </do_if>
+
+          <!-- Recheck results require a new observation. Time alone never counts
+               as proof that the player changed a setting. -->
+          <do_if value="$obsrecord.$category == 'PRODUCTION SHORTAGE' and $obsrecord.$verification == 'RECHECK REQUESTED'">
+            <set_value name="$verificationoutcome" exact="'STILL BLOCKED'" />
+            <do_if value="not $obshit"><set_value name="$verificationoutcome" exact="'VERIFIED SUCCESSFUL'" /><set_value name="$obsrecord.$awaitingplayer" exact="false" /></do_if>
+            <do_elseif value="$obsamount gt $obsrecord.$verificationbaselineamount"><set_value name="$verificationoutcome" exact="'PARTIALLY SUCCESSFUL'" /></do_elseif>
+            <do_elseif value="$obsquality == 'SCAN BUDGET DEFERRED' or $obsquality == 'TRADE KNOWLEDGE MAY BE STALE'"><set_value name="$verificationoutcome" exact="'FOLLOW-UP REQUIRED'" /></do_elseif>
+            <do_elseif value="$obsrecord.$hits == $obsrecord.$verificationbaselinehits + 1"><set_value name="$verificationoutcome" exact="'NO EFFECT'" /></do_elseif>
+            <set_value name="$obsrecord.$verification" exact="$verificationoutcome" />
+            <set_value name="$verificationprimary" exact="'Category: %1\nSubject: %2\nPlayer-declared review/change: %3\nOutcome: %4\n\nBefore recheck: %5 / %6\nAfter recheck: %7 / %8\nCondition still present: %9'.[$obsrecord.$category, $obsrecord.$subject, $obsrecord.$declaredchange, $verificationoutcome, $obsrecord.$verificationbaselineamount, $obsrecord.$target, $obsamount, $obstarget, $obshit]" />
+            <set_value name="$verificationquality" exact="'\nEvidence quality: %1\n\nEOC did not assume a setting was changed. This outcome reflects the observed station state after the player-requested recheck.'.[$obsquality]" />
+            <write_to_logbook category="general" title="'EOC Player-Action Verification - %1'.[$obsrecord.$stationname]" text="'%1%2'.[$verificationprimary, $verificationquality]" />
+          </do_if>
+
+          <do_if value="$obsrecord.$state != $oldstate">
+            <set_value name="global.$JKEOC_SPOSTransitions" exact="global.$JKEOC_SPOSTransitions + 1" />
+            <do_if value="global.$JKEOC_SPOSTransitionLogs lt 10 and global.$JKEOC_ObservationConfig.$debuglevel != 'OFF'">
+              <debug_text text="'[JKEOC][V600][SPOS_TRANSITION] station=%1 category=%2 subject=%3 from=%4 to=%5 confidence=%6 hits=%7 samples=%8'.[$obsrecord.$stationname, $obsrecord.$category, $obsrecord.$subject, $oldstate, $obsrecord.$state, $obsrecord.$confidence, $obsrecord.$hits, $obsrecord.$samples]" filter="general" />
+              <set_value name="global.$JKEOC_SPOSTransitionLogs" exact="global.$JKEOC_SPOSTransitionLogs + 1" />
+            </do_if>
+
+          </do_if>
+
+          <!-- Build 62 player-visibility gate. Internal recurrence from every
+               category remains silent. Only fully qualified production shortage
+               evidence may become player-visible. -->
+          <set_value name="$severityband" exact="if $obstarget gt 0 and $obsamount * 10 lt $obstarget then 'CRITICAL' else 'SEVERE'" />
+          <set_value name="$materialsignature" exact="'%1|%2|%3|%4|%5'.[$severityband, $obsrecord.$confidence, $obsrecord.$quality, if $obsrecord.$suppliers == 0 then 'NO SUPPLIER VERIFIED' else 'SUPPLIER OBSERVED', if $obsrecord.$suitable == 0 then 'NO SUITABLE SHIP OBSERVED' else 'SUITABLE SHIP OBSERVED']" />
+          <set_value name="$visibleeligible" exact="$obsrecord.$category == 'PRODUCTION SHORTAGE' and $obsrecord.$state == 'SYSTEMIC' and $hits18 ge 12 and player.age - $obsrecord.$firstseen ge 3h and $obsrecord.$quality == 'COMPLETE' and ($obsrecord.$confidence == 'MEDIUM' or $obsrecord.$confidence == 'HIGH')" />
+          <set_value name="$relapsetransition" exact="$obshit and ($oldstate == 'RECOVERING' or $oldstate == 'RESOLVED')" />
+          <set_value name="$noticewritten" exact="false" />
+
+          <!-- Build 63: one bounded, advisory Medical Supplies finding. -->
+          <set_value name="$workforcevisibleeligible" exact="$obsrecord.$category == 'WORKFORCE SUPPLY INTELLIGENCE' and $obsrecord.$state == 'SYSTEMIC' and $hits18 ge 12 and player.age - $obsrecord.$firstseen ge 3h and $obsrecord.$target gt 0 and $obsrecord.$amount * 4 lt $obsrecord.$target and $obsrecord.$quality == 'COMPLETE' and ($obsrecord.$confidence == 'MEDIUM' or $obsrecord.$confidence == 'HIGH')" />
+          <set_value name="$workforcesignature" exact="'%1|%2|%3|%4|%5'.[$severityband, $obsrecord.$confidence, $obsrecord.$assessmentconclusion, $obsrecord.$suitable, $obsrecord.$builderreserve]" />
+          <do_if value="$workforcevisibleeligible and global.$JKEOC_ObservationConfig.$notifications != 'SILENT' and not $obsrecord.$playervisible">
+            <set_value name="$workforcefacts" exact="'State: SYSTEMIC | Severity: %1 | Confidence: %2\nFirst observed: %3\nRecurrence: %4 of the last 18 valid observations\n\nVERIFIED FACTS\nStation: %5\nWorkforce ware: %6\nObserved stock: %7\nPositive station target: %8\nThe station requires Medical Supplies and stock remained below 25%% of its target.'.[$severityband, $obsrecord.$confidence, $obsrecord.$firstseen, $hits18, $obsrecord.$stationname, $obsrecord.$subject, $obsrecord.$amount, $obsrecord.$target]" />
+            <set_value name="$workforceassessment" exact="'\n\nBOUNDED ASSESSMENT\nImport: %1\nExisting local production: %2\nNew local production: %3\nSuitable logistics: %4\n%5\n\nRECOMMENDED CONCLUSION\n%6\nWhy: %7\nCost comparison: %8\n\nUNAVAILABLE / NOT PROVEN\n%9\n\nObservation and advisory only. EOC changed no station, ship, assignment, order, price, offer, trade rule, blacklist, build plan, storage allocation, ware, or funds.'.[$obsrecord.$assessmentimport, $obsrecord.$assessmentproduction, $obsrecord.$assessmentnewproduction, $obsrecord.$assessmentlogistics, if $obsrecord.$builderreserve gt 0 then 'POSSIBLE CONSTRUCTION RESERVE - BUILDER PARKED UNDER DEFENCE' else 'No construction-reserve builder was counted as workforce logistics', $obsrecord.$assessmentconclusion, $obsrecord.$assessmentwhy, $obsrecord.$assessmentcost, $obsrecord.$assessmentunavailable]" />
+            <write_to_logbook category="general" title="'EOC Systemic Medical Supplies Intelligence - %1'.[$obsrecord.$stationname]" text="'%1%2'.[$workforcefacts, $workforceassessment]" />
+            <write_to_logbook category="tips" title="'EOC Medical Supplies finding - %1'.[$obsrecord.$stationname]" text="'A systemic Medical Supplies condition reached %1 of 18 valid observations. Conclusion: %2. Details are in the EOC Logbook. Advisory only.'.[$hits18, $obsrecord.$assessmentconclusion]" />
+            <set_value name="$obsrecord.$playervisible" exact="true" /><set_value name="$obsrecord.$lastnotified" exact="player.age" /><set_value name="$obsrecord.$lastnotifiedstate" exact="'SYSTEMIC'" /><set_value name="$obsrecord.$lastnotifiedsignature" exact="$workforcesignature" /><set_value name="$obsrecord.$reportedstate" exact="'SYSTEMIC'" />
+          </do_if>
+
+          <do_elseif value="$workforcevisibleeligible and $obsrecord.$playervisible and $workforcesignature != $obsrecord.$lastnotifiedsignature and player.age - $obsrecord.$lastnotified ge 6h and global.$JKEOC_ObservationConfig.$notifications != 'SILENT'">
+            <write_to_logbook category="general" title="'EOC Medical Supplies Intelligence Updated - %1'.[$obsrecord.$stationname]" text="'A material evidence band changed after the six-hour cooldown. Stock: %1 | Target: %2 | Suitable logistics: %3 | Conclusion: %4. Unsupported properties remain unavailable. Advisory only; EOC changed no gameplay behavior.'.[$obsrecord.$amount, $obsrecord.$target, $obsrecord.$suitable, $obsrecord.$assessmentconclusion]" />
+            <write_to_logbook category="tips" title="'EOC Medical Supplies finding updated - %1'.[$obsrecord.$stationname]" text="'Material Medical Supplies evidence changed. Review the EOC Logbook. Advisory only.'" />
+            <set_value name="$obsrecord.$lastnotified" exact="player.age" /><set_value name="$obsrecord.$lastnotifiedsignature" exact="$workforcesignature" />
+          </do_elseif>
+
+          <do_if value="$visibleeligible and global.$JKEOC_ObservationConfig.$notifications != 'SILENT' and not $obsrecord.$playervisible">
+            <set_value name="$findingfacts" exact="'State: SYSTEMIC | Severity: %1 | Confidence: %2\nFirst observed: %3\nRecurrence: %4 of the last 18 valid observations\n\nVERIFIED FACTS\nStation: %5\nAffected ware: %6\nObserved stock: %7\nPositive station target: %8\nThe ware remained below 25%% of its target while an active shortage case was reported.'.[$severityband, $obsrecord.$confidence, $obsrecord.$firstseen, $hits18, $obsrecord.$stationname, $obsrecord.$subject, $obsrecord.$amount, $obsrecord.$target]" />
+            <set_value name="$findinglimits" exact="'\n\nSUPPORTED CORRELATIONS\nSuppliers observed: %1 | Suitable direct ships: %2 | Relevant activity: %3 | Idle or unknown: %4\nShip correlation: %5\n\nUNKNOWN / UNVERIFIED\nEOC has not proven whether trade rules, blacklists, price, budget, manager range, upstream capacity, or individual ship behavior caused this shortage.\n\nSAFE PLAYER CHECKS\n%6\n\nObservation only. EOC changed no station, ship, assignment, order, price, offer, trade rule, blacklist, storage allocation, ware, or funds.'.[$obsrecord.$suppliers, $obsrecord.$suitable, $obsrecord.$relevant, $obsrecord.$idle, $obsrecord.$correlation, $obsrecord.$recommendation]" />
+            <write_to_logbook category="general" title="'EOC Systemic Production Shortage - %1 - %2'.[$obsrecord.$stationname, $obsrecord.$subject]" text="'%1%2'.[$findingfacts, $findinglimits]" />
+            <write_to_logbook category="tips" title="'EOC systemic finding - %1'.[$obsrecord.$stationname]" text="'%1 has remained below 25%% of its station target in %2 of the last 18 valid observations. Confidence: %3. Details are in the EOC Logbook. Observation only.'.[$obsrecord.$subject, $hits18, $obsrecord.$confidence]" />
+            <set_value name="$obsrecord.$playervisible" exact="true" /><set_value name="$obsrecord.$lastnotified" exact="player.age" /><set_value name="$obsrecord.$lastnotifiedstate" exact="'SYSTEMIC'" /><set_value name="$obsrecord.$lastnotifiedsignature" exact="$materialsignature" /><set_value name="$obsrecord.$reportedstate" exact="'SYSTEMIC'" /><set_value name="$noticewritten" exact="true" />
+          </do_if>
+
+          <do_elseif value="$obsrecord.$category == 'PRODUCTION SHORTAGE' and $obsrecord.$playervisible and $relapsetransition and $obsrecord.$state == 'SYSTEMIC' and $obsrecord.$quality == 'COMPLETE' and ($obsrecord.$confidence == 'MEDIUM' or $obsrecord.$confidence == 'HIGH') and global.$JKEOC_ObservationConfig.$notifications != 'SILENT'">
+            <write_to_logbook category="general" title="'EOC Production Shortage Relapsed - %1 - %2'.[$obsrecord.$stationname, $obsrecord.$subject]" text="'A previously recovering or resolved systemic production shortage has returned. Current stock: %1 | Target: %2 | Confidence: %3. Prior bounded evidence has been retained. Unknown causes remain unverified. Observation only; EOC changed no station or ship behavior.'.[$obsrecord.$amount, $obsrecord.$target, $obsrecord.$confidence]" />
+            <write_to_logbook category="tips" title="'EOC shortage relapsed - %1'.[$obsrecord.$stationname]" text="'%1 has returned after recovery or resolution. Review the EOC Logbook. Observation only.'.[$obsrecord.$subject]" />
+            <set_value name="$obsrecord.$lastnotified" exact="player.age" /><set_value name="$obsrecord.$lastnotifiedstate" exact="'RELAPSED'" /><set_value name="$obsrecord.$lastnotifiedsignature" exact="$materialsignature" /><set_value name="$noticewritten" exact="true" />
+          </do_elseif>
+
+          <do_elseif value="$visibleeligible and $obsrecord.$playervisible and $materialsignature != $obsrecord.$lastnotifiedsignature and player.age - $obsrecord.$lastnotified ge 6h and global.$JKEOC_ObservationConfig.$notifications != 'SILENT'">
+            <write_to_logbook category="general" title="'EOC Production Shortage Updated - %1 - %2'.[$obsrecord.$stationname, $obsrecord.$subject]" text="'A material evidence band changed after the six-hour finding cooldown. Severity: %1 | Confidence: %2 | Stock: %3 | Target: %4 | Suppliers observed: %5 | Suitable ships observed: %6. Missing information remains unknown. Observation only.'.[$severityband, $obsrecord.$confidence, $obsrecord.$amount, $obsrecord.$target, $obsrecord.$suppliers, $obsrecord.$suitable]" />
+            <write_to_logbook category="tips" title="'EOC systemic finding updated - %1'.[$obsrecord.$stationname]" text="'Material evidence changed for the %1 shortage. Review the EOC Logbook. Observation only.'.[$obsrecord.$subject]" />
+            <set_value name="$obsrecord.$lastnotified" exact="player.age" /><set_value name="$obsrecord.$lastnotifiedstate" exact="'SYSTEMIC'" /><set_value name="$obsrecord.$lastnotifiedsignature" exact="$materialsignature" /><set_value name="$noticewritten" exact="true" />
+          </do_elseif>
+
+          <do_if value="$obsrecord.$category == 'PRODUCTION SHORTAGE' and $obsrecord.$playervisible and $oldstate != $obsrecord.$state and $obsrecord.$state == 'RECOVERING' and global.$JKEOC_ObservationConfig.$notifications != 'SILENT'">
+            <write_to_logbook category="general" title="'EOC Production Shortage Recovering - %1 - %2'.[$obsrecord.$stationname, $obsrecord.$subject]" text="'Two consecutive healthy observations indicate improvement. Recovery is not yet confirmed. Current stock: %1 | Target: %2. EOC will continue bounded observation. Observation only.'.[$obsrecord.$amount, $obsrecord.$target]" />
+            <write_to_logbook category="tips" title="'EOC shortage recovering - %1'.[$obsrecord.$stationname]" text="'%1 has improved for two observations, but resolution is not yet confirmed. Observation only.'.[$obsrecord.$subject]" />
+            <set_value name="$obsrecord.$lastnotified" exact="player.age" /><set_value name="$obsrecord.$lastnotifiedstate" exact="'RECOVERING'" />
+          </do_if>
+          <do_elseif value="$obsrecord.$category == 'PRODUCTION SHORTAGE' and $obsrecord.$playervisible and $oldstate != $obsrecord.$state and $obsrecord.$state == 'RESOLVED' and global.$JKEOC_ObservationConfig.$notifications != 'SILENT'">
+            <write_to_logbook category="general" title="'EOC Production Shortage Resolved - %1 - %2'.[$obsrecord.$stationname, $obsrecord.$subject]" text="'Six consecutive healthy observations and at least 60 active-game minutes since the last shortage confirm resolution. Resolved at: %1. The bounded historical record will expire exactly six active-game hours after this resolution time. Observation only.'.[$obsrecord.$resolvedat]" />
+            <write_to_logbook category="tips" title="'EOC shortage resolved - %1'.[$obsrecord.$stationname]" text="'The recurring %1 shortage is resolved after six healthy observations. Observation only.'.[$obsrecord.$subject]" />
+            <set_value name="$obsrecord.$lastnotified" exact="player.age" /><set_value name="$obsrecord.$lastnotifiedstate" exact="'RESOLVED'" />
+          </do_elseif>
+          <do_if value="$obsrecord.$category == 'WORKFORCE SUPPLY INTELLIGENCE' and $obsrecord.$playervisible and $oldstate != $obsrecord.$state and $obsrecord.$state == 'RECOVERING' and global.$JKEOC_ObservationConfig.$notifications != 'SILENT'">
+            <write_to_logbook category="general" title="'EOC Medical Supplies Intelligence Recovering - %1'.[$obsrecord.$stationname]" text="'Two consecutive healthy observations indicate improvement. Recovery is not yet confirmed. Stock: %1 | Target: %2. Advisory only.'.[$obsrecord.$amount, $obsrecord.$target]" />
+            <write_to_logbook category="tips" title="'EOC Medical Supplies recovering - %1'.[$obsrecord.$stationname]" text="'Medical Supplies improved for two observations; resolution is not yet confirmed. Advisory only.'" />
+          </do_if>
+          <do_elseif value="$obsrecord.$category == 'WORKFORCE SUPPLY INTELLIGENCE' and $obsrecord.$playervisible and $oldstate != $obsrecord.$state and $obsrecord.$state == 'RESOLVED' and global.$JKEOC_ObservationConfig.$notifications != 'SILENT'">
+            <write_to_logbook category="general" title="'EOC Medical Supplies Intelligence Resolved - %1'.[$obsrecord.$stationname]" text="'Six consecutive healthy observations and at least 60 active-game minutes since the last condition confirm resolution. Advisory only.'" />
+            <write_to_logbook category="tips" title="'EOC Medical Supplies resolved - %1'.[$obsrecord.$stationname]" text="'The systemic Medical Supplies condition is resolved after six healthy observations. Advisory only.'" />
+          </do_elseif>
+        </do_if>
+      </actions>
+    </library>
+
+    <cue name="JKEOC_SPOS_Initialize" instantiate="true" namespace="this">
+      <conditions><event_game_loaded /></conditions>
+      <delay exact="15s" />
+      <actions>
+        <do_if value="not global.$JKEOC_ObservationConfig?"><include_actions ref="JKEOC_SPOS_SetDefaults" /></do_if>
+        <include_actions ref="JKEOC_SPOS_ValidateConfig" />
+        <do_if value="not global.$JKEOC_SPOSRecords?"><set_value name="global.$JKEOC_SPOSRecords" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_SPOSOverflow?"><set_value name="global.$JKEOC_SPOSOverflow" exact="0" /></do_if>
+        <do_if value="not global.$JKEOC_SPOSCapacitySchema? or global.$JKEOC_SPOSCapacitySchema lt 2"><set_value name="global.$JKEOC_SPOSOverflow" exact="0" /><set_value name="global.$JKEOC_SPOSRotations" exact="0" /><set_value name="global.$JKEOC_SPOSCapacitySchema" exact="2" /></do_if>
+        <do_if value="not global.$JKEOC_SPOSRotations?"><set_value name="global.$JKEOC_SPOSRotations" exact="0" /></do_if>
+        <do_if value="not global.$JKEOC_SPOSLastStations?"><set_value name="global.$JKEOC_SPOSLastStations" exact="0" /></do_if>
+        <do_if value="not global.$JKEOC_SPOSLastShipBudget?"><set_value name="global.$JKEOC_SPOSLastShipBudget" exact="0" /></do_if>
+        <!-- Build 62 in-place record migration. Preserve existing evidence while adding bounded identity/lifecycle metadata. -->
+        <do_for_each name="$migrationrecord" in="global.$JKEOC_SPOSRecords">
+          <do_if value="not $migrationrecord.$subjectkey?"><set_value name="$migrationrecord.$subjectkey" exact="$migrationrecord.$subject" /></do_if>
+          <do_if value="not $migrationrecord.$resolvedat?"><set_value name="$migrationrecord.$resolvedat" exact="if $migrationrecord.$state == 'RESOLVED' then player.age else 0" /></do_if>
+          <do_if value="not $migrationrecord.$playervisible?"><set_value name="$migrationrecord.$playervisible" exact="false" /></do_if>
+          <do_if value="not $migrationrecord.$lastnotified?"><set_value name="$migrationrecord.$lastnotified" exact="0" /></do_if>
+          <do_if value="not $migrationrecord.$lastnotifiedstate?"><set_value name="$migrationrecord.$lastnotifiedstate" exact="'NONE'" /></do_if>
+          <do_if value="not $migrationrecord.$lastnotifiedsignature?"><set_value name="$migrationrecord.$lastnotifiedsignature" exact="''" /></do_if>
+          <do_if value="not $migrationrecord.$suspended?"><set_value name="$migrationrecord.$suspended" exact="false" /></do_if>
+          <!-- Build 63A: normalize every Build 63 workforce-assessment member before the scheduler can evaluate records carried forward from older saves. -->
+          <do_if value="not $migrationrecord.$assessmentimport?"><set_value name="$migrationrecord.$assessmentimport" exact="'UNAVAILABLE'" /></do_if>
+          <do_if value="not $migrationrecord.$assessmentproduction?"><set_value name="$migrationrecord.$assessmentproduction" exact="'UNAVAILABLE'" /></do_if>
+          <do_if value="not $migrationrecord.$assessmentnewproduction?"><set_value name="$migrationrecord.$assessmentnewproduction" exact="'UNAVAILABLE'" /></do_if>
+          <do_if value="not $migrationrecord.$assessmentlogistics?"><set_value name="$migrationrecord.$assessmentlogistics" exact="'UNAVAILABLE'" /></do_if>
+          <do_if value="not $migrationrecord.$assessmentunavailable?"><set_value name="$migrationrecord.$assessmentunavailable" exact="'UNAVAILABLE'" /></do_if>
+          <do_if value="not $migrationrecord.$assessmentconclusion?"><set_value name="$migrationrecord.$assessmentconclusion" exact="'INSUFFICIENT EVIDENCE TO CHOOSE'" /></do_if>
+          <do_if value="not $migrationrecord.$assessmentwhy?"><set_value name="$migrationrecord.$assessmentwhy" exact="'Insufficient verified evidence'" /></do_if>
+          <do_if value="not $migrationrecord.$assessmentcost?"><set_value name="$migrationrecord.$assessmentcost" exact="'UNAVAILABLE'" /></do_if>
+          <do_if value="not $migrationrecord.$builderreserve?"><set_value name="$migrationrecord.$builderreserve" exact="0" /></do_if>
+          <do_if value="$migrationrecord.$category != 'PRODUCTION SHORTAGE' and $migrationrecord.$category != 'WORKFORCE SUPPLY INTELLIGENCE'"><set_value name="$migrationrecord.$awaitingplayer" exact="false" /><set_value name="$migrationrecord.$verification" exact="'NOT REQUESTED'" /><set_value name="$migrationrecord.$playervisible" exact="false" /></do_if>
+          <set_value name="$migrationrecord.$schema" exact="2" />
+        </do_for_each>
+        <set_value name="global.$JKEOC_SPOSNextCycle" exact="player.age + global.$JKEOC_ObservationConfig.$interval" />
+        <set_value name="global.$JKEOC_SPOSInitialized" exact="true" />
+        <debug_text text="'[JKEOC][V600][SPOS_READY] schema=%1 profile=%2 interval=%3 records=%4'.[global.$JKEOC_ObservationConfig.$schema, global.$JKEOC_ObservationConfig.$profile, global.$JKEOC_ObservationConfig.$interval, global.$JKEOC_SPOSRecords.count]" filter="general" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_SPOS_Scheduler" instantiate="true" namespace="this" checktime="player.age + 2min" checkinterval="2min">
+      <conditions><check_value value="global.$JKEOC_SPOSInitialized? and player.age ge global.$JKEOC_SPOSNextCycle" /></conditions>
+      <actions><signal_cue_instantly cue="JKEOC_SPOS_RunCycle" /></actions>
+    </cue>
+
+    <cue name="JKEOC_SPOS_RunCycle" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <include_actions ref="JKEOC_SPOS_ValidateConfig" />
+
+        <!-- Expire temporary tuning without requiring a reload. -->
+        <do_if value="global.$JKEOC_ObservationConfig.$temporaryexpires? and player.age ge global.$JKEOC_ObservationConfig.$temporaryexpires">
+          <set_value name="global.$JKEOC_ObservationConfig.$profile" exact="'STANDARD'" />
+          <set_value name="global.$JKEOC_ObservationConfig.$interval" exact="5min" />
+          <set_value name="global.$JKEOC_ObservationConfig.$recurrenceprofile" exact="'STANDARD'" />
+          <set_value name="global.$JKEOC_ObservationConfig.$confidenceprofile" exact="'STANDARD'" />
+          <set_value name="global.$JKEOC_ObservationConfig.$debuglevel" exact="'TRANSITIONS'" />
+          <remove_value name="global.$JKEOC_ObservationConfig.$temporaryexpires" />
+          <debug_text text="'[JKEOC][V600][SPOS_CONFIG_EXPIRED] temporary diagnostic tuning returned to Standard'" filter="general" />
+        </do_if>
+
+        <set_value name="$cycleconfigrevision" exact="global.$JKEOC_ObservationConfig.$revision" />
+        <set_value name="$cycleinterval" exact="global.$JKEOC_ObservationConfig.$interval" />
+        <set_value name="global.$JKEOC_SPOSNextCycle" exact="player.age + $cycleinterval" />
+        <set_value name="global.$JKEOC_SPOSTransitions" exact="0" />
+        <set_value name="global.$JKEOC_SPOSTransitionLogs" exact="0" />
+        <set_value name="$stationssampled" exact="0" />
+        <set_value name="$shipstations" exact="0" />
+        <set_value name="$shipsused" exact="0" />
+        <set_value name="$supplierstations" exact="0" />
+
+        <set_value name="$retainedrecords" exact="[]" />
+        <do_for_each name="$retentionrecord" in="global.$JKEOC_SPOSRecords">
+          <set_value name="$retain" exact="$retentionrecord.$station.exists and $retentionrecord.$station.owner == faction.player" />
+          <set_value name="$categoryenabled" exact="true" />
+          <do_if value="$retentionrecord.$category == 'PRODUCTION SHORTAGE'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c1" /></do_if>
+          <do_elseif value="$retentionrecord.$category == 'STORAGE PRESSURE'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c2" /></do_elseif>
+          <do_elseif value="$retentionrecord.$category == 'STALLED PRODUCTION'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c3" /></do_elseif>
+          <do_elseif value="$retentionrecord.$category == 'WORKFORCE SUPPLY FAILURE'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c4" /></do_elseif>
+          <do_elseif value="$retentionrecord.$category == 'WORKFORCE SUPPLY INTELLIGENCE'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c4" /></do_elseif>
+          <do_elseif value="$retentionrecord.$category == 'LOGISTICS COVERAGE'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c5" /></do_elseif>
+          <do_elseif value="$retentionrecord.$category == 'SUPPLIER REACHABILITY'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c6" /></do_elseif>
+          <do_elseif value="$retentionrecord.$category == 'TRADE RESTRICTION REVIEW'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c7" /></do_elseif>
+          <do_elseif value="$retentionrecord.$category == 'SHIP ACTIVITY MISMATCH'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c8" /></do_elseif>
+          <do_elseif value="$retentionrecord.$category == 'UPSTREAM CAPACITY'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c9" /></do_elseif>
+          <!-- A disabled category is suspended, not treated as healthy and never advanced toward recovery. -->
+          <do_if value="$retain and not $categoryenabled"><set_value name="$retentionrecord.$suspended" exact="true" /></do_if>
+          <do_if value="$retain and $retentionrecord.$state == 'RESOLVED' and $retentionrecord.$resolvedat gt 0 and player.age - $retentionrecord.$resolvedat ge 6h"><set_value name="$retain" exact="false" /><set_value name="global.$JKEOC_SPOSRotations" exact="global.$JKEOC_SPOSRotations + 1" /></do_if>
+          <do_if value="$retain and ($retentionrecord.$state == 'BASELINE' or $retentionrecord.$state == 'CANDIDATE') and player.age - $retentionrecord.$lastseen ge 60min"><set_value name="$retain" exact="false" /><set_value name="global.$JKEOC_SPOSRotations" exact="global.$JKEOC_SPOSRotations + 1" /></do_if>
+          <do_if value="$retain"><append_to_list name="$retainedrecords" exact="$retentionrecord" /></do_if>
+        </do_for_each>
+        <set_value name="global.$JKEOC_SPOSRecords" exact="$retainedrecords" />
+
+        <do_if value="global.$JKEOC_StationDirectory?">
+          <do_for_each name="$directoryrecord" in="global.$JKEOC_StationDirectory">
+            <set_value name="$station" exact="$directoryrecord.$station" />
+            <do_if value="$station.exists and $station.owner == faction.player and ((global.$JKEOC_ObservationConfig.$profile != 'FOCUSED TEST' and not global.$JKEOC_ObservationConfig.$request?) or (global.$JKEOC_ObservationConfig.$focusstation? and $station == global.$JKEOC_ObservationConfig.$focusstation))">
+              <set_value name="$stationssampled" exact="$stationssampled + 1" />
+
+              <!-- Select one worst active case as the bounded subject for this station. -->
+              <set_value name="$subject" exact="'STATION OPERATIONS'" />
+              <set_value name="$subjectware" exact="null" />
+              <set_value name="$amount" exact="0" />
+              <set_value name="$target" exact="0" />
+              <set_value name="$maximum" exact="0" />
+              <set_value name="$suppliers" exact="0" />
+              <set_value name="$suitable" exact="0" />
+              <set_value name="$relevant" exact="0" />
+              <set_value name="$idle" exact="0" />
+              <set_value name="$shortage" exact="false" />
+              <set_value name="$pressure" exact="false" />
+              <set_value name="$productionpaused" exact="false" />
+              <set_value name="$quality" exact="'COMPLETE'" />
+
+              <do_if value="$directoryrecord.$cases.count gt 0">
+                <set_value name="$primarycase" exact="$directoryrecord.$cases.{1}" />
+                <set_value name="$subject" exact="$primarycase.$ware" />
+                <set_value name="$subjectware" exact="$primarycase.$wareobject" />
+                <set_value name="$amount" exact="$primarycase.$amount" />
+                <set_value name="$target" exact="$primarycase.$target" />
+                <set_value name="$maximum" exact="$primarycase.$maximum" />
+                <set_value name="$suppliers" exact="$primarycase.$suppliercount" />
+                <set_value name="$suitable" exact="$primarycase.$compatibletradercount" />
+                <do_if value="$primarycase.$type == 'CRITICAL SHORTAGE'">
+                  <set_value name="$productionpaused" exact="$primarycase.$productionpaused" />
+                </do_if>
+                <set_value name="$shortage" exact="$target gt 0 and $amount * 4 lt $target and ($primarycase.$type == 'CRITICAL SHORTAGE' or $primarycase.$type == 'WORKFORCE SUPPLY RISK')" />
+                <set_value name="$pressure" exact="$primarycase.$type == 'STORAGE PRESSURE' or ($maximum gt 0 and $amount * 10 ge $maximum * 9)" />
+              </do_if>
+
+              <!-- Bounded direct-ship correlation: four suspect stations or 64 ships. -->
+              <set_value name="$correlation" exact="'WEAK'" />
+              <do_if value="($shortage or $pressure) and $shipstations lt 4 and $shipsused lt 64">
+                <set_value name="$shipstations" exact="$shipstations + 1" />
+                <set_value name="$suitable" exact="0" />
+                <do_for_each name="$ship" in="$station.subordinates">
+                  <do_if value="$shipsused lt 64">
+                    <set_value name="$shipsused" exact="$shipsused + 1" />
+                    <set_value name="$shipcompatible" exact="not $subjectware? or $ship.waretransport.indexof.{$subjectware.waretransport}" />
+                    <set_value name="$shiprelevant" exact="$ship.assignment == assignment.trade or $ship.assignment == assignment.mining or $ship.assignment == assignment.tradeforbuildstorage" />
+                    <do_if value="$ship.exists and $ship.isoperational and $shipcompatible and $shiprelevant">
+                      <set_value name="$suitable" exact="$suitable + 1" />
+                      <do_if value="@$ship.order.id or @$ship.defaultorder.id"><set_value name="$relevant" exact="$relevant + 1" /></do_if>
+                      <do_else><set_value name="$idle" exact="$idle + 1" /></do_else>
+                    </do_if>
+                  </do_if>
+                </do_for_each>
+                <set_value name="$correlation" exact="if $suitable == 0 then 'NONE' else if $relevant == 0 then 'SUPPORTING' else if $amount gt 0 then 'WEAK' else 'CONTRADICTORY'" />
+              </do_if>
+              <do_elseif value="$shortage or $pressure"><set_value name="$quality" exact="'SCAN BUDGET DEFERRED'" /></do_elseif>
+
+              <!-- 1. Recurring production shortage. -->
+              <do_if value="global.$JKEOC_ObservationConfig.$c1">
+                <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'PRODUCTION SHORTAGE'" /><set_value name="$obssubject" exact="$subject" /><set_value name="$obshit" exact="$shortage" />
+                <set_value name="$obssubjectkey" exact="if $subjectware? then $subjectware else $subject" />
+                <set_value name="$obsevidence" exact="'%1 remained below 25%% of its positive station target while the station reported an active operational case.'.[$subject]" />
+                <set_value name="$obscause" exact="if $suitable == 0 then 'Persistent input need with no suitable direct support ship observed' else if $suppliers == 0 then 'Persistent input need with no currently usable known supplier offer' else 'Persistent demand exceeds observed delivery or local replenishment'" />
+                <set_value name="$obsrecommendation" exact="if $suitable == 0 then 'Review station miner/trader coverage and cargo compatibility before expanding storage.' else if $suppliers == 0 then 'Review reachable supply, buy permissions, manager range and upstream production; do not assume storage is the cause.' else 'Observe the next delivery cycle and compare actual stock recovery with assigned-ship activity.'" />
+                <set_value name="$obsconfidence" exact="if $quality == 'COMPLETE' then 'MEDIUM' else 'LOW'" /><set_value name="$obsquality" exact="$quality" /><set_value name="$obsamount" exact="$amount" /><set_value name="$obstarget" exact="$target" /><set_value name="$obssuppliers" exact="$suppliers" /><set_value name="$obssuitable" exact="$suitable" /><set_value name="$obsrelevant" exact="$relevant" /><set_value name="$obsidle" exact="$idle" /><set_value name="$obscorrelation" exact="$correlation" />
+                <include_actions ref="JKEOC_SPOS_UpdateRecord" />
+              </do_if>
+
+              <!-- 2. Storage pressure requires a downstream operational symptom. -->
+              <do_if value="global.$JKEOC_ObservationConfig.$c2">
+                <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'STORAGE PRESSURE'" /><set_value name="$obssubject" exact="$subject" /><set_value name="$obshit" exact="$pressure and ($shortage or $directoryrecord.$casecount gt 0)" />
+                <set_value name="$obssubjectkey" exact="if $subjectware? then $subjectware else $subject" />
+                <set_value name="$obsevidence" exact="'Storage or ware allocation remained at or above 90%% with a corroborating station case.'" />
+                <set_value name="$obscause" exact="if $suppliers == 0 and $suitable gt 0 then 'Possible weak demand or restricted outbound flow; fullness alone does not prove missing capacity' else 'Persistent capacity pressure correlated with blocked operational flow'" />
+                <set_value name="$obsrecommendation" exact="'Review demand, sell offers, trade permissions, consuming production and planned storage before adding capacity.'" />
+                <set_value name="$obsconfidence" exact="'MEDIUM'" /><set_value name="$obsquality" exact="$quality" /><set_value name="$obsamount" exact="$amount" /><set_value name="$obstarget" exact="$target" /><set_value name="$obssuppliers" exact="$suppliers" /><set_value name="$obssuitable" exact="$suitable" /><set_value name="$obsrelevant" exact="$relevant" /><set_value name="$obsidle" exact="$idle" /><set_value name="$obscorrelation" exact="$correlation" />
+                <include_actions ref="JKEOC_SPOS_UpdateRecord" />
+              </do_if>
+
+              <!-- 3. Stalled production: conservative proxy, never asserted during manual pause. -->
+              <do_if value="global.$JKEOC_ObservationConfig.$c3">
+                <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'STALLED PRODUCTION'" /><set_value name="$obssubject" exact="$subject" /><set_value name="$obshit" exact="$shortage and $directoryrecord.$products.count gt 0 and not $productionpaused and $directoryrecord.$casecount gt 0" />
+                <set_value name="$obssubjectkey" exact="if $subjectware? then $subjectware else $subject" />
+                <set_value name="$obsevidence" exact="'A production station retained an active input constraint across observation samples; manual pause was not reported.'" />
+                <set_value name="$obscause" exact="if $pressure then 'Production flow appears constrained by storage pressure or blocked output' else 'Production flow appears constrained by a persistent missing input'" />
+                <set_value name="$obsrecommendation" exact="'Restore the corroborated input or outbound-flow constraint, then use a focused recheck to verify production resumes.'" />
+                <set_value name="$obsconfidence" exact="'LOW'" /><set_value name="$obsquality" exact="if $productionpaused then 'MANUAL PAUSE' else $quality" /><set_value name="$obsamount" exact="$amount" /><set_value name="$obstarget" exact="$target" /><set_value name="$obssuppliers" exact="$suppliers" /><set_value name="$obssuitable" exact="$suitable" /><set_value name="$obsrelevant" exact="$relevant" /><set_value name="$obsidle" exact="$idle" /><set_value name="$obscorrelation" exact="$correlation" />
+                <include_actions ref="JKEOC_SPOS_UpdateRecord" />
+              </do_if>
+
+              <!-- 4. Workforce supply failure reuses Build 60C's five-minute aggregate. -->
+              <do_if value="global.$JKEOC_ObservationConfig.$c4">
+                <set_value name="$workforcehit" exact="$directoryrecord.$workforceoptimal gt 0 and ($directoryrecord.$workforcehealth == 'WARNING' or $directoryrecord.$workforcehealth == 'CRITICAL') and $directoryrecord.$workforcesupplyriskcount gt 0" />
+                <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'WORKFORCE SUPPLY FAILURE'" /><set_value name="$obssubject" exact="if $directoryrecord.$workforcecriticalwarename? then $directoryrecord.$workforcecriticalwarename else 'WORKFORCE PROVISIONS'" /><set_value name="$obshit" exact="$workforcehit" />
+                <set_value name="$obssubjectkey" exact="$obssubject" />
+                <set_value name="$obsevidence" exact="$directoryrecord.$workforceevidence" /><set_value name="$obscause" exact="if $suitable == 0 then 'Required workforce provision and no suitable station logistics support were observed together' else 'Required workforce provision repeatedly remained below its safe target'" /><set_value name="$obsrecommendation" exact="'Review food/medical supply, buy permissions, suitable traders and reachable producers; verify workforce growth after the change.'" />
+                <set_value name="$obsconfidence" exact="'MEDIUM'" /><set_value name="$obsquality" exact="'COMPLETE'" /><set_value name="$obsamount" exact="$directoryrecord.$workforcecriticalamount" /><set_value name="$obstarget" exact="$directoryrecord.$workforcecriticaltarget" /><set_value name="$obssuppliers" exact="$suppliers" /><set_value name="$obssuitable" exact="$suitable" /><set_value name="$obsrelevant" exact="$relevant" /><set_value name="$obsidle" exact="$idle" /><set_value name="$obscorrelation" exact="$correlation" />
+                <include_actions ref="JKEOC_SPOS_UpdateRecord" />
+              </do_if>
+
+              <!-- Build 63: exact Medical Supplies applicability and bounded advisory assessment. -->
+              <do_if value="global.$JKEOC_ObservationConfig.$c4 and $station.isoperational">
+                <set_value name="$medicalwareobject" exact="ware.medicalsupplies" />
+                <set_value name="$medicalapplicable" exact="false" />
+                <do_for_each name="$medicalrace" in="$station.workforce.races">
+                  <do_for_each name="$medicalware" in="$medicalrace.workforce.resources.list">
+                    <do_if value="$medicalware == $medicalwareobject"><set_value name="$medicalapplicable" exact="true" /></do_if>
+                  </do_for_each>
+                </do_for_each>
+                <do_if value="$medicalapplicable">
+                  <set_value name="$medicalamount" exact="$station.cargo.{$medicalwareobject}.count" />
+                  <set_value name="$medicaltarget" exact="$station.cargo.{$medicalwareobject}.target" />
+                  <set_value name="$medicalhit" exact="$medicaltarget gt 0 and $medicalamount * 4 lt $medicaltarget" />
+                  <set_value name="$medicalsuppliers" exact="0" />
+                  <set_value name="$medicalsupplierverified" exact="false" />
+                  <do_for_each name="$medicalcase" in="$directoryrecord.$cases">
+                    <do_if value="not $medicalsupplierverified and $medicalcase.$type == 'WORKFORCE SUPPLY RISK' and $medicalcase.$wareobject == $medicalwareobject">
+                      <set_value name="$medicalsuppliers" exact="$medicalcase.$suppliercount" />
+                      <set_value name="$medicalsupplierverified" exact="true" />
+                    </do_if>
+                  </do_for_each>
+                  <set_value name="$medicalproduction" exact="$directoryrecord.$products.indexof.{$medicalwareobject}" />
+                  <set_value name="$medicalsuitable" exact="0" />
+                  <set_value name="$medicalrelevant" exact="0" />
+                  <set_value name="$medicalidle" exact="0" />
+                  <set_value name="$medicalbuilderreserve" exact="0" />
+                  <set_value name="$medicalquality" exact="'COMPLETE'" />
+                  <do_if value="$medicalhit and $shipstations lt 4 and $shipsused lt 64">
+                    <set_value name="$shipstations" exact="$shipstations + 1" />
+                    <do_for_each name="$medicalship" in="$station.subordinates">
+                      <do_if value="$shipsused lt 64">
+                        <set_value name="$shipsused" exact="$shipsused + 1" />
+                        <set_value name="$medicalreserve" exact="$medicalship.exists and $medicalship.isoperational and $medicalship.isclass.[class.ship_l, class.ship_xl] and $medicalship.primarypurpose == purpose.build and $medicalship.assignment == assignment.defence" />
+                        <do_if value="$medicalreserve"><set_value name="$medicalbuilderreserve" exact="$medicalbuilderreserve + 1" /></do_if>
+                        <do_elseif value="$medicalship.exists and $medicalship.isoperational and $medicalship.assignment == assignment.trade and $medicalship.waretransport.indexof.{$medicalwareobject.waretransport}">
+                          <set_value name="$medicalsuitable" exact="$medicalsuitable + 1" />
+                          <do_if value="@$medicalship.order.id or @$medicalship.defaultorder.id"><set_value name="$medicalrelevant" exact="$medicalrelevant + 1" /></do_if>
+                          <do_else><set_value name="$medicalidle" exact="$medicalidle + 1" /></do_else>
+                        </do_elseif>
+                      </do_if>
+                    </do_for_each>
+                  </do_if>
+                  <do_elseif value="$medicalhit"><set_value name="$medicalquality" exact="'SCAN BUDGET DEFERRED'" /></do_elseif>
+
+                  <set_value name="$obsassessmentimport" exact="if $medicalsupplierverified then if $medicalsuppliers gt 0 then 'Known usable supplier evidence observed' else 'No usable supplier was retained; absence is not proof of no market supply' else 'UNAVAILABLE - no matching bounded supplier assessment'" />
+                  <set_value name="$obsassessmentproduction" exact="if $medicalproduction then 'Medical Supplies production is present at this station' else 'No Medical Supplies product was observed in the station product list'" />
+                  <set_value name="$obsassessmentnewproduction" exact="'UNAVAILABLE - module blueprint ownership, build cost and construction viability are not proven by this automatic path'" />
+                  <set_value name="$obsassessmentlogistics" exact="'%1 suitable direct station trader(s) observed; %2 showed current/default activity'.[$medicalsuitable, $medicalrelevant]" />
+                  <set_value name="$obsassessmentunavailable" exact="'Exact prices and total costs; blueprint ownership; inherited trade-rule or blacklist cause; manager reach; upstream production rate; future demand and delivery success'" />
+                  <set_value name="$obsassessmentcost" exact="'UNAVAILABLE - a reliable automatic like-for-like import-versus-build cost path was not verified'" />
+                  <set_value name="$obsassessmentconclusion" exact="if $medicalproduction then 'USE EXISTING LOCAL PRODUCTION' else if $medicalsuitable == 0 then 'ADD OR REASSIGN LOGISTICS - PLAYER REVIEW REQUIRED' else if $medicalsupplierverified and $medicalsuppliers gt 0 then 'IMPORT PREFERRED' else 'INSUFFICIENT EVIDENCE TO CHOOSE'" />
+                  <set_value name="$obsassessmentwhy" exact="if $medicalproduction then 'Verified station products already include Medical Supplies; confirm inputs and output flow before adding capacity.' else if $medicalsuitable == 0 then 'The bounded direct-ship sample found no suitable trader; builders parked under defence were excluded.' else if $medicalsupplierverified and $medicalsuppliers gt 0 then 'Usable supplier evidence and suitable logistics were both observed; this is an immediate supply preference, not a proven lifetime-cost result.' else 'No reliable supplier or cost comparison supports a stronger conclusion.'" />
+                  <set_value name="$obsbuilderreserve" exact="$medicalbuilderreserve" />
+                  <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'WORKFORCE SUPPLY INTELLIGENCE'" /><set_value name="$obssubject" exact="$medicalwareobject.name" /><set_value name="$obssubjectkey" exact="$medicalwareobject" /><set_value name="$obshit" exact="$medicalhit" />
+                  <set_value name="$obsevidence" exact="'Medical Supplies is required by a workforce race at this station and was sampled against a positive station target.'" /><set_value name="$obscause" exact="'Persistent Medical Supplies supply risk; automatic evidence is bounded and does not prove a single root cause.'" /><set_value name="$obsrecommendation" exact="$obsassessmentconclusion" />
+                  <set_value name="$obsconfidence" exact="if $medicalquality == 'COMPLETE' then 'MEDIUM' else 'LOW'" /><set_value name="$obsquality" exact="$medicalquality" /><set_value name="$obsamount" exact="$medicalamount" /><set_value name="$obstarget" exact="$medicaltarget" /><set_value name="$obssuppliers" exact="$medicalsuppliers" /><set_value name="$obssuitable" exact="$medicalsuitable" /><set_value name="$obsrelevant" exact="$medicalrelevant" /><set_value name="$obsidle" exact="$medicalidle" /><set_value name="$obscorrelation" exact="if $medicalsuitable == 0 then 'NONE' else if $medicalrelevant == 0 then 'SUPPORTING' else 'WEAK'" />
+                  <include_actions ref="JKEOC_SPOS_UpdateRecord" />
+                </do_if>
+              </do_if>
+
+              <!-- 5. Missing or unsuitable miners/traders. -->
+              <do_if value="global.$JKEOC_ObservationConfig.$c5">
+                <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'LOGISTICS COVERAGE'" /><set_value name="$obssubject" exact="$subject" /><set_value name="$obshit" exact="$shortage and $suitable == 0" />
+                <set_value name="$obssubjectkey" exact="if $subjectware? then $subjectware else $subject" />
+                <set_value name="$obsevidence" exact="'A persistent station need was observed with no operational direct trader/miner compatible with the subject ware in the bounded ship sample.'" /><set_value name="$obscause" exact="'Missing or unsuitable direct station logistics coverage'" /><set_value name="$obsrecommendation" exact="'Review direct station miners/traders and cargo compatibility. NPC delivery may still satisfy the need, so verify before assigning more ships.'" />
+                <set_value name="$obsconfidence" exact="if $quality == 'COMPLETE' then 'HIGH' else 'LOW'" /><set_value name="$obsquality" exact="$quality" /><set_value name="$obsamount" exact="$amount" /><set_value name="$obstarget" exact="$target" /><set_value name="$obssuppliers" exact="$suppliers" /><set_value name="$obssuitable" exact="$suitable" /><set_value name="$obsrelevant" exact="$relevant" /><set_value name="$obsidle" exact="$idle" /><set_value name="$obscorrelation" exact="$correlation" />
+                <include_actions ref="JKEOC_SPOS_UpdateRecord" />
+              </do_if>
+
+              <!-- 6. Unreachable suppliers: wording is intentionally limited to usable known offers. -->
+              <do_if value="global.$JKEOC_ObservationConfig.$c6">
+                <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'SUPPLIER REACHABILITY'" /><set_value name="$obssubject" exact="$subject" /><set_value name="$obshit" exact="$shortage and $suppliers == 0" />
+                <set_value name="$obssubjectkey" exact="if $subjectware? then $subjectware else $subject" />
+                <set_value name="$obsevidence" exact="'No currently usable known supplier offer was retained by the accepted EOC scan while positive demand persisted.'" /><set_value name="$obscause" exact="'Supplier availability, trade knowledge, price, rule filtering or manager range requires player review; EOC cannot safely choose among them without corroboration'" /><set_value name="$obsrecommendation" exact="'Review known sell offers, manager range, prices, trade rules and blacklists for this station and ware, then request a focused recheck.'" />
+                <set_value name="$obsconfidence" exact="'LOW'" /><set_value name="$obsquality" exact="'TRADE KNOWLEDGE MAY BE STALE'" /><set_value name="$obsamount" exact="$amount" /><set_value name="$obstarget" exact="$target" /><set_value name="$obssuppliers" exact="$suppliers" /><set_value name="$obssuitable" exact="$suitable" /><set_value name="$obsrelevant" exact="$relevant" /><set_value name="$obsidle" exact="$idle" /><set_value name="$obscorrelation" exact="$correlation" />
+                <include_actions ref="JKEOC_SPOS_UpdateRecord" />
+              </do_if>
+
+              <!-- 7. Trade restriction suspicion; exact rule remains player-verified. -->
+              <do_if value="global.$JKEOC_ObservationConfig.$c7">
+                <set_value name="$restrictionhit" exact="($shortage and $suppliers == 0) or ($pressure and $directoryrecord.$tradewares.count gt 0)" />
+                <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'TRADE RESTRICTION REVIEW'" /><set_value name="$obssubject" exact="$subject" /><set_value name="$obshit" exact="$restrictionhit" />
+                <set_value name="$obssubjectkey" exact="if $subjectware? then $subjectware else $subject" />
+                <set_value name="$obsevidence" exact="'Persistent station demand/output and absent usable flow indicate that global trade rules, blacklists, ware-specific offers, price, budget or manager range should be reviewed.'" /><set_value name="$obscause" exact="'Trading appears restricted or unavailable; the exact inherited or ware-specific setting is not directly proven by accepted properties'" /><set_value name="$obsrecommendation" exact="'Review Player Information global trade rules and blacklists, then the station ware buy/sell restriction. Consider the empire-wide impact before changing a global rule. Record the change in EOC and request a recheck.'" />
+                <set_value name="$obsconfidence" exact="'INSUFFICIENT EVIDENCE'" /><set_value name="$obsquality" exact="'PLAYER VERIFICATION REQUIRED'" /><set_value name="$obsamount" exact="$amount" /><set_value name="$obstarget" exact="$target" /><set_value name="$obssuppliers" exact="$suppliers" /><set_value name="$obssuitable" exact="$suitable" /><set_value name="$obsrelevant" exact="$relevant" /><set_value name="$obsidle" exact="$idle" /><set_value name="$obscorrelation" exact="$correlation" />
+                <include_actions ref="JKEOC_SPOS_UpdateRecord" />
+              </do_if>
+
+              <!-- 8. Repeatedly idle/unrelated direct ships. -->
+              <do_if value="global.$JKEOC_ObservationConfig.$c8">
+                <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'SHIP ACTIVITY MISMATCH'" /><set_value name="$obssubject" exact="$subject" /><set_value name="$obshit" exact="$shortage and $suitable gt 0 and $relevant == 0" />
+                <set_value name="$obssubjectkey" exact="if $subjectware? then $subjectware else $subject" />
+                <set_value name="$obsevidence" exact="'Suitable direct ships existed while the need persisted, but no relevant current/default activity was observed in the bounded sample.'" /><set_value name="$obscause" exact="'Repeated mismatch between station need and observed direct-ship activity; normal waiting, travel, repair and other automation remain possible'" /><set_value name="$obsrecommendation" exact="'Inspect the ships current orders and queues. Do not reassign from this finding alone; use focused observation to confirm the pattern.'" />
+                <set_value name="$obsconfidence" exact="'LOW'" /><set_value name="$obsquality" exact="$quality" /><set_value name="$obsamount" exact="$amount" /><set_value name="$obstarget" exact="$target" /><set_value name="$obssuppliers" exact="$suppliers" /><set_value name="$obssuitable" exact="$suitable" /><set_value name="$obsrelevant" exact="$relevant" /><set_value name="$obsidle" exact="$idle" /><set_value name="$obscorrelation" exact="$correlation" />
+                <include_actions ref="JKEOC_SPOS_UpdateRecord" />
+              </do_if>
+
+              <!-- 9. Upstream capacity requires shortage + supply + logistics corroboration. -->
+              <do_if value="global.$JKEOC_ObservationConfig.$c9">
+                <set_value name="$upstreamhit" exact="$shortage and $suppliers == 0 and $suitable gt 0 and $relevant gt 0" />
+                <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'UPSTREAM CAPACITY'" /><set_value name="$obssubject" exact="$subject" /><set_value name="$obshit" exact="$upstreamhit" />
+                <set_value name="$obssubjectkey" exact="if $subjectware? then $subjectware else $subject" />
+                <set_value name="$obsevidence" exact="'Persistent shortage coincided with no usable known offer while suitable logistics and relevant activity were observed.'" /><set_value name="$obscause" exact="'Available upstream supply appears insufficient after basic direct-logistics absence was excluded; rule, price and knowledge limitations remain alternatives'" /><set_value name="$obsrecommendation" exact="'Verify supplier production and sell offers before building upstream capacity. Confirm trade restrictions and manager reach first.'" />
+                <set_value name="$obsconfidence" exact="'LOW'" /><set_value name="$obsquality" exact="'TWO CORROBORATING CLASSES; DIRECT CAPACITY RATE UNAVAILABLE'" /><set_value name="$obsamount" exact="$amount" /><set_value name="$obstarget" exact="$target" /><set_value name="$obssuppliers" exact="$suppliers" /><set_value name="$obssuitable" exact="$suitable" /><set_value name="$obsrelevant" exact="$relevant" /><set_value name="$obsidle" exact="$idle" /><set_value name="$obscorrelation" exact="$correlation" />
+                <include_actions ref="JKEOC_SPOS_UpdateRecord" />
+              </do_if>
+            </do_if>
+          </do_for_each>
+        </do_if>
+
+        <set_value name="global.$JKEOC_ObservationConfig.$lastappliedrevision" exact="$cycleconfigrevision" />
+        <do_if value="global.$JKEOC_ObservationConfig.$request?">
+          <remove_value name="global.$JKEOC_ObservationConfig.$request" />
+          <remove_value name="global.$JKEOC_ObservationConfig.$requestexpires" />
+        </do_if>
+        <set_value name="global.$JKEOC_SPOSLastCycle" exact="player.age" />
+        <set_value name="global.$JKEOC_SPOSLastStations" exact="$stationssampled" />
+        <set_value name="global.$JKEOC_SPOSLastShipBudget" exact="$shipsused" />
+        <do_if value="global.$JKEOC_SPOSRecords.count ge 205 and not global.$JKEOC_SPOSCapWarning80?"><set_value name="global.$JKEOC_SPOSCapWarning80" exact="true" /><debug_text text="'[JKEOC][V600][SPOS_CAP_WARNING] evidence store reached 80 percent of the 256-record cap'" filter="general" /></do_if>
+        <do_if value="global.$JKEOC_SPOSRecords.count ge 256 and not global.$JKEOC_SPOSCapWarning100?"><set_value name="global.$JKEOC_SPOSCapWarning100" exact="true" /><debug_text text="'[JKEOC][V600][SPOS_CAP_FULL] evidence store reached the 256-record cap; lower-priority new candidates are counted as overflow'" filter="general" /></do_if>
+        <do_if value="global.$JKEOC_SPOSRecords.count lt 205"><remove_value name="global.$JKEOC_SPOSCapWarning80" /><remove_value name="global.$JKEOC_SPOSCapWarning100" /></do_if>
+        <do_if value="global.$JKEOC_SPOSTransitions gt 10 and global.$JKEOC_ObservationConfig.$debuglevel != 'OFF'"><debug_text text="'[JKEOC][V600][SPOS_TRANSITIONS_SUPPRESSED] count=%1'.[global.$JKEOC_SPOSTransitions - 10]" filter="general" /></do_if>
+        <do_if value="global.$JKEOC_ObservationConfig.$debuglevel == 'SUMMARY' or global.$JKEOC_ObservationConfig.$debuglevel == 'FOCUSED DETAIL'">
+          <debug_text text="'[JKEOC][V670][SPOS_CYCLE] stations=%1 records=%2 ship_stations=%3 ships=%4 transitions=%5 rejected=%6 rotations=%7 revision=%8'.[$stationssampled, global.$JKEOC_SPOSRecords.count, $shipstations, $shipsused, global.$JKEOC_SPOSTransitions, global.$JKEOC_SPOSOverflow, global.$JKEOC_SPOSRotations, $cycleconfigrevision]" filter="general" />
+        </do_if>
+      </actions>
+    </cue>
+
+    <!-- Native Workshop-safe Diagnostic Console. -->
+    <cue name="JKEOC_SPOS_Console" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Console" /></conditions>
+      <actions>
+        <include_actions ref="JKEOC_SPOS_ValidateConfig" />
+        <add_player_choice_sub text="'PROFILE: %1 | INTERVAL: %2'.[global.$JKEOC_ObservationConfig.$profile, global.$JKEOC_ObservationConfig.$interval]" position="top_left" section="JKEOC_SPOS_Profile" />
+        <add_player_choice_sub text="'OBSERVATION CATEGORIES'" position="left" section="JKEOC_SPOS_Categories1" />
+        <add_player_choice_sub text="'EVIDENCE / NOTIFICATIONS'" position="bottom_left" section="JKEOC_SPOS_Evidence" />
+        <add_player_choice_sub text="'FOCUS AND ONE-SHOT DIAGNOSTICS'" position="top_right" section="JKEOC_SPOS_Focus" />
+        <add_player_choice_sub text="'RESTORE SAFE DEFAULTS'" position="right" section="JKEOC_SPOS_ResetPrompt" />
+        <add_player_choice_sub text="'BACK TO EOC CONTROLS'" position="bottom_right" section="JKEOC_SPOS_ControlHub" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_SPOS_Profile" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Profile" /></conditions><actions><add_player_choice_sub text="'LIGHT - 10 MIN EMPIRE SAMPLE'" position="top_left" section="JKEOC_SPOS_ProfileLight" /><add_player_choice_sub text="'STANDARD - 5 MIN EMPIRE SAMPLE'" position="left" section="JKEOC_SPOS_ProfileStandard" /><add_player_choice_sub text="'FOCUSED TEST - 2 MIN / 30 MIN EXPIRY'" position="bottom_left" section="JKEOC_SPOS_ProfileFocused" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></actions></cue>
+    <cue name="JKEOC_SPOS_ProfileLight" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ProfileLight" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$profile" exact="'LIGHT'" /><set_value name="global.$JKEOC_ObservationConfig.$interval" exact="10min" /><remove_value name="global.$JKEOC_ObservationConfig.$temporaryexpires" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Light profile: 10-minute empire observation'" /></actions></cue>
+    <cue name="JKEOC_SPOS_ProfileStandard" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ProfileStandard" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$profile" exact="'STANDARD'" /><set_value name="global.$JKEOC_ObservationConfig.$interval" exact="5min" /><remove_value name="global.$JKEOC_ObservationConfig.$temporaryexpires" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Standard profile: 5-minute empire observation'" /></actions></cue>
+    <cue name="JKEOC_SPOS_ProfileFocused" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ProfileFocused" /></conditions><actions><do_if value="global.$JKEOC_ObservationConfig.$focusstation? and global.$JKEOC_ObservationConfig.$focusstation.exists"><set_value name="global.$JKEOC_ObservationConfig.$profile" exact="'FOCUSED TEST'" /><set_value name="global.$JKEOC_ObservationConfig.$interval" exact="2min" /><set_value name="global.$JKEOC_ObservationConfig.$temporaryexpires" exact="player.age + 30min" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Focused Test: 2-minute observation for 30 game minutes'" /></do_if><do_else><show_notification text="'EOC FOCUSED TEST REJECTED: select a valid focus station first.'" timeout="8s" /><add_player_choice_sub text="'RETURN TO OBSERVATION PROFILE'" position="left" section="JKEOC_SPOS_Profile" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></do_else></actions></cue>
+
+    <cue name="JKEOC_SPOS_Categories1" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Categories1" /></conditions><actions><add_player_choice_sub text="'PRODUCTION SHORTAGE: %1'.[global.$JKEOC_ObservationConfig.$c1]" position="top_left" section="JKEOC_SPOS_Toggle1" /><add_player_choice_sub text="'STORAGE PRESSURE: %1'.[global.$JKEOC_ObservationConfig.$c2]" position="left" section="JKEOC_SPOS_Toggle2" /><add_player_choice_sub text="'STALLED PRODUCTION: %1'.[global.$JKEOC_ObservationConfig.$c3]" position="bottom_left" section="JKEOC_SPOS_Toggle3" /><add_player_choice_sub text="'NEXT - CATEGORIES 4-6'" position="right" section="JKEOC_SPOS_Categories2" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></actions></cue>
+    <cue name="JKEOC_SPOS_Categories2" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Categories2" /></conditions><actions><add_player_choice_sub text="'WORKFORCE SUPPLY: %1'.[global.$JKEOC_ObservationConfig.$c4]" position="top_left" section="JKEOC_SPOS_Toggle4" /><add_player_choice_sub text="'LOGISTICS COVERAGE: %1'.[global.$JKEOC_ObservationConfig.$c5]" position="left" section="JKEOC_SPOS_Toggle5" /><add_player_choice_sub text="'SUPPLIER REACHABILITY: %1'.[global.$JKEOC_ObservationConfig.$c6]" position="bottom_left" section="JKEOC_SPOS_Toggle6" /><add_player_choice_sub text="'PREVIOUS - CATEGORIES 1-3'" position="top_right" section="JKEOC_SPOS_Categories1" /><add_player_choice_sub text="'NEXT - CATEGORIES 7-9'" position="right" section="JKEOC_SPOS_Categories3" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></actions></cue>
+    <cue name="JKEOC_SPOS_Categories3" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Categories3" /></conditions><actions><add_player_choice_sub text="'TRADE RESTRICTION REVIEW: %1'.[global.$JKEOC_ObservationConfig.$c7]" position="top_left" section="JKEOC_SPOS_Toggle7" /><add_player_choice_sub text="'SHIP ACTIVITY MISMATCH: %1'.[global.$JKEOC_ObservationConfig.$c8]" position="left" section="JKEOC_SPOS_Toggle8" /><add_player_choice_sub text="'UPSTREAM CAPACITY: %1'.[global.$JKEOC_ObservationConfig.$c9]" position="bottom_left" section="JKEOC_SPOS_Toggle9" /><add_player_choice_sub text="'PREVIOUS - CATEGORIES 4-6'" position="top_right" section="JKEOC_SPOS_Categories2" /><add_player_choice_sub text="'ENABLE ALL APPROVED CATEGORIES'" position="right" section="JKEOC_SPOS_EnableAll" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></actions></cue>
+
+    <cue name="JKEOC_SPOS_Toggle1" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Toggle1" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$c1" exact="not global.$JKEOC_ObservationConfig.$c1" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Production Shortage category toggled'" /></actions></cue>
+    <cue name="JKEOC_SPOS_Toggle2" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Toggle2" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$c2" exact="not global.$JKEOC_ObservationConfig.$c2" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Storage Pressure category toggled'" /></actions></cue>
+    <cue name="JKEOC_SPOS_Toggle3" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Toggle3" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$c3" exact="not global.$JKEOC_ObservationConfig.$c3" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Stalled Production category toggled'" /></actions></cue>
+    <cue name="JKEOC_SPOS_Toggle4" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Toggle4" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$c4" exact="not global.$JKEOC_ObservationConfig.$c4" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Workforce Supply category toggled'" /></actions></cue>
+    <cue name="JKEOC_SPOS_Toggle5" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Toggle5" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$c5" exact="not global.$JKEOC_ObservationConfig.$c5" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Logistics Coverage category toggled'" /></actions></cue>
+    <cue name="JKEOC_SPOS_Toggle6" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Toggle6" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$c6" exact="not global.$JKEOC_ObservationConfig.$c6" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Supplier Reachability category toggled'" /></actions></cue>
+    <cue name="JKEOC_SPOS_Toggle7" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Toggle7" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$c7" exact="not global.$JKEOC_ObservationConfig.$c7" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Trade Restriction Review category toggled'" /></actions></cue>
+    <cue name="JKEOC_SPOS_Toggle8" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Toggle8" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$c8" exact="not global.$JKEOC_ObservationConfig.$c8" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Ship Activity Mismatch category toggled'" /></actions></cue>
+    <cue name="JKEOC_SPOS_Toggle9" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Toggle9" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$c9" exact="not global.$JKEOC_ObservationConfig.$c9" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Upstream Capacity category toggled'" /></actions></cue>
+    <cue name="JKEOC_SPOS_EnableAll" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_EnableAll" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$c1" exact="true" /><set_value name="global.$JKEOC_ObservationConfig.$c2" exact="true" /><set_value name="global.$JKEOC_ObservationConfig.$c3" exact="true" /><set_value name="global.$JKEOC_ObservationConfig.$c4" exact="true" /><set_value name="global.$JKEOC_ObservationConfig.$c5" exact="true" /><set_value name="global.$JKEOC_ObservationConfig.$c6" exact="true" /><set_value name="global.$JKEOC_ObservationConfig.$c7" exact="true" /><set_value name="global.$JKEOC_ObservationConfig.$c8" exact="true" /><set_value name="global.$JKEOC_ObservationConfig.$c9" exact="true" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'All nine approved observation categories enabled'" /></actions></cue>
+
+    <cue name="JKEOC_SPOS_Evidence" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Evidence" /></conditions><actions><add_player_choice_sub text="'CONSERVATIVE EVIDENCE'" position="top_left" section="JKEOC_SPOS_EvidenceConservative" /><add_player_choice_sub text="'STANDARD EVIDENCE'" position="left" section="JKEOC_SPOS_EvidenceStandard" /><add_player_choice_sub text="'RESPONSIVE TEST - 30 MIN EXPIRY'" position="bottom_left" section="JKEOC_SPOS_EvidenceResponsive" /><add_player_choice_sub text="'DEBUG: %1'.[global.$JKEOC_ObservationConfig.$debuglevel]" position="top_right" section="JKEOC_SPOS_DebugCycle" /><add_player_choice_sub text="'NOTIFICATIONS: %1'.[global.$JKEOC_ObservationConfig.$notifications]" position="right" section="JKEOC_SPOS_NotificationCycle" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></actions></cue>
+    <cue name="JKEOC_SPOS_EvidenceConservative" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_EvidenceConservative" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$recurrenceprofile" exact="'CONSERVATIVE'" /><set_value name="global.$JKEOC_ObservationConfig.$confidenceprofile" exact="'CONSERVATIVE'" /><remove_value name="global.$JKEOC_ObservationConfig.$temporaryexpires" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Conservative evidence thresholds selected'" /></actions></cue>
+    <cue name="JKEOC_SPOS_EvidenceStandard" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_EvidenceStandard" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$recurrenceprofile" exact="'STANDARD'" /><set_value name="global.$JKEOC_ObservationConfig.$confidenceprofile" exact="'STANDARD'" /><remove_value name="global.$JKEOC_ObservationConfig.$temporaryexpires" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Standard evidence thresholds selected'" /></actions></cue>
+    <cue name="JKEOC_SPOS_EvidenceResponsive" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_EvidenceResponsive" /></conditions><actions><do_if value="global.$JKEOC_ObservationConfig.$focusstation? and global.$JKEOC_ObservationConfig.$focusstation.exists"><set_value name="global.$JKEOC_ObservationConfig.$recurrenceprofile" exact="'RESPONSIVE TEST'" /><set_value name="global.$JKEOC_ObservationConfig.$confidenceprofile" exact="'RESPONSIVE TEST'" /><set_value name="global.$JKEOC_ObservationConfig.$temporaryexpires" exact="player.age + 30min" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Responsive Test evidence mode enabled for 30 game minutes'" /></do_if><do_else><show_notification text="'EOC RESPONSIVE TEST REJECTED: select a valid focus station first.'" timeout="8s" /><add_player_choice_sub text="'RETURN TO EVIDENCE / NOTIFICATIONS'" position="left" section="JKEOC_SPOS_Evidence" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></do_else></actions></cue>
+    <cue name="JKEOC_SPOS_DebugCycle" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_DebugCycle" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$debuglevel" exact="if global.$JKEOC_ObservationConfig.$debuglevel == 'OFF' then 'TRANSITIONS' else if global.$JKEOC_ObservationConfig.$debuglevel == 'TRANSITIONS' then 'SUMMARY' else 'OFF'" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Debug level changed'" /></actions></cue>
+    <cue name="JKEOC_SPOS_NotificationCycle" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_NotificationCycle" /></conditions><actions><set_value name="global.$JKEOC_ObservationConfig.$notifications" exact="if global.$JKEOC_ObservationConfig.$notifications == 'SYSTEMIC' then 'SYSTEMIC AND RESOLVED' else if global.$JKEOC_ObservationConfig.$notifications == 'SYSTEMIC AND RESOLVED' then 'SILENT' else 'SYSTEMIC'" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Notification level changed'" /></actions></cue>
+
+    <cue name="JKEOC_SPOS_Focus" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Focus" /></conditions><actions><add_player_choice_sub text="'USE CURRENT EOC STATION: %1'.[if global.$JKEOC_SelectedStation? then global.$JKEOC_SelectedStation.$stationname else 'NONE SELECTED']" position="top_left" section="JKEOC_SPOS_SetFocus" /><add_player_choice_sub text="'CLEAR OBSERVATION FOCUS'" position="left" section="JKEOC_SPOS_ClearFocus" /><add_player_choice_sub text="'OBSERVE FOCUS ON NEXT CYCLE'" position="bottom_left" section="JKEOC_SPOS_RequestObserve" /><add_player_choice_sub text="'WRITE CURRENT STATUS TO LOGBOOK'" position="right" section="JKEOC_SPOS_WriteStatus" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></actions></cue>
+    <cue name="JKEOC_SPOS_SetFocus" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_SetFocus" /></conditions><actions><do_if value="global.$JKEOC_SelectedStation? and global.$JKEOC_SelectedStation.$station.exists and global.$JKEOC_SelectedStation.$station.owner == faction.player"><set_value name="global.$JKEOC_ObservationConfig.$focusstation" exact="global.$JKEOC_SelectedStation.$station" /><set_value name="global.$JKEOC_ObservationConfig.$focusstationname" exact="global.$JKEOC_SelectedStation.$stationname" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Observation focus station selected'" /></do_if><do_else><show_notification text="'EOC FOCUS REJECTED: select a player-owned station in Browse All Stations first.'" timeout="10s" /><add_player_choice_sub text="'RETURN TO FOCUS AND ONE-SHOT DIAGNOSTICS'" position="left" section="JKEOC_SPOS_Focus" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></do_else></actions></cue>
+    <cue name="JKEOC_SPOS_ClearFocus" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ClearFocus" /></conditions><actions><remove_value name="global.$JKEOC_ObservationConfig.$focusstation" /><remove_value name="global.$JKEOC_ObservationConfig.$focusstationname" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Observation focus cleared'" /></actions></cue>
+    <cue name="JKEOC_SPOS_RequestObserve" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_RequestObserve" /></conditions><actions><do_if value="global.$JKEOC_ObservationConfig.$focusstation? and global.$JKEOC_ObservationConfig.$focusstation.exists"><set_value name="global.$JKEOC_ObservationConfig.$request" exact="'OBSERVE FOCUS'" /><set_value name="global.$JKEOC_ObservationConfig.$requestexpires" exact="player.age + 10min" /><set_value name="global.$JKEOC_SPOSNextCycle" exact="player.age" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'One bounded focus observation requested'" /></do_if><do_else><show_notification text="'EOC REQUEST REJECTED: no valid focus station.'" timeout="8s" /><add_player_choice_sub text="'RETURN TO FOCUS AND ONE-SHOT DIAGNOSTICS'" position="left" section="JKEOC_SPOS_Focus" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></do_else></actions></cue>
+    <cue name="JKEOC_SPOS_PlayerChange" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_PlayerChange" /></conditions><actions><add_player_choice_sub text="'GLOBAL TRADE RULE REVIEWED / CHANGED'" position="top_left" section="JKEOC_SPOS_ChangeGlobalTrade" /><add_player_choice_sub text="'GLOBAL BLACKLIST REVIEWED / CHANGED'" position="left" section="JKEOC_SPOS_ChangeBlacklist" /><add_player_choice_sub text="'STATION WARE BUY / SELL RULE CHANGED'" position="bottom_left" section="JKEOC_SPOS_ChangeWareRule" /><add_player_choice_sub text="'PRICE / BUDGET / MANAGER RANGE CHANGED'" position="top_right" section="JKEOC_SPOS_ChangeOther" /><add_player_choice_sub text="'NO CHANGE - RECHECK CURRENT STATE'" position="right" section="JKEOC_SPOS_ChangeNone" /><add_player_choice_sub text="'BACK TO FOCUS DIAGNOSTICS'" position="bottom_right" section="JKEOC_SPOS_Focus" /></actions></cue>
+    <cue name="JKEOC_SPOS_ChangeGlobalTrade" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ChangeGlobalTrade" /></conditions><actions><signal_cue_instantly cue="JKEOC_SPOS_QueueRecheck" param="'GLOBAL TRADE RULE - may affect every inheriting station and ship'" /></actions></cue>
+    <cue name="JKEOC_SPOS_ChangeBlacklist" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ChangeBlacklist" /></conditions><actions><signal_cue_instantly cue="JKEOC_SPOS_QueueRecheck" param="'GLOBAL BLACKLIST - may change travel or trade access empire-wide'" /></actions></cue>
+    <cue name="JKEOC_SPOS_ChangeWareRule" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ChangeWareRule" /></conditions><actions><signal_cue_instantly cue="JKEOC_SPOS_QueueRecheck" param="'STATION WARE BUY/SELL RESTRICTION - intended local scope'" /></actions></cue>
+    <cue name="JKEOC_SPOS_ChangeOther" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ChangeOther" /></conditions><actions><signal_cue_instantly cue="JKEOC_SPOS_QueueRecheck" param="'PRICE, BUDGET OR MANAGER RANGE - station/logistics scope'" /></actions></cue>
+    <cue name="JKEOC_SPOS_ChangeNone" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ChangeNone" /></conditions><actions><signal_cue_instantly cue="JKEOC_SPOS_QueueRecheck" param="'NO PLAYER CHANGE DECLARED - observation recheck only'" /></actions></cue>
+    <cue name="JKEOC_SPOS_QueueRecheck" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions><do_if value="global.$JKEOC_ObservationConfig.$focusstation? and global.$JKEOC_ObservationConfig.$focusstation.exists"><set_value name="global.$JKEOC_ObservationConfig.$request" exact="'RECHECK PLAYER ACTION'" /><set_value name="global.$JKEOC_ObservationConfig.$requestexpires" exact="player.age + 10min" /><set_value name="global.$JKEOC_SPOSNextCycle" exact="player.age" /><do_for_each name="$verifyrecord" in="global.$JKEOC_SPOSRecords"><do_if value="$verifyrecord.$station == global.$JKEOC_ObservationConfig.$focusstation and $verifyrecord.$awaitingplayer"><set_value name="$verifyrecord.$verification" exact="'RECHECK REQUESTED'" /><set_value name="$verifyrecord.$declaredchange" exact="event.param" /><set_value name="$verifyrecord.$verificationbaselinehits" exact="$verifyrecord.$hits" /><set_value name="$verifyrecord.$verificationbaselineamount" exact="$verifyrecord.$amount" /><set_value name="$verifyrecord.$verificationrequested" exact="player.age" /></do_if></do_for_each><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Player-action recheck requested for the focus station'" /></do_if><do_else><show_notification text="'EOC RECHECK REJECTED: no valid focus station.'" timeout="8s" /><add_player_choice_sub text="'RETURN TO FOCUS AND ONE-SHOT DIAGNOSTICS'" position="left" section="JKEOC_SPOS_Focus" /><add_player_choice_sub text="'BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></do_else></actions></cue>
+
+    <cue name="JKEOC_SPOS_WriteStatus" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_WriteStatus" /></conditions><actions><set_value name="$active" exact="0" /><set_value name="$systemic" exact="0" /><set_value name="$recovering" exact="0" /><set_value name="$awaiting" exact="0" /><set_value name="$laststations" exact="if global.$JKEOC_SPOSLastStations? then global.$JKEOC_SPOSLastStations else 0" /><set_value name="$lastshipbudget" exact="if global.$JKEOC_SPOSLastShipBudget? then global.$JKEOC_SPOSLastShipBudget else 0" /><do_for_each name="$statusrecord" in="global.$JKEOC_SPOSRecords"><do_if value="$statusrecord.$state == 'CANDIDATE' or $statusrecord.$state == 'RECURRING' or $statusrecord.$state == 'SYSTEMIC'"><set_value name="$active" exact="$active + 1" /></do_if><do_if value="$statusrecord.$state == 'SYSTEMIC'"><set_value name="$systemic" exact="$systemic + 1" /></do_if><do_if value="$statusrecord.$state == 'RECOVERING'"><set_value name="$recovering" exact="$recovering + 1" /></do_if><do_if value="$statusrecord.$awaitingplayer"><set_value name="$awaiting" exact="$awaiting + 1" /></do_if></do_for_each><set_value name="$statusprimary" exact="'Profile: %1\nInterval: %2\nEvidence records: %3 / 256\nActive candidates/findings: %4\nSystemic: %5\nRecovering: %6\nAwaiting player action: %7\nLast stations sampled: %8\nLast ship budget used: %9 / 64'.[global.$JKEOC_ObservationConfig.$profile, global.$JKEOC_ObservationConfig.$interval, global.$JKEOC_SPOSRecords.count, $active, $systemic, $recovering, $awaiting, $laststations, $lastshipbudget]" /><set_value name="$statusbounded" exact="'\nRejected records: %1\nRotated records: %2\n\nThis is observation-only. EOC has not changed station or ship behavior.'.[global.$JKEOC_SPOSOverflow, global.$JKEOC_SPOSRotations]" /><write_to_logbook category="general" title="'EOC Station Performance Observation Status'" text="'%1%2'.[$statusprimary, $statusbounded]" /><write_to_logbook category="tips" title="'EOC observation status saved'" text="'Open the EOC Logbook to review the current bounded observation status.'" /><show_notification text="'ACTION: Observation status report generated. NOTE: Report saved to the Logbook.'" timeout="8s" /><add_player_choice_sub text="'STATUS SAVED - RETURN TO ADVISOR SETTINGS'" position="bottom_right" section="JKEOC_SPOS_ControlHub" /></actions></cue>
+
+    <cue name="JKEOC_SPOS_ResetPrompt" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ResetPrompt" /></conditions><actions><add_player_choice_sub text="'CONFIRM - RESTORE SAFE OBSERVATION DEFAULTS'" position="left" section="JKEOC_SPOS_Reset" /><add_player_choice_sub text="'CANCEL - BACK TO DIAGNOSTIC CONSOLE'" position="bottom_right" section="JKEOC_SPOS_Console" /></actions></cue>
+    <cue name="JKEOC_SPOS_Reset" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_Reset" /></conditions><actions><include_actions ref="JKEOC_SPOS_SetDefaults" /><signal_cue_instantly cue="JKEOC_SPOS_ConfigAccepted" param="'Safe observation defaults restored'" /></actions></cue>
+
+    <cue name="JKEOC_SPOS_ConfigAccepted" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="global.$JKEOC_ObservationConfig.$revision" exact="global.$JKEOC_ObservationConfig.$revision + 1" />
+        <do_if value="global.$JKEOC_ObservationConfig.$revision ge 10000"><set_value name="global.$JKEOC_ObservationConfig.$revision" exact="1" /></do_if>
+        <set_value name="global.$JKEOC_ObservationConfig.$lastchanged" exact="player.age" />
+        <show_notification text="'EOC DIAGNOSTIC SETTING APPLIED\n%1\nTakes effect on the next observation cycle.'.[event.param]" timeout="10s" />
+        <debug_text text="'[JKEOC][V600][SPOS_CONFIG_ACCEPTED] revision=%1 change=%2'.[global.$JKEOC_ObservationConfig.$revision, event.param]" filter="general" />
+        <add_player_choice_sub text="'SETTING APPLIED - RETURN TO DIAGNOSTIC CONSOLE'" position="left" section="JKEOC_SPOS_Console" />
+        <add_player_choice_sub text="'SETTING APPLIED - RETURN TO EOC CONTROLS'" position="bottom_right" section="JKEOC_SPOS_ControlHub" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_SPOS_ControlHub" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_SPOS_ControlHub" /></conditions>
+      <actions>
+        <add_player_choice_sub text="'RUN EMPIRE ANALYSIS'" position="top_left" section="JKSM_MenuRefresh" />
+        <add_player_choice_sub text="'GENERATE OBSERVATION STATUS REPORT'" position="left" section="JKEOC_SPOS_WriteStatus" />
+        <add_player_choice_sub text="'OPEN EXECUTIVE ADVISOR'" position="bottom_left" section="JKEOC_B67_Hub" />
+        <add_player_choice_sub text="'OPEN STATION STABILIZATION ADVISOR'" position="top_right" section="JKEOC_B64_Console" />
+        <add_player_choice_sub text="'OPEN SHIPYARD LIFECYCLE STATUS'" position="right" section="JKEOC_B66_Console" />
+        <add_player_choice_sub text="'BACK TO EOC'" position="bottom_right" section="JKSM_EmpireOperations" />
+      </actions>
+    </cue>
+
+  </cues>
+</mdscript>

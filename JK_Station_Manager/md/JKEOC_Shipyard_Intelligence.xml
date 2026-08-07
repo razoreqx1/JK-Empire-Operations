@@ -1,0 +1,385 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Shipyard_Intelligence" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!--
+    EOC v6.0.0 Build 65 - bounded shipyard lifecycle and station snapshot intelligence.
+    Observation only: this script contains no build, abort, assignment, order, trade,
+    price, offer, storage, construction, ownership, ware, or money mutation action.
+
+    Provenance:
+    - Native event shapes verified in Egosoft story_boron.xml and story_research_erlking.xml.
+    - UPB Fleet Manager by netUpb/fikrethos was studied under recorded permission for
+      lifecycle concepts and field discovery. No UPB runtime dependency or code transfer.
+    - Record model, bounded retention, correlation and reporting are original EOC logic.
+  -->
+  <cues>
+    <cue name="JKEOC_B66_Initialize" namespace="this">
+      <conditions><event_game_loaded /></conditions>
+      <actions>
+        <do_if value="not global.$JKEOC_B66Schema?"><set_value name="global.$JKEOC_B66Schema" exact="1" /></do_if>
+        <do_if value="not global.$JKEOC_B66NextIdentity?"><set_value name="global.$JKEOC_B66NextIdentity" exact="1" /></do_if>
+        <do_if value="not global.$JKEOC_B66Active?"><set_value name="global.$JKEOC_B66Active" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B66History?"><set_value name="global.$JKEOC_B66History" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B66Snapshots?"><set_value name="global.$JKEOC_B66Snapshots" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B66ActiveOverflow?"><set_value name="global.$JKEOC_B66ActiveOverflow" exact="0" /></do_if>
+        <do_if value="global.$JKEOC_B66Schema lt 4">
+          <set_value name="$operationalrecords" exact="[]" />
+          <set_value name="global.$JKEOC_B66ExcludedUnits" exact="0" />
+          <do_for_each name="$legacyrecord" in="global.$JKEOC_B66Active">
+            <set_value name="$realship" exact="@$legacyrecord.$build.buildobject.isrealclass.ship or @$legacyrecord.$resultship.isrealclass.ship" />
+            <do_if value="not $realship or @$legacyrecord.$build.buildobject.isunit or @$legacyrecord.$resultship.isunit or @$legacyrecord.$build.buildobject.macro.isclass.ship_xs or @$legacyrecord.$resultship.isclass.ship_xs"><set_value name="global.$JKEOC_B66ExcludedUnits" exact="global.$JKEOC_B66ExcludedUnits + 1" /></do_if>
+            <do_else><append_to_list name="$operationalrecords" exact="$legacyrecord" /></do_else>
+          </do_for_each>
+          <set_value name="global.$JKEOC_B66Active" exact="$operationalrecords" />
+          <set_value name="global.$JKEOC_B66ActiveOverflow" exact="0" />
+          <set_value name="global.$JKEOC_B66Schema" exact="4" />
+          <debug_text text="'[JKEOC][B77][LIFECYCLE_MIGRATION] excluded_nonships_units_or_xs=%1 retained_operational=%2'.[global.$JKEOC_B66ExcludedUnits, global.$JKEOC_B66Active.count]" filter="general" />
+        </do_if>
+        <do_if value="not global.$JKEOC_B66Mailbox?"><set_value name="global.$JKEOC_B66Mailbox" exact="table[$schema=1, $status='EMPTY', $verb='', $nonce='', $target=null, $created=0, $expires=0, $result='', $count=0]" /></do_if>
+        <do_if value="not global.$JKEOC_B66LastNonce?"><set_value name="global.$JKEOC_B66LastNonce" exact="''" /></do_if>
+        <do_if value="not global.$JKEOC_B66LastLifecycleReport?"><set_value name="global.$JKEOC_B66LastLifecycleReport" exact="0" /></do_if>
+        <signal_cue_instantly cue="JKEOC_B66_Reconcile" />
+        <signal_cue_instantly cue="JKEOC_B66_Scheduler" />
+        <debug_text text="'[JKEOC][B66][INIT] schema=%1 active=%2 history=%3 observation_only=1'.[global.$JKEOC_B66Schema, global.$JKEOC_B66Active.count, global.$JKEOC_B66History.count]" filter="general" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B66_Scheduler" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <delay exact="1min" />
+      <actions>
+        <signal_cue_instantly cue="JKEOC_B66_Reconcile" />
+        <signal_cue_instantly cue="JKEOC_B66_ProcessMailbox" />
+        <signal_cue_instantly cue="this.static" />
+      </actions>
+    </cue>
+
+    <!-- Native player build queue observation. Player ownership is intrinsic to this event. -->
+    <cue name="JKEOC_B66_BuildAdded" instantiate="true" namespace="this">
+      <conditions>
+        <event_player_build_added />
+        <check_value value="event.param.exists and event.param.isshipbuild" />
+        <check_value value="@event.param.buildobject.isrealclass.ship and not @event.param.buildobject.isunit and not @event.param.buildobject.macro.isclass.ship_xs" />
+      </conditions>
+      <actions>
+        <set_value name="$highpriority" exact="@event.param.buildobject.macro.isclass.[class.ship_l, class.ship_xl]" />
+        <set_value name="$known" exact="false" />
+        <do_for_each name="$record" in="global.$JKEOC_B66Active">
+          <do_if value="$record.$build == event.param"><set_value name="$known" exact="true" /></do_if>
+        </do_for_each>
+        <do_if value="not $known and (($highpriority and global.$JKEOC_B66Active.count lt 64) or (not $highpriority and global.$JKEOC_B66Active.count lt 48))">
+          <set_value name="$identity" exact="'B66-%1'.[global.$JKEOC_B66NextIdentity]" />
+          <set_value name="global.$JKEOC_B66NextIdentity" exact="global.$JKEOC_B66NextIdentity + 1" />
+          <append_to_list name="global.$JKEOC_B66Active" exact="table[$identity=$identity, $build=event.param, $shipyard=event.param2, $shipyardname=if event.param2.exists then event.param2.name else 'UNAVAILABLE', $macro=if @event.param.macro then event.param.macro else null, $shipname=if @event.param.buildobject.exists then event.param.buildobject.name else 'UNAVAILABLE', $state='QUEUED', $queuedat=player.age, $startedat=0, $completedat=0, $lastseen=player.age, $resultship=null, $intendedstation=null, $intentproven=false, $need='UNAVAILABLE', $terminal='', $uncertainty='Station intent and blocking ware are unavailable until independently proven', $assignmentexpires=0]" />
+          <debug_text text="'[JKEOC][B66][LIFECYCLE] id=%1 transition=QUEUED yard=%2 active=%3'.[$identity, if event.param2.exists then event.param2.name else 'UNAVAILABLE', global.$JKEOC_B66Active.count]" filter="general" />
+        </do_if>
+        <do_elseif value="not $known">
+          <set_value name="global.$JKEOC_B66ActiveOverflow" exact="if global.$JKEOC_B66ActiveOverflow lt 9999 then global.$JKEOC_B66ActiveOverflow + 1 else 9999" />
+          <debug_text text="'[JKEOC][B66][OVERFLOW] active_limit=64 rejected=1 total=%1'.[global.$JKEOC_B66ActiveOverflow]" filter="general" />
+        </do_elseif>
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B66_BuildStarted" instantiate="true" namespace="this">
+      <conditions>
+        <event_player_build_started />
+        <check_value value="event.param3.exists and event.param3.isshipbuild" />
+        <check_value value="@event.param3.buildobject.isrealclass.ship and not @event.param3.buildobject.isunit and not @event.param3.buildobject.macro.isclass.ship_xs" />
+      </conditions>
+      <actions>
+        <set_value name="$matched" exact="false" />
+        <do_for_each name="$record" in="global.$JKEOC_B66Active">
+          <do_if value="$record.$build == event.param3">
+            <set_value name="$record.$state" exact="'STARTED'" />
+            <set_value name="$record.$startedat" exact="player.age" />
+            <set_value name="$record.$lastseen" exact="player.age" />
+            <set_value name="$record.$resultship" exact="if @event.param.buildanchor.exists then event.param.buildanchor else if @event.param3.buildobject.exists then event.param3.buildobject else null" />
+            <set_value name="$matched" exact="true" />
+            <debug_text text="'[JKEOC][B66][LIFECYCLE] id=%1 transition=STARTED'.[$record.$identity]" filter="general" />
+          </do_if>
+        </do_for_each>
+        <do_if value="not $matched"><debug_text text="'[JKEOC][B66][LIFECYCLE] transition=STARTED result=UNMATCHED_NO_GUESS'" filter="general" /></do_if>
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B66_BuildCancelled" instantiate="true" namespace="this">
+      <conditions>
+        <event_player_build_cancelled />
+        <check_value value="event.param.isshipbuild" />
+        <check_value value="@event.param.buildobject.isrealclass.ship and not @event.param.buildobject.isunit and not @event.param.buildobject.macro.isclass.ship_xs" />
+      </conditions>
+      <actions>
+        <do_for_each name="$record" in="global.$JKEOC_B66Active" reverse="true">
+          <do_if value="$record.$build == event.param">
+            <set_value name="$record.$state" exact="'CANCELLED'" />
+            <set_value name="$record.$terminal" exact="'CANCELLED'" />
+            <set_value name="$record.$lastseen" exact="player.age" />
+            <signal_cue_instantly cue="JKEOC_B66_Archive" param="$record" />
+            <remove_from_list name="global.$JKEOC_B66Active" exact="$record" />
+            <debug_text text="'[JKEOC][B66][LIFECYCLE] id=%1 transition=CANCELLED'.[$record.$identity]" filter="general" />
+          </do_if>
+        </do_for_each>
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B66_BuildFinished" instantiate="true" namespace="this">
+      <conditions>
+        <event_player_build_finished />
+        <check_value value="event.param3.isshipbuild" />
+        <check_value value="@event.param3.buildobject.isrealclass.ship and not @event.param3.buildobject.isunit and not @event.param3.buildobject.macro.isclass.ship_xs" />
+      </conditions>
+      <actions>
+        <set_value name="$matched" exact="false" />
+        <do_for_each name="$record" in="global.$JKEOC_B66Active">
+          <do_if value="$record.$build == event.param3">
+            <set_value name="$record.$state" exact="'AWAITING FINAL ASSIGNMENT'" />
+            <set_value name="$record.$completedat" exact="player.age" />
+            <set_value name="$record.$lastseen" exact="player.age" />
+            <set_value name="$record.$resultship" exact="if @event.param3.buildobject.exists then event.param3.buildobject else $record.$resultship" />
+            <set_value name="$record.$shipname" exact="if @$record.$resultship.exists then $record.$resultship.name else 'UNAVAILABLE'" />
+            <set_value name="$record.$assignmentexpires" exact="player.age + 10min" />
+            <set_value name="$record.$uncertainty" exact="if $record.$intentproven then 'Awaiting bounded assignment evidence' else 'No verified station-intent link; queued relief and station need remain separate'" />
+            <set_value name="$matched" exact="true" />
+            <debug_text text="'[JKEOC][B66][LIFECYCLE] id=%1 transition=COMPLETED next=AWAITING_FINAL_ASSIGNMENT ship=%2'.[$record.$identity, $record.$shipname]" filter="general" />
+            <signal_cue_instantly cue="md.JKEOC_Operational_Remediation.JKEOC_B70_RecognizeCompletedShip" param="$record" />
+          </do_if>
+        </do_for_each>
+        <do_if value="not $matched"><debug_text text="'[JKEOC][B66][LIFECYCLE] transition=COMPLETED result=UNMATCHED_NO_GUESS'" filter="general" /></do_if>
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B66_Archive" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <do_if value="global.$JKEOC_B66History.count ge 32"><remove_value name="global.$JKEOC_B66History.{1}" /></do_if>
+        <append_to_list name="global.$JKEOC_B66History" exact="event.param" />
+      </actions>
+    </cue>
+
+    <!-- Reconcile post-completion assignment and produce one bounded snapshot per station. -->
+    <cue name="JKEOC_B66_Reconcile" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <!--
+          Permission-controlled UPB discovery adaptation: take a bounded native snapshot
+          of player station build containers before processing event deltas. This recovers
+          queued/in-progress tasks already present when the capability is first loaded.
+        -->
+        <find_station name="$playeryards" owner="faction.player" multiple="true" space="player.galaxy" />
+        <set_value name="$yardsampled" exact="0" />
+        <set_value name="$queuedobserved" exact="0" />
+        <set_value name="$startedobserved" exact="0" />
+        <!-- In-progress operational ships are admitted before queued work. -->
+        <do_for_each name="$priorityyard" in="$playeryards">
+          <do_if value="$yardsampled lt 64">
+            <set_value name="$yardsampled" exact="$yardsampled + 1" />
+            <do_for_each name="$prioritybuild" in="$priorityyard.builds.inprogress">
+              <do_if value="$prioritybuild.exists and $prioritybuild.isshipbuild and @$prioritybuild.buildobject.isrealclass.ship and not @$prioritybuild.buildobject.isunit and not @$prioritybuild.buildobject.macro.isclass.ship_xs and $startedobserved lt 64">
+                <set_value name="$startedobserved" exact="$startedobserved + 1" />
+                <set_value name="$highpriority" exact="@$prioritybuild.buildobject.macro.isclass.[class.ship_l, class.ship_xl]" />
+                <set_value name="$known" exact="false" />
+                <do_for_each name="$existing" in="global.$JKEOC_B66Active">
+                  <do_if value="$existing.$build == $prioritybuild">
+                    <set_value name="$known" exact="true" />
+                    <set_value name="$existing.$state" exact="'STARTED'" />
+                    <do_if value="$existing.$startedat == 0"><set_value name="$existing.$startedat" exact="player.age" /></do_if>
+                    <set_value name="$existing.$lastseen" exact="player.age" />
+                    <set_value name="$existing.$resultship" exact="if @$prioritybuild.buildobject.exists then $prioritybuild.buildobject else $existing.$resultship" />
+                  </do_if>
+                </do_for_each>
+                <do_if value="not $known and (($highpriority and global.$JKEOC_B66Active.count lt 64) or (not $highpriority and global.$JKEOC_B66Active.count lt 48))">
+                  <set_value name="$identity" exact="'B66-%1'.[global.$JKEOC_B66NextIdentity]" />
+                  <set_value name="global.$JKEOC_B66NextIdentity" exact="global.$JKEOC_B66NextIdentity + 1" />
+                  <append_to_list name="global.$JKEOC_B66Active" exact="table[$identity=$identity, $build=$prioritybuild, $shipyard=$priorityyard, $shipyardname=$priorityyard.name, $macro=if @$prioritybuild.macro then $prioritybuild.macro else null, $shipname=if @$prioritybuild.buildobject.exists then $prioritybuild.buildobject.name else if @$prioritybuild.macro then $prioritybuild.macro.name else 'UNAVAILABLE', $state='STARTED', $priority=if $highpriority then 'L/XL' else 'OPERATIONAL', $queueposition=0, $queuedat=0, $startedat=player.age, $completedat=0, $lastseen=player.age, $resultship=if @$prioritybuild.buildobject.exists then $prioritybuild.buildobject else null, $intendedstation=null, $intentproven=false, $need='UNAVAILABLE', $terminal='', $uncertainty='Recovered from bounded in-progress snapshot; original queue time and station intent are unavailable', $assignmentexpires=0]" />
+                  <debug_text text="'[JKEOC][B66][DISCOVERY] id=%1 state=STARTED ship=%2 yard=%3 priority=%4 source=BOUNDED_SNAPSHOT'.[$identity, if @$prioritybuild.buildobject.exists then $prioritybuild.buildobject.name else if @$prioritybuild.macro then $prioritybuild.macro.name else 'UNAVAILABLE', $priorityyard.name, if $highpriority then 'L/XL' else 'OPERATIONAL']" filter="general" />
+                </do_if>
+                <do_elseif value="not $known">
+                  <set_value name="global.$JKEOC_B66ActiveOverflow" exact="if global.$JKEOC_B66ActiveOverflow lt 9999 then global.$JKEOC_B66ActiveOverflow + 1 else 9999" />
+                </do_elseif>
+              </do_if>
+            </do_for_each>
+          </do_if>
+        </do_for_each>
+        <set_value name="$yardsampled" exact="0" />
+        <do_for_each name="$yard" in="$playeryards">
+          <do_if value="$yardsampled lt 64">
+            <set_value name="$yardsampled" exact="$yardsampled + 1" />
+            <do_for_each name="$queuedbuild" in="$yard.builds.queued" counter="$queueposition">
+              <do_if value="$queuedbuild.exists and $queuedbuild.isshipbuild and @$queuedbuild.buildobject.isrealclass.ship and not @$queuedbuild.buildobject.isunit and not @$queuedbuild.buildobject.macro.isclass.ship_xs and $queuedobserved lt 64">
+                <set_value name="$queuedobserved" exact="$queuedobserved + 1" />
+                <set_value name="$highpriority" exact="@$queuedbuild.buildobject.macro.isclass.[class.ship_l, class.ship_xl]" />
+                <set_value name="$known" exact="false" />
+                <do_for_each name="$existing" in="global.$JKEOC_B66Active">
+                  <do_if value="$existing.$build == $queuedbuild">
+                    <set_value name="$known" exact="true" />
+                    <set_value name="$existing.$queueposition" exact="$queueposition" />
+                    <set_value name="$existing.$lastseen" exact="player.age" />
+                    <do_if value="$existing.$state == 'STALLED OR BLOCKED'"><set_value name="$existing.$uncertainty" exact="'Still queued; exact blocking ware is unavailable unless native evidence supplies it'" /></do_if>
+                  </do_if>
+                </do_for_each>
+                <do_if value="not $known and (($highpriority and global.$JKEOC_B66Active.count lt 64) or (not $highpriority and global.$JKEOC_B66Active.count lt 48))">
+                  <set_value name="$identity" exact="'B66-%1'.[global.$JKEOC_B66NextIdentity]" />
+                  <set_value name="global.$JKEOC_B66NextIdentity" exact="global.$JKEOC_B66NextIdentity + 1" />
+                  <append_to_list name="global.$JKEOC_B66Active" exact="table[$identity=$identity, $build=$queuedbuild, $shipyard=$yard, $shipyardname=$yard.name, $macro=if @$queuedbuild.macro then $queuedbuild.macro else null, $shipname=if @$queuedbuild.buildobject.exists then $queuedbuild.buildobject.name else if @$queuedbuild.macro then $queuedbuild.macro.name else 'UNAVAILABLE', $state='QUEUED', $priority=if $highpriority then 'L/XL' else 'OPERATIONAL', $queueposition=$queueposition, $queuedat=player.age, $startedat=0, $completedat=0, $lastseen=player.age, $resultship=if @$queuedbuild.buildobject.exists then $queuedbuild.buildobject else null, $intendedstation=null, $intentproven=false, $need='UNAVAILABLE', $terminal='', $uncertainty='Recovered from bounded queue snapshot; station intent remains unproven', $assignmentexpires=0]" />
+                  <debug_text text="'[JKEOC][B66][DISCOVERY] id=%1 state=QUEUED ship=%2 yard=%3 position=%4 priority=%5 source=BOUNDED_SNAPSHOT'.[$identity, if @$queuedbuild.buildobject.exists then $queuedbuild.buildobject.name else if @$queuedbuild.macro then $queuedbuild.macro.name else 'UNAVAILABLE', $yard.name, $queueposition, if $highpriority then 'L/XL' else 'OPERATIONAL']" filter="general" />
+                </do_if>
+                <do_elseif value="not $known">
+                  <set_value name="global.$JKEOC_B66ActiveOverflow" exact="if global.$JKEOC_B66ActiveOverflow lt 9999 then global.$JKEOC_B66ActiveOverflow + 1 else 9999" />
+                </do_elseif>
+              </do_if>
+            </do_for_each>
+            <do_for_each name="$progressbuild" in="$yard.builds.inprogress">
+              <do_if value="$progressbuild.exists and $progressbuild.isshipbuild and @$progressbuild.buildobject.isrealclass.ship and not @$progressbuild.buildobject.isunit and not @$progressbuild.buildobject.macro.isclass.ship_xs">
+                <set_value name="$highpriority" exact="@$progressbuild.buildobject.macro.isclass.[class.ship_l, class.ship_xl]" />
+                <set_value name="$known" exact="false" />
+                <do_for_each name="$existing" in="global.$JKEOC_B66Active">
+                  <do_if value="$existing.$build == $progressbuild">
+                    <set_value name="$known" exact="true" />
+                    <set_value name="$existing.$state" exact="'STARTED'" />
+                    <do_if value="$existing.$startedat == 0"><set_value name="$existing.$startedat" exact="player.age" /></do_if>
+                    <set_value name="$existing.$lastseen" exact="player.age" />
+                    <set_value name="$existing.$resultship" exact="if @$progressbuild.buildobject.exists then $progressbuild.buildobject else $existing.$resultship" />
+                  </do_if>
+                </do_for_each>
+                <do_if value="not $known and (($highpriority and global.$JKEOC_B66Active.count lt 64) or (not $highpriority and global.$JKEOC_B66Active.count lt 48))">
+                  <set_value name="$identity" exact="'B66-%1'.[global.$JKEOC_B66NextIdentity]" />
+                  <set_value name="global.$JKEOC_B66NextIdentity" exact="global.$JKEOC_B66NextIdentity + 1" />
+                  <append_to_list name="global.$JKEOC_B66Active" exact="table[$identity=$identity, $build=$progressbuild, $shipyard=$yard, $shipyardname=$yard.name, $macro=if @$progressbuild.macro then $progressbuild.macro else null, $shipname=if @$progressbuild.buildobject.exists then $progressbuild.buildobject.name else if @$progressbuild.macro then $progressbuild.macro.name else 'UNAVAILABLE', $state='STARTED', $queueposition=0, $queuedat=0, $startedat=player.age, $completedat=0, $lastseen=player.age, $resultship=if @$progressbuild.buildobject.exists then $progressbuild.buildobject else null, $intendedstation=null, $intentproven=false, $need='UNAVAILABLE', $terminal='', $uncertainty='Recovered from bounded in-progress snapshot; original queue time and station intent are unavailable', $assignmentexpires=0]" />
+                  <debug_text text="'[JKEOC][B66][DISCOVERY] id=%1 state=STARTED yard=%2 source=BOUNDED_SNAPSHOT'.[$identity, $yard.name]" filter="general" />
+                </do_if>
+                <do_elseif value="not $known">
+                  <set_value name="global.$JKEOC_B66ActiveOverflow" exact="if global.$JKEOC_B66ActiveOverflow lt 9999 then global.$JKEOC_B66ActiveOverflow + 1 else 9999" />
+                </do_elseif>
+              </do_if>
+            </do_for_each>
+          </do_if>
+        </do_for_each>
+
+        <do_for_each name="$record" in="global.$JKEOC_B66Active" reverse="true">
+          <set_value name="$record.$lastseen" exact="player.age" />
+          <do_if value="$record.$state == 'QUEUED' and player.age - $record.$queuedat ge 30min">
+            <set_value name="$record.$state" exact="'STALLED OR BLOCKED'" />
+            <set_value name="$record.$uncertainty" exact="'Queue age exceeded 30 minutes; exact blocking ware is unavailable unless native evidence supplies it'" />
+            <debug_text text="'[JKEOC][B66][LIFECYCLE] id=%1 transition=STALLED_OR_BLOCKED cause=UNAVAILABLE'.[$record.$identity]" filter="general" />
+          </do_if>
+          <do_if value="$record.$state == 'AWAITING FINAL ASSIGNMENT' and @$record.$resultship.exists and @$record.$resultship.commander.exists and $record.$intentproven and $record.$resultship.commander == $record.$intendedstation">
+            <set_value name="$record.$state" exact="'TERMINAL OUTCOME'" />
+            <set_value name="$record.$terminal" exact="'SATISFIED STATION NEED'" />
+          </do_if>
+          <do_elseif value="$record.$state == 'AWAITING FINAL ASSIGNMENT' and @$record.$resultship.exists and @$record.$resultship.commander.exists and $record.$intentproven and $record.$resultship.commander != $record.$intendedstation">
+            <set_value name="$record.$state" exact="'TERMINAL OUTCOME'" />
+            <set_value name="$record.$terminal" exact="'DIVERTED / ASSIGNED ELSEWHERE'" />
+          </do_elseif>
+          <do_elseif value="$record.$state == 'AWAITING FINAL ASSIGNMENT' and player.age ge $record.$assignmentexpires">
+            <set_value name="$record.$state" exact="'TERMINAL OUTCOME'" />
+            <set_value name="$record.$terminal" exact="'UNRESOLVED AFTER ASSIGNMENT WINDOW'" />
+          </do_elseif>
+          <do_if value="$record.$state == 'TERMINAL OUTCOME'">
+            <signal_cue_instantly cue="JKEOC_B66_Archive" param="$record" />
+            <remove_from_list name="global.$JKEOC_B66Active" exact="$record" />
+            <debug_text text="'[JKEOC][B66][LIFECYCLE] id=%1 terminal=%2'.[$record.$identity, $record.$terminal]" filter="general" />
+          </do_if>
+        </do_for_each>
+
+        <set_value name="global.$JKEOC_B66Snapshots" exact="[]" />
+        <do_if value="global.$JKEOC_StationDirectory?">
+          <do_for_each name="$stationrecord" in="global.$JKEOC_StationDirectory">
+            <do_if value="global.$JKEOC_B66Snapshots.count lt 64 and $stationrecord.$station.exists">
+              <set_value name="$primary" exact="'NO SYSTEMIC CONSTRAINT CONFIRMED'" />
+              <set_value name="$evidence" exact="'Current bounded evidence has not established a chronic station constraint'" />
+              <set_value name="$recommendation" exact="'OBSERVE'" />
+              <set_value name="$confidence" exact="'LOW'" />
+              <do_for_each name="$finding" in="global.$JKEOC_B64Findings">
+                <do_if value="$finding.$station == $stationrecord.$station">
+                  <set_value name="$primary" exact="$finding.$cause" />
+                  <set_value name="$evidence" exact="$finding.$evidence" />
+                  <set_value name="$recommendation" exact="$finding.$action" />
+                  <set_value name="$confidence" exact="if $finding.$systemic then 'MEDIUM' else 'LOW'" />
+                </do_if>
+              </do_for_each>
+              <set_value name="$relief" exact="'NO PROVEN PLANNED RELIEF'" />
+              <do_for_each name="$life" in="global.$JKEOC_B66Active">
+                <do_if value="$life.$intentproven and $life.$intendedstation == $stationrecord.$station">
+                  <set_value name="$relief" exact="'%1 - %2'.[$life.$identity, $life.$state]" />
+                  <set_value name="$recommendation" exact="'WAIT FOR VERIFIED PENDING RELIEF'" />
+                </do_if>
+              </do_for_each>
+              <append_to_list name="global.$JKEOC_B66Snapshots" exact="table[$station=$stationrecord.$station, $stationname=$stationrecord.$stationname, $captured=player.age, $primary=$primary, $evidence=$evidence, $confidence=$confidence, $relief=$relief, $recommendation=$recommendation, $workforce=if $stationrecord.$workforcesupplyriskcount gt 0 then 'AT RISK' else 'NO VERIFIED RISK', $containerfree=$stationrecord.$containerfree, $solidfree=$stationrecord.$solidfree, $liquidfree=$stationrecord.$liquidfree, $assignedships=$stationrecord.$shipcount, $limitations='Prices, rule causes, exact queue position, blocking wares and unproven station intent are not guessed']" />
+            </do_if>
+          </do_for_each>
+        </do_if>
+        <debug_text text="'[JKEOC][B66][RECONCILE] yards=%1 queued=%2 started=%3 active=%4 history=%5 snapshots=%6 overflow=%7 observation_only=1'.[$yardsampled, $queuedobserved, $startedobserved, global.$JKEOC_B66Active.count, global.$JKEOC_B66History.count, global.$JKEOC_B66Snapshots.count, global.$JKEOC_B66ActiveOverflow]" filter="general" />
+      </actions>
+    </cue>
+
+    <!-- Fixed-schema, one-request engineering mailbox. No arbitrary expressions or commands. -->
+    <cue name="JKEOC_B66_ProcessMailbox" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <do_if value="global.$JKEOC_B66Mailbox.$status == 'PENDING'">
+          <set_value name="$validverb" exact="global.$JKEOC_B66Mailbox.$verb == 'SNAPSHOT_SHIPYARDS' or global.$JKEOC_B66Mailbox.$verb == 'WATCH_BUILD_QUEUE' or global.$JKEOC_B66Mailbox.$verb == 'REPORT_BUILD_LIFECYCLE' or global.$JKEOC_B66Mailbox.$verb == 'TRACE_RESULTING_SHIP' or global.$JKEOC_B66Mailbox.$verb == 'SNAPSHOT_STATION_OPERATION'" />
+          <set_value name="$validtarget" exact="global.$JKEOC_B66Mailbox.$target == null or global.$JKEOC_B66Mailbox.$target.exists" />
+          <set_value name="$valid" exact="global.$JKEOC_B66Mailbox.$schema == 1 and global.$JKEOC_B66Mailbox.$nonce != '' and global.$JKEOC_B66Mailbox.$nonce != global.$JKEOC_B66LastNonce and global.$JKEOC_B66Mailbox.$created le player.age and global.$JKEOC_B66Mailbox.$expires ge player.age and $validverb and $validtarget" />
+          <do_if value="$valid">
+            <set_value name="global.$JKEOC_B66LastNonce" exact="global.$JKEOC_B66Mailbox.$nonce" />
+            <set_value name="global.$JKEOC_B66Mailbox.$status" exact="'ACKNOWLEDGED'" />
+            <signal_cue_instantly cue="JKEOC_B66_Reconcile" />
+            <set_value name="global.$JKEOC_B66Mailbox.$count" exact="if global.$JKEOC_B66Mailbox.$verb == 'SNAPSHOT_STATION_OPERATION' then global.$JKEOC_B66Snapshots.count else global.$JKEOC_B66Active.count + global.$JKEOC_B66History.count" />
+            <set_value name="global.$JKEOC_B66Mailbox.$result" exact="'Bounded observation complete; active=%1 history=%2 snapshots=%3 overflow=%4'.[global.$JKEOC_B66Active.count, global.$JKEOC_B66History.count, global.$JKEOC_B66Snapshots.count, global.$JKEOC_B66ActiveOverflow]" />
+            <set_value name="global.$JKEOC_B66Mailbox.$status" exact="'COMPLETED'" />
+          </do_if>
+          <do_else>
+            <set_value name="global.$JKEOC_B66Mailbox.$status" exact="'REJECTED'" />
+            <set_value name="global.$JKEOC_B66Mailbox.$result" exact="'Rejected: schema, allowlist, nonce, target or expiry validation failed'" />
+            <set_value name="global.$JKEOC_B66Mailbox.$count" exact="0" />
+          </do_else>
+          <debug_text text="'[JKEOC][B66][MAILBOX] verb=%1 nonce=%2 status=%3 count=%4'.[global.$JKEOC_B66Mailbox.$verb, global.$JKEOC_B66Mailbox.$nonce, global.$JKEOC_B66Mailbox.$status, global.$JKEOC_B66Mailbox.$count]" filter="general" />
+        </do_if>
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B66_Console" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B66_Console" /></conditions>
+      <actions>
+        <add_player_choice_sub text="'SHIPYARD LIFECYCLE STATUS - %1 ACTIVE / %2 HISTORY'.[global.$JKEOC_B66Active.count, global.$JKEOC_B66History.count]" position="top_left" section="JKEOC_B66_WriteStatus" />
+        <add_player_choice_sub text="'STATION OPERATIONAL SNAPSHOTS - %1'.[global.$JKEOC_B66Snapshots.count]" position="left" section="JKEOC_B66_WriteSnapshots" />
+        <add_player_choice_sub text="'RUN BOUNDED RECONCILIATION'" position="top_right" section="JKEOC_B66_Refresh" />
+        <add_player_choice_sub text="'BACK TO STABILIZATION'" position="bottom_right" section="JKEOC_B64_Console" />
+      </actions>
+    </cue>
+    <cue name="JKEOC_B66_Refresh" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B66_Refresh" /></conditions><actions><show_notification text="'ACTION: Shipyard lifecycle reconciliation started.'" timeout="4s" /><signal_cue_instantly cue="JKEOC_B66_Reconcile" /><show_notification text="'ACTION: Shipyard lifecycle reconciliation complete.'" timeout="6s" /><add_player_choice_sub text="'REFRESHED - RETURN'" position="bottom_right" section="JKEOC_B66_Console" /></actions></cue>
+
+    <cue name="JKEOC_B66_WriteStatus" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B66_WriteStatus" /></conditions>
+      <actions>
+        <write_to_logbook category="general" title="'EOC Shipyard Lifecycle Summary'" text="'Active lifecycle records: %1 / 64\nTerminal history: %2 / 32\nRejected active records: %3\nOperational snapshots: %4\n\nStates: QUEUED, STARTED, STALLED OR BLOCKED, AWAITING FINAL ASSIGNMENT and terminal outcomes. Unproven station intent never suppresses a recommendation. Observation only; EOC changed no shipyard, ship, assignment, order, station, price, offer, trade rule, storage, ware, funds or construction.'.[global.$JKEOC_B66Active.count, global.$JKEOC_B66History.count, global.$JKEOC_B66ActiveOverflow, global.$JKEOC_B66Snapshots.count]" />
+        <set_value name="$written" exact="0" />
+        <do_for_each name="$record" in="global.$JKEOC_B66Active">
+          <do_if value="$written lt 5">
+            <set_value name="$written" exact="$written + 1" />
+            <write_to_logbook category="general" title="'EOC Lifecycle %1'.[$record.$identity]" text="'State: %1\nShip: %2\nShipyard: %3\nQueued: %4\nStarted: %5\nCompleted: %6\nStation intent proven: %7\nNeed: %8\nUncertainty: %9'.[$record.$state, $record.$shipname, $record.$shipyardname, $record.$queuedat, $record.$startedat, $record.$completedat, $record.$intentproven, $record.$need, $record.$uncertainty]" />
+          </do_if>
+        </do_for_each>
+        <write_to_logbook category="tips" title="'EOC lifecycle status saved'" text="'Open the EOC Logbook and search for Shipyard Lifecycle. Output is bounded to one summary plus five active details.'" />
+        <show_notification text="'ACTION: Shipyard lifecycle report generated. NOTE: Report saved to the Logbook.'" timeout="8s" />
+        <add_player_choice_sub text="'STATUS SAVED - RETURN'" position="bottom_right" section="JKEOC_B66_Console" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B66_WriteSnapshots" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B66_WriteSnapshots" /></conditions>
+      <actions>
+        <set_value name="$written" exact="0" />
+        <do_for_each name="$snapshot" in="global.$JKEOC_B66Snapshots">
+          <do_if value="$written lt 5">
+            <set_value name="$written" exact="$written + 1" />
+            <write_to_logbook category="general" title="'EOC Station Snapshot %1'.[$written]" text="'Station: %1\nPrimary condition: %2\nEvidence: %3\nConfidence: %4\nPlanned relief: %5\nWorkforce: %6\nAssigned ships: %7\nStorage free (container / solid / liquid): %8 / %9 / %10\nRecommendation: %11\nUnavailable / limitations: %12\n\nObservation only.'.[$snapshot.$stationname, $snapshot.$primary, $snapshot.$evidence, $snapshot.$confidence, $snapshot.$relief, $snapshot.$workforce, $snapshot.$assignedships, $snapshot.$containerfree, $snapshot.$solidfree, $snapshot.$liquidfree, $snapshot.$recommendation, $snapshot.$limitations]" />
+          </do_if>
+        </do_for_each>
+        <write_to_logbook category="tips" title="'EOC station snapshots saved'" text="'Open the EOC Logbook and search for Station Snapshot. At most five bounded entries were written.'" />
+        <show_notification text="'ACTION: Station snapshot report generated. NOTE: Report saved to the Logbook.'" timeout="8s" />
+        <add_player_choice_sub text="'SNAPSHOTS SAVED - RETURN'" position="bottom_right" section="JKEOC_B66_Console" />
+      </actions>
+    </cue>
+  </cues>
+</mdscript>
+

@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Autonomous_Stabilization" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!--
+    EOC v6.0.0 Build 64A - Bounded Logbook Presentation Correction
+    Clean-room, native-MD implementation. Observation and advice are automatic.
+    Station mutations remain gated unless a native, reversible proof exists.
+  -->
+  <cues>
+    <cue name="JKEOC_B64_Initialize" namespace="this">
+      <conditions><event_game_loaded /></conditions>
+      <actions>
+        <do_if value="not global.$JKEOC_B64Schema?"><set_value name="global.$JKEOC_B64Schema" exact="1" /></do_if>
+        <do_if value="not global.$JKEOC_B64DefaultGoal?"><set_value name="global.$JKEOC_B64DefaultGoal" exact="'OBSERVE AND ADVISE ONLY'" /></do_if>
+        <do_if value="not global.$JKEOC_B64Policies?"><set_value name="global.$JKEOC_B64Policies" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B64Findings?"><set_value name="global.$JKEOC_B64Findings" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B64ShipRegistry?"><set_value name="global.$JKEOC_B64ShipRegistry" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B64ShipRegistrySeeded?"><set_value name="global.$JKEOC_B64ShipRegistrySeeded" exact="false" /></do_if>
+        <do_if value="not global.$JKEOC_B64ShipRegistryOverflow?"><set_value name="global.$JKEOC_B64ShipRegistryOverflow" exact="0" /></do_if>
+        <do_if value="not global.$JKEOC_B64Mailbox? or not global.$JKEOC_B64Mailbox.$schema? or global.$JKEOC_B64Mailbox.$schema lt 2"><set_value name="global.$JKEOC_B64Mailbox" exact="table[$schema=2, $status='EMPTY', $verb='', $nonce='', $target=null, $created=0, $expires=0, $result='', $verification='NOT RUN', $rollback='NOT PROVEN']" /></do_if>
+        <do_if value="not global.$JKEOC_B64MailboxLastNonce?"><set_value name="global.$JKEOC_B64MailboxLastNonce" exact="''" /></do_if>
+        <do_if value="not global.$JKEOC_B64LastStations?"><set_value name="global.$JKEOC_B64LastStations" exact="0" /></do_if>
+        <do_if value="not global.$JKEOC_B64NewShips?"><set_value name="global.$JKEOC_B64NewShips" exact="0" /></do_if>
+        <signal_cue_instantly cue="JKEOC_B64_RunCycle" />
+        <signal_cue_instantly cue="JKEOC_B64_Scheduler" />
+        <debug_text text="'[JKEOC][B64][INIT] Autonomous stabilization intelligence ready; station writes remain proof-gated'" filter="general" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B64_Scheduler" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <delay exact="5min" />
+      <actions>
+        <signal_cue_instantly cue="JKEOC_B64_RunCycle" />
+        <signal_cue_instantly cue="this.static" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B64_RunCycle" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="global.$JKEOC_B64Findings" exact="[]" />
+        <set_value name="global.$JKEOC_B64LastStations" exact="0" />
+        <set_value name="$systemiccount" exact="0" />
+        <set_value name="$recommendcount" exact="0" />
+        <do_if value="global.$JKEOC_StationDirectory?">
+          <do_for_each name="$directoryrecord" in="global.$JKEOC_StationDirectory">
+              <do_if value="global.$JKEOC_B64LastStations lt 64 and global.$JKEOC_B64Findings.count lt 64 and $directoryrecord.$station.exists">
+              <set_value name="global.$JKEOC_B64LastStations" exact="global.$JKEOC_B64LastStations + 1" />
+              <set_value name="$goal" exact="global.$JKEOC_B64DefaultGoal" />
+              <do_for_each name="$policy" in="global.$JKEOC_B64Policies">
+                <do_if value="$policy.$station == $directoryrecord.$station"><set_value name="$goal" exact="$policy.$goal" /></do_if>
+              </do_for_each>
+              <set_value name="$systemic" exact="false" />
+              <do_if value="global.$JKEOC_SPOSRecords?">
+                <do_for_each name="$observation" in="global.$JKEOC_SPOSRecords">
+                  <do_if value="$observation.$station == $directoryrecord.$station and $observation.$state == 'SYSTEMIC'"><set_value name="$systemic" exact="true" /></do_if>
+                </do_for_each>
+              </do_if>
+              <do_if value="$systemic"><set_value name="$systemiccount" exact="$systemiccount + 1" /></do_if>
+
+              <set_value name="$cause" exact="'NO SYSTEMIC CONSTRAINT CONFIRMED'" />
+              <set_value name="$evidence" exact="'Current bounded evidence has not established a chronic station constraint.'" />
+              <set_value name="$action" exact="'Continue automatic observation. No station setting change is justified.'" />
+              <set_value name="$control" exact="'OBSERVE'" />
+
+              <do_if value="$directoryrecord.$workforcesupplyriskcount gt 0">
+                <set_value name="$cause" exact="'WORKFORCE PROVISION DEPENDENCY'" />
+                <set_value name="$evidence" exact="$directoryrecord.$workforceevidence" />
+                <do_if value="$goal == 'SELF-SUFFICIENT STABILIZATION'">
+                  <set_value name="$action" exact="'Plan local production for %1 only after storage, inputs, workforce and logistics are verified; do not add capacity blindly.'.[$directoryrecord.$workforcecriticalwarename]" />
+                </do_if>
+                <do_elseif value="$goal == 'MARKET-SUPPORTED STABILIZATION'">
+                  <set_value name="$action" exact="'Preserve a protected reserve for %1, verify reachable supply and suitable traders, then configure a bounded buy amount and price manually.'.[$directoryrecord.$workforcecriticalwarename]" />
+                </do_elseif>
+                <do_elseif value="$goal == 'BALANCED / LEAST-COST STABILIZATION'">
+                  <set_value name="$action" exact="'Compare verified reachable import with a complete local production chain for %1. Cost ranking remains unavailable until native price and blueprint evidence is complete.'.[$directoryrecord.$workforcecriticalwarename]" />
+                </do_elseif>
+                <do_else><set_value name="$action" exact="'Observe provision recurrence and verify reachable suppliers, reserves and logistics before recommending a station change.'" /></do_else>
+                <set_value name="$control" exact="'RECOMMENDATION ONLY - NATIVE RESERVE AND OFFER ROLLBACK NOT PROVEN'" />
+              </do_if>
+              <do_elseif value="$directoryrecord.$emptycount gt 0">
+                <set_value name="$cause" exact="'RECURRING PRODUCTION INPUT SHORTAGE'" />
+                <set_value name="$evidence" exact="'%1 required input(s) are empty; assigned ships=%2; station funds=%3.'.[$directoryrecord.$emptycount, $directoryrecord.$shipcount, $directoryrecord.$funds]" />
+                <do_if value="$goal == 'MARKET-SUPPORTED STABILIZATION'">
+                  <set_value name="$action" exact="'Restore the constrained dependency through verified reachable supply. Check buy permission, funding and suitable traders before changing capacity.'" />
+                </do_if>
+                <do_elseif value="$goal == 'SELF-SUFFICIENT STABILIZATION'">
+                  <set_value name="$action" exact="'Plan the complete local dependency chain only after every required input, storage class and logistics leg is verified.'" />
+                </do_elseif>
+                <do_elseif value="$goal == 'BALANCED / LEAST-COST STABILIZATION'">
+                  <set_value name="$action" exact="'Compare reachable supply with the complete local dependency chain. No cost winner is asserted until native price, blueprint and throughput evidence is complete.'" />
+                </do_elseif>
+                <do_else><set_value name="$action" exact="'Observe recurrence and verify supply range, buy permissions, suitable ships and upstream capacity before recommending a change.'" /></do_else>
+                <set_value name="$control" exact="'RECOMMENDATION ONLY - SUPPLY POLICY WRITE NOT PROVEN'" />
+              </do_elseif>
+              <do_elseif value="$directoryrecord.$warningcount gt 0">
+                <set_value name="$cause" exact="'STORAGE PRESSURE OR OUTPUT BLOCKAGE'" />
+                <set_value name="$evidence" exact="'%1 cargo ware(s) are at the pressure threshold; container free=%2; solid free=%3; liquid free=%4.'.[$directoryrecord.$warningcount, $directoryrecord.$containerfree, $directoryrecord.$solidfree, $directoryrecord.$liquidfree]" />
+                <do_if value="$goal == 'SELF-SUFFICIENT STABILIZATION'">
+                  <set_value name="$action" exact="'Balance internal consumption and output before expanding storage. Verify the blocking ware, dependent modules and internal logistics first.'" />
+                </do_if>
+                <do_elseif value="$goal == 'MARKET-SUPPORTED STABILIZATION'">
+                  <set_value name="$action" exact="'Verify sell permission, reachable demand, price posture and suitable traders for the blocking ware before expanding storage.'" />
+                </do_elseif>
+                <do_elseif value="$goal == 'BALANCED / LEAST-COST STABILIZATION'">
+                  <set_value name="$action" exact="'Compare internal consumption with verified market demand for the blocking ware. Add storage only when throughput evidence proves capacity is the least-cost constraint.'" />
+                </do_elseif>
+                <do_else><set_value name="$action" exact="'Identify the blocking ware and observe sell permission, demand and assigned traders. Do not recommend storage until throughput evidence proves capacity is the constraint.'" /></do_else>
+                <set_value name="$control" exact="'RECOMMENDATION ONLY - SELL THRESHOLD AND PRICE ROLLBACK NOT PROVEN'" />
+              </do_elseif>
+              <do_elseif value="$directoryrecord.$resources.count gt 0 and $directoryrecord.$shipcount == 0">
+                <set_value name="$cause" exact="'MISSING STATION LOGISTICS CAPABILITY'" />
+                <set_value name="$evidence" exact="'%1 required resource(s) and zero directly assigned station ships were observed.'.[$directoryrecord.$resources.count]" />
+                <do_if value="$goal == 'OBSERVE AND ADVISE ONLY'"><set_value name="$action" exact="'Observe the logistics deficit. No assignment should be changed under the current station goal.'" /></do_if>
+                <do_else><set_value name="$action" exact="'Player-authorized assignment is available only after selecting a suitable unassigned ship; autonomous reassignment remains disabled.'" /></do_else>
+                <set_value name="$control" exact="'LEVEL 2 PLAYER AUTHORIZATION AVAILABLE IN EXISTING RECOVERY FLOW'" />
+              </do_elseif>
+
+              <do_if value="$systemic or $cause != 'NO SYSTEMIC CONSTRAINT CONFIRMED'">
+                <append_to_list name="global.$JKEOC_B64Findings" exact="table[$station=$directoryrecord.$station, $stationname=$directoryrecord.$stationname, $goal=$goal, $systemic=$systemic, $cause=$cause, $evidence=$evidence, $action=$action, $control=$control, $firstseen=player.age, $lastseen=player.age]" />
+                <set_value name="$recommendcount" exact="$recommendcount + 1" />
+              </do_if>
+            </do_if>
+          </do_for_each>
+        </do_if>
+
+        <!-- GREEN proof: bounded completion awareness by registry delta. This does not claim queue/start visibility. -->
+        <find_ship name="$playerships" multiple="true" space="player.galaxy" owner="faction.player" />
+        <set_value name="$newships" exact="0" />
+        <set_value name="$registryoverflow" exact="0" />
+        <do_for_each name="$playership" in="$playerships">
+          <do_if value="global.$JKEOC_B64ShipRegistry.indexof.{$playership} == 0">
+            <do_if value="global.$JKEOC_B64ShipRegistry.count lt 128">
+              <append_to_list name="global.$JKEOC_B64ShipRegistry" exact="$playership" />
+              <do_if value="global.$JKEOC_B64ShipRegistrySeeded"><set_value name="$newships" exact="$newships + 1" /></do_if>
+            </do_if>
+            <do_else><set_value name="$registryoverflow" exact="$registryoverflow + 1" /></do_else>
+          </do_if>
+        </do_for_each>
+        <set_value name="global.$JKEOC_B64ShipRegistrySeeded" exact="true" />
+        <set_value name="global.$JKEOC_B64ShipRegistryOverflow" exact="$registryoverflow" />
+        <set_value name="global.$JKEOC_B64NewShips" exact="$newships" />
+        <set_value name="global.$JKEOC_B64LastCycle" exact="player.age" />
+        <signal_cue_instantly cue="JKEOC_B64_ProcessMailbox" />
+        <debug_text text="'[JKEOC][B64][CYCLE] stations=%1 findings=%2 systemic=%3 new_ship_candidates=%4 mailbox=%5'.[global.$JKEOC_B64LastStations, $recommendcount, $systemiccount, $newships, global.$JKEOC_B64Mailbox.$status]" filter="general" />
+      </actions>
+    </cue>
+
+    <!-- Engineering-only bounded mailbox. No external file, arbitrary cue, code, property, or player API. -->
+    <cue name="JKEOC_B64_ProcessMailbox" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <do_if value="global.$JKEOC_B64Mailbox.$status == 'PENDING'">
+          <set_value name="$valid" exact="global.$JKEOC_B64Mailbox.$schema == 2 and global.$JKEOC_B64Mailbox.$nonce != '' and global.$JKEOC_B64Mailbox.$nonce != global.$JKEOC_B64MailboxLastNonce and global.$JKEOC_B64Mailbox.$created le player.age and global.$JKEOC_B64Mailbox.$expires ge player.age" />
+          <do_if value="$valid and (global.$JKEOC_B64Mailbox.$verb == 'PROBE_CREATE_BUY_ORDER' or global.$JKEOC_B64Mailbox.$verb == 'PROBE_CREATE_SELL_ORDER' or global.$JKEOC_B64Mailbox.$verb == 'PROBE_MODIFY_TRADE_RULE' or global.$JKEOC_B64Mailbox.$verb == 'PROBE_ASSIGN_SHIP' or global.$JKEOC_B64Mailbox.$verb == 'PROBE_RESERVED_CARGO')">
+            <set_value name="global.$JKEOC_B64MailboxLastNonce" exact="global.$JKEOC_B64Mailbox.$nonce" />
+            <set_value name="global.$JKEOC_B64Mailbox.$status" exact="'ACKNOWLEDGED'" />
+            <set_value name="global.$JKEOC_B64Mailbox.$result" exact="if global.$JKEOC_B64Mailbox.$verb == 'PROBE_ASSIGN_SHIP' then 'Existing player-authorized commander assignment path is available; automatic capability matching and rollback remain unproven' else 'READ-ONLY PROBE ACCEPTED - safe create/change, verification and rollback are not yet proven; no action performed'" />
+            <set_value name="global.$JKEOC_B64Mailbox.$verification" exact="if global.$JKEOC_B64Mailbox.$verb == 'PROBE_ASSIGN_SHIP' then 'PARTIAL CAPABILITY' else 'PROPERTY / MUTATION PROOF REQUIRED'" /><set_value name="global.$JKEOC_B64Mailbox.$rollback" exact="'NOT PROVEN'" />
+            <set_value name="global.$JKEOC_B64Mailbox.$status" exact="'COMPLETED'" />
+          </do_if>
+          <do_else>
+            <set_value name="global.$JKEOC_B64Mailbox.$status" exact="'REJECTED'" />
+            <set_value name="global.$JKEOC_B64Mailbox.$result" exact="'Rejected by schema, nonce, expiry or allowlist validation'" />
+          </do_else>
+          <debug_text text="'[JKEOC][B64][MAILBOX] verb=%1 nonce=%2 status=%3 result=%4'.[global.$JKEOC_B64Mailbox.$verb, global.$JKEOC_B64Mailbox.$nonce, global.$JKEOC_B64Mailbox.$status, global.$JKEOC_B64Mailbox.$result]" filter="general" />
+        </do_if>
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B64_Console" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_Console" /></conditions>
+      <actions>
+        <add_player_choice_sub text="'STABILIZATION STATUS - %1 FINDING(S)'.[global.$JKEOC_B64Findings.count]" position="top_left" section="JKEOC_B64_WriteStatus" />
+        <add_player_choice_sub text="'OPERATING GOAL: %1'.[global.$JKEOC_B64DefaultGoal]" position="left" section="JKEOC_B64_Goals" />
+        <add_player_choice_sub text="'ENGINEERING MAILBOX PROOF'" position="bottom_left" section="JKEOC_B64_MailboxMenu" />
+        <add_player_choice_sub text="'REFRESH BOUNDED ANALYSIS'" position="top_right" section="JKEOC_B64_Refresh" />
+        <add_player_choice_sub text="'SHIPYARD LIFECYCLE / STATION INTELLIGENCE'" position="right" section="JKEOC_B66_Console" />
+        <add_player_choice_sub text="'BACK TO EOC CONTROLS'" position="bottom_right" section="JKEOC_SPOS_ControlHub" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B64_Goals" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_Goals" /></conditions>
+      <actions>
+        <add_player_choice_sub text="'MARKET-SUPPORTED STABILIZATION'" position="top_left" section="JKEOC_B64_GoalMarket" />
+        <add_player_choice_sub text="'SELF-SUFFICIENT STABILIZATION'" position="left" section="JKEOC_B64_GoalSelf" />
+        <add_player_choice_sub text="'BALANCED / LEAST-COST STABILIZATION'" position="bottom_left" section="JKEOC_B64_GoalBalanced" />
+        <add_player_choice_sub text="'OBSERVE AND ADVISE ONLY'" position="top_right" section="JKEOC_B64_GoalObserve" />
+        <add_player_choice_sub text="'BACK'" position="bottom_right" section="JKEOC_B64_Console" />
+      </actions>
+    </cue>
+    <cue name="JKEOC_B64_GoalMarket" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_GoalMarket" /></conditions><actions><set_value name="global.$JKEOC_B64PendingGoal" exact="'MARKET-SUPPORTED STABILIZATION'" /><signal_cue_instantly cue="JKEOC_B64_ApplyGoal" /></actions></cue>
+    <cue name="JKEOC_B64_GoalSelf" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_GoalSelf" /></conditions><actions><set_value name="global.$JKEOC_B64PendingGoal" exact="'SELF-SUFFICIENT STABILIZATION'" /><signal_cue_instantly cue="JKEOC_B64_ApplyGoal" /></actions></cue>
+    <cue name="JKEOC_B64_GoalBalanced" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_GoalBalanced" /></conditions><actions><set_value name="global.$JKEOC_B64PendingGoal" exact="'BALANCED / LEAST-COST STABILIZATION'" /><signal_cue_instantly cue="JKEOC_B64_ApplyGoal" /></actions></cue>
+    <cue name="JKEOC_B64_GoalObserve" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_GoalObserve" /></conditions><actions><set_value name="global.$JKEOC_B64PendingGoal" exact="'OBSERVE AND ADVISE ONLY'" /><signal_cue_instantly cue="JKEOC_B64_ApplyGoal" /></actions></cue>
+    <cue name="JKEOC_B64_ApplyGoal" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="$applied" exact="false" />
+        <do_if value="global.$JKEOC_FocusStationObject? and global.$JKEOC_FocusStationObject.exists">
+          <do_for_each name="$policy" in="global.$JKEOC_B64Policies">
+            <do_if value="$policy.$station == global.$JKEOC_FocusStationObject"><set_value name="$policy.$goal" exact="global.$JKEOC_B64PendingGoal" /><set_value name="$applied" exact="true" /></do_if>
+          </do_for_each>
+          <do_if value="not $applied and global.$JKEOC_B64Policies.count lt 64"><append_to_list name="global.$JKEOC_B64Policies" exact="table[$station=global.$JKEOC_FocusStationObject, $stationname=global.$JKEOC_FocusStationObject.name, $goal=global.$JKEOC_B64PendingGoal, $autonomy=false, $originalstate='NOT CAPTURED', $lastverified=0]" /></do_if>
+        </do_if>
+        <do_else><set_value name="global.$JKEOC_B64DefaultGoal" exact="global.$JKEOC_B64PendingGoal" /></do_else>
+        <show_notification text="'ACTION: Operating mode changed to %1. NOTE: Analysis was not run; select Run Analysis Now to refresh recommendations.'.[global.$JKEOC_B64PendingGoal]" timeout="10s" />
+        <add_player_choice_sub text="'OPERATING MODE CHANGED - ANALYSIS NOT RUN'" position="left" section="JKEOC_B64_Console" />
+        <add_player_choice_sub text="'RUN ANALYSIS NOW'" position="right" section="JKEOC_B64_Refresh" />
+        <add_player_choice_sub text="'RETURN - REFRESH REQUIRED'" position="bottom_right" section="JKEOC_B64_Console" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B64_Refresh" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_Refresh" /></conditions><actions><show_notification text="'ACTION: Station stabilization analysis started.'" timeout="4s" /><signal_cue_instantly cue="JKEOC_B64_RunCycle" /><show_notification text="'ACTION: Station stabilization analysis complete.'" timeout="6s" /><add_player_choice_sub text="'ANALYSIS EXECUTED - RETURN'" position="bottom_right" section="JKEOC_B64_Console" /></actions></cue>
+    <cue name="JKEOC_B64_WriteStatus" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_WriteStatus" /></conditions>
+      <actions>
+        <set_value name="$detailcount" exact="0" />
+        <set_value name="$summary" exact="'Goal: %1\nStations sampled: %2\nBounded findings: %3 / 64\nNew ship completion candidates: %4\nShip registry: %5 / 128; overflow not tracked: %6\nMailbox: %7\n\nEOC has not changed station prices, offers, storage, trade rules, blacklists, ships or build plans. Unsupported controls remain recommendation-only.'.[global.$JKEOC_B64DefaultGoal, global.$JKEOC_B64LastStations, global.$JKEOC_B64Findings.count, global.$JKEOC_B64NewShips, global.$JKEOC_B64ShipRegistry.count, global.$JKEOC_B64ShipRegistryOverflow, global.$JKEOC_B64Mailbox.$status]" />
+        <write_to_logbook category="general" title="'EOC Station Stabilization Summary'" text="$summary" />
+        <do_for_each name="$finding" in="global.$JKEOC_B64Findings">
+          <do_if value="$detailcount lt 5">
+            <set_value name="$detailcount" exact="$detailcount + 1" />
+            <set_value name="$detail" exact="'Station: %1\nGoal: %2\nCause: %3\nEvidence: %4\nRecommended action: %5\nAuthority: %6'.[$finding.$stationname, $finding.$goal, $finding.$cause, $finding.$evidence, $finding.$action, $finding.$control]" />
+            <write_to_logbook category="general" title="'EOC Stabilization Finding %1'.[$detailcount]" text="$detail" />
+          </do_if>
+        </do_for_each>
+        <write_to_logbook category="tips" title="'EOC stabilization status saved'" text="'Open the EOC Logbook and search for Station Stabilization.'" />
+        <show_notification text="'ACTION: Stabilization report generated. NOTE: Report saved to the Logbook.'" timeout="8s" />
+        <add_player_choice_sub text="'STATUS SAVED - RETURN'" position="bottom_right" section="JKEOC_B64_Console" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B64_MailboxMenu" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_MailboxMenu" /></conditions>
+      <actions>
+        <add_player_choice_sub text="'RUN APPROVED MEDICAL SUPPLIES BUY-OFFER PROOF'" position="top_left" section="JKEOC_B71_ConfirmBuyProof" />
+        <add_player_choice_sub text="'PROOF STATUS: %1'.[if global.$JKEOC_B71ProofStatus? then global.$JKEOC_B71ProofStatus else 'READY']" position="left" section="JKEOC_B64_MailboxMenu" />
+        <add_player_choice_sub text="'PROBE RESERVED CARGO'" position="bottom_left" section="JKEOC_B64_MBMap" />
+        <add_player_choice_sub text="'PROBE MODIFY TRADE RULE'" position="top_right" section="JKEOC_B64_MBPolicy" />
+        <add_player_choice_sub text="'PROBE ASSIGN SHIP'" position="right" section="JKEOC_B64_MBReassign" />
+        <add_player_choice_sub text="'BACK'" position="bottom_right" section="JKEOC_B64_Console" />
+      </actions>
+    </cue>
+
+    <!-- Build 71 approved one-target engineering proof. The offer is player-only,
+         amount 1, minimum price, and is automatically removed after verification. -->
+    <cue name="JKEOC_B71_ProofRecovery" instantiate="true" namespace="this">
+      <conditions><event_game_loaded /></conditions><delay exact="12s" />
+      <actions><do_if value="global.$JKEOC_B71ProofOffer? and global.$JKEOC_B71ProofOffer.exists"><remove_trade_offer object="global.$JKEOC_B71ProofStation" tradeoffer="global.$JKEOC_B71ProofOffer" /><set_value name="global.$JKEOC_B71ProofStatus" exact="'RECOVERED ROLLBACK'" /><debug_text text="'[JKEOC][B71][MAILBOX_ROLLBACK] recovery=1 result=REMOVED'" filter="general" /></do_if><do_else><set_value name="global.$JKEOC_B71ProofStatus" exact="'READY'" /></do_else></actions>
+    </cue>
+
+    <cue name="JKEOC_B71_ConfirmBuyProof" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B71_ConfirmBuyProof" /></conditions>
+      <actions>
+        <remove_value name="global.$JKEOC_B71ProofTarget" />
+        <do_for_each name="$r" in="global.$JKEOC_B70Remediations"><do_if value="not global.$JKEOC_B71ProofTarget? and $r.$identity == 'B70-R1' and $r.$subjectkey == ware.medicalsupplies and $r.$station.exists and $r.$station.owner == faction.player"><set_value name="global.$JKEOC_B71ProofTarget" exact="$r" /></do_if></do_for_each>
+        <do_if value="global.$JKEOC_B71ProofTarget?">
+          <add_player_choice_sub text="'TARGET: %1 | WARE: MEDICAL SUPPLIES'.[global.$JKEOC_B71ProofTarget.$stationname]" position="top_left" section="JKEOC_B71_ConfirmBuyProof" />
+          <add_player_choice_sub text="'CREATE PLAYER-ONLY BUY OFFER (1 UNIT / MINIMUM PRICE)'" position="right" section="JKEOC_B71_StartBuyProof" />
+        </do_if>
+        <do_else><add_player_choice_sub text="'BLOCKED: APPROVED B70-R1 MEDICAL SUPPLIES TARGET NOT FOUND'" position="top_left" section="JKEOC_B71_ConfirmBuyProof" /></do_else>
+        <add_player_choice_sub text="'BACK - NO CHANGE'" position="bottom_right" section="JKEOC_B64_MailboxMenu" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B71_StartBuyProof" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B71_StartBuyProof" /></conditions>
+      <actions>
+        <do_if value="global.$JKEOC_B71ProofTarget? and global.$JKEOC_B71ProofTarget.$station.exists and (not global.$JKEOC_B71ProofOffer? or not global.$JKEOC_B71ProofOffer.exists)">
+          <set_value name="global.$JKEOC_B71ProofStation" exact="global.$JKEOC_B71ProofTarget.$station" /><set_value name="global.$JKEOC_B71ProofStatus" exact="'CREATING'" />
+          <create_trade_offer name="global.$JKEOC_B71ProofOffer" object="global.$JKEOC_B71ProofStation" buyer="global.$JKEOC_B71ProofStation" ware="ware.medicalsupplies" amount="1" price="ware.medicalsupplies.minprice" playeronly="true" />
+          <set_value name="global.$JKEOC_B71ProofStatus" exact="'CREATED - VERIFYING'" /><debug_text text="'[JKEOC][B71][MAILBOX_CREATE] station=%1 ware=Medical Supplies amount=1 price=%2 playeronly=1'.[global.$JKEOC_B71ProofStation.name, ware.medicalsupplies.minprice]" filter="general" /><signal_cue_instantly cue="JKEOC_B71_VerifyBuyProof" />
+          <show_notification text="'ENGINEERING PROOF: Temporary Medical Supplies buy offer created. Automatic verification and rollback are running.'" timeout="10s" />
+        </do_if>
+        <do_else><set_value name="global.$JKEOC_B71ProofStatus" exact="'BLOCKED - INVALID TARGET OR PROOF ALREADY ACTIVE'" /><debug_text text="'[JKEOC][B71][MAILBOX_CREATE] result=BLOCKED'" filter="general" /></do_else>
+        <add_player_choice_sub text="'PROOF STARTED - RETURN'" position="bottom_right" section="JKEOC_B64_MailboxMenu" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B71_VerifyBuyProof" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions><delay exact="2s" />
+      <actions>
+        <set_value name="$valid" exact="global.$JKEOC_B71ProofOffer? and global.$JKEOC_B71ProofOffer.exists and global.$JKEOC_B71ProofOffer.isbuyoffer and global.$JKEOC_B71ProofOffer.buyer == global.$JKEOC_B71ProofStation and global.$JKEOC_B71ProofOffer.ware == ware.medicalsupplies and global.$JKEOC_B71ProofOffer.price == ware.medicalsupplies.minprice" />
+        <do_if value="$valid"><set_value name="global.$JKEOC_B71ProofStatus" exact="'VERIFIED - ROLLBACK PENDING'" /><debug_text text="'[JKEOC][B71][MAILBOX_VERIFY] result=PASS station=%1 ware=%2 price=%3'.[global.$JKEOC_B71ProofStation.name, global.$JKEOC_B71ProofOffer.ware.name, global.$JKEOC_B71ProofOffer.price]" filter="general" /></do_if>
+        <do_else><set_value name="global.$JKEOC_B71ProofStatus" exact="'VERIFY FAILED - FORCED ROLLBACK'" /><debug_text text="'[JKEOC][B71][MAILBOX_VERIFY] result=FAIL'" filter="general" /></do_else>
+        <signal_cue_instantly cue="JKEOC_B71_RollbackBuyProof" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B71_RollbackBuyProof" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions><delay exact="15s" />
+      <actions><do_if value="global.$JKEOC_B71ProofOffer? and global.$JKEOC_B71ProofOffer.exists"><remove_trade_offer object="global.$JKEOC_B71ProofStation" tradeoffer="global.$JKEOC_B71ProofOffer" /></do_if><signal_cue_instantly cue="JKEOC_B71_VerifyRollback" /></actions>
+    </cue>
+
+    <cue name="JKEOC_B71_VerifyRollback" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions><delay exact="2s" />
+      <actions>
+        <do_if value="not global.$JKEOC_B71ProofOffer? or not global.$JKEOC_B71ProofOffer.exists"><set_value name="global.$JKEOC_B71ProofStatus" exact="'PASS - CREATE VERIFIED AND ROLLED BACK'" /><debug_text text="'[JKEOC][B71][MAILBOX_ROLLBACK] result=PASS offer_removed=1'" filter="general" /><show_notification text="'ENGINEERING PROOF PASSED: Buy offer created, verified, and removed.'" timeout="12s" /></do_if>
+        <do_else><set_value name="global.$JKEOC_B71ProofStatus" exact="'FAIL - OFFER STILL EXISTS'" /><debug_text text="'[JKEOC][B71][MAILBOX_ROLLBACK] result=FAIL offer_removed=0'" filter="general" /><show_notification text="'ENGINEERING PROOF FAILED: Temporary offer still exists. Exit without saving and report the debug log.'" timeout="15s" /></do_else>
+      </actions>
+    </cue>
+    <cue name="JKEOC_B64_MBCompletion" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_MBCompletion" /></conditions><actions><set_value name="global.$JKEOC_B64PendingVerb" exact="'PROBE_CREATE_BUY_ORDER'" /><signal_cue_instantly cue="JKEOC_B64_SubmitMailbox" /></actions></cue>
+    <cue name="JKEOC_B64_MBQueue" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_MBQueue" /></conditions><actions><set_value name="global.$JKEOC_B64PendingVerb" exact="'PROBE_CREATE_SELL_ORDER'" /><signal_cue_instantly cue="JKEOC_B64_SubmitMailbox" /></actions></cue>
+    <cue name="JKEOC_B64_MBMap" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_MBMap" /></conditions><actions><set_value name="global.$JKEOC_B64PendingVerb" exact="'PROBE_RESERVED_CARGO'" /><signal_cue_instantly cue="JKEOC_B64_SubmitMailbox" /></actions></cue>
+    <cue name="JKEOC_B64_MBPolicy" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_MBPolicy" /></conditions><actions><set_value name="global.$JKEOC_B64PendingVerb" exact="'PROBE_MODIFY_TRADE_RULE'" /><signal_cue_instantly cue="JKEOC_B64_SubmitMailbox" /></actions></cue>
+    <cue name="JKEOC_B64_MBReassign" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_MBReassign" /></conditions><actions><set_value name="global.$JKEOC_B64PendingVerb" exact="'PROBE_ASSIGN_SHIP'" /><signal_cue_instantly cue="JKEOC_B64_SubmitMailbox" /></actions></cue>
+    <cue name="JKEOC_B64_SubmitMailbox" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="$nonce" exact="'B64-%1-%2'.[player.age, global.$JKEOC_B64PendingVerb]" />
+        <set_value name="global.$JKEOC_B64Mailbox" exact="table[$schema=2, $status='PENDING', $verb=global.$JKEOC_B64PendingVerb, $nonce=$nonce, $target=if global.$JKEOC_FocusStationObject? then global.$JKEOC_FocusStationObject else null, $created=player.age, $expires=player.age + 60s, $result='', $verification='NOT RUN', $rollback='NOT PROVEN']" />
+        <signal_cue_instantly cue="JKEOC_B64_ProcessMailbox" />
+        <add_player_choice_sub text="'MAILBOX %1 - %2'.[global.$JKEOC_B64Mailbox.$status, global.$JKEOC_B64Mailbox.$result]" position="bottom_right" section="JKEOC_B64_MailboxMenu" />
+      </actions>
+    </cue>
+  </cues>
+</mdscript>
+
