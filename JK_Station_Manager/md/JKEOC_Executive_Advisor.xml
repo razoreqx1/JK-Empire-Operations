@@ -6,8 +6,8 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-        <show_notification text="'EOC 1.3 GA | Native Free-Ship Discovery'" timeout="12s" />
-        <debug_text text="'[JKEOC][GA1.3][STARTUP] release=1.3 compatibility=x4_8_and_9 notification=shown'" filter="general" />
+        <show_notification text="'EOC v6.0.0 | Build 83G R6 | Lua Operations Console'" timeout="12s" />
+        <debug_text text="'[JKEOC][B83G_R6][STARTUP] version=6.0.0 build=83G_R6 compatibility=x4_8_and_9 notification=shown'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>
@@ -105,6 +105,7 @@
         <add_player_choice_sub text="'TRADE ORDER CONTROL'" position="left" section="JKEOC_B73_Menu" />
         <add_player_choice_sub text="'SHIPPING CONTROL / ASSIGNMENT AUTHORITY'" position="bottom_left" section="JKEOC_B76_Menu" />
         <add_player_choice_sub text="'ENGINEERING MAILBOX PROOF'" position="top_right" section="JKEOC_B64_MailboxMenu" />
+        <add_player_choice_sub text="'SETTINGS'" position="right" section="JKEOC_Settings_Open" />
         <add_player_choice_sub text="'BACK TO EXECUTIVE ADVISOR'" position="bottom_right" section="JKEOC_B67_Hub" />
       </actions>
     </cue>

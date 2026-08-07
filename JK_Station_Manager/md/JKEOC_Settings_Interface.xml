@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<mdscript name="JKEOC_Settings_Interface" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+    <cue name="JKEOC_Settings_Open" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_Settings_Open" /></conditions>
+      <actions>
+        <do_if value="not global.$JKEOC_B73TradeMode?"><set_value name="global.$JKEOC_B73TradeMode" exact="'ADVISOR'" /></do_if>
+        <do_if value="not global.$JKEOC_B73Offers?"><set_value name="global.$JKEOC_B73Offers" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B76AssignmentMode?"><set_value name="global.$JKEOC_B76AssignmentMode" exact="'APPROVAL REQUIRED'" /></do_if>
+        <do_if value="not global.$JKEOC_B76PreviousAssignmentMode? or global.$JKEOC_B76PreviousAssignmentMode == 'DISABLED'">
+          <set_value name="global.$JKEOC_B76PreviousAssignmentMode" exact="if global.$JKEOC_B76AssignmentMode != 'DISABLED' then global.$JKEOC_B76AssignmentMode else 'APPROVAL REQUIRED'" />
+        </do_if>
+        <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B83Inbox?"><set_value name="global.$JKEOC_B83Inbox" exact="[]" /></do_if>
+        <remove_value name="global.$JKEOC_LuaAnalysisRunning" />
+        <set_value name="$summary" exact="[if global.$JKEOC_B83Health? then global.$JKEOC_B83Health else 0, if global.$JKEOC_B83Trend? then global.$JKEOC_B83Trend else 'STABLE', if global.$JKEOC_B83Economy? then global.$JKEOC_B83Economy else 0, if global.$JKEOC_B83Logistics? then global.$JKEOC_B83Logistics else 0, if global.$JKEOC_B83Workforce? then global.$JKEOC_B83Workforce else 0, if global.$JKEOC_B83Defense? then global.$JKEOC_B83Defense else 0, if global.$JKEOC_B83Growth? then global.$JKEOC_B83Growth else 0, if global.$JKEOC_B83Stations? then global.$JKEOC_B83Stations else 0, if global.$JKEOC_B83Productive? then global.$JKEOC_B83Productive else 0, if global.$JKEOC_B83ShipUtilization? then global.$JKEOC_B83ShipUtilization else 0, if global.$JKEOC_B83ActiveCases? then global.$JKEOC_B83ActiveCases else 0, if global.$JKEOC_B83Attention? then global.$JKEOC_B83Attention else 0, if global.$JKEOC_B83New? then global.$JKEOC_B83New else 0, if global.$JKEOC_B83Resolved? then global.$JKEOC_B83Resolved else 0, if global.$JKEOC_B83Worsening? then global.$JKEOC_B83Worsening else 0, if global.$JKEOC_B83Improving? then global.$JKEOC_B83Improving else 0]" />
+        <set_value name="$stations" exact="[]" />
+        <set_value name="$profileindex" exact="0" />
+        <do_for_each name="$profile" in="global.$JKEOC_B67Profiles">
+          <set_value name="$profileindex" exact="$profileindex + 1" />
+          <do_if value="$profile.$station? and $profile.$station.exists and $profile.$station.owner == faction.player">
+            <append_to_list name="$stations" exact="[if $profile.$stationname? then $profile.$stationname else $profile.$station.name, if $profile.$role? then $profile.$role else 'UNDEFINED', if $profile.$overall? then $profile.$overall else 'MONITORING', if $profile.$trend? then $profile.$trend else 'STABLE', if $profile.$confidence? then $profile.$confidence else 0, if $profile.$priority? then $profile.$priority else 'NOTE', if $profile.$recommendation? then $profile.$recommendation else 'No recommendation', if $profile.$active? then $profile.$active else 0, if $profile.$assignedships? then $profile.$assignedships else 0, if $profile.$miningships? then $profile.$miningships else 0, if $profile.$tradeships? then $profile.$tradeships else 0, if $profile.$constructionactive? then $profile.$constructionactive else false, if $profile.$workforce? then $profile.$workforce else 'UNAVAILABLE', if $profile.$storageused? then $profile.$storageused else 0, if $profile.$storagecapacity? then $profile.$storagecapacity else 0, $profileindex]" />
+          </do_if>
+        </do_for_each>
+        <set_value name="$inbox" exact="[]" />
+        <do_for_each name="$message" in="global.$JKEOC_B83Inbox"><append_to_list name="$inbox" exact="[if $message.$type? then $message.$type else 'UPDATE', if $message.$text? then $message.$text else 'Executive update available']" /></do_for_each>
+        <set_value name="$params" exact="[0, 0, global.$JKEOC_B73TradeMode, global.$JKEOC_B73Offers.count, global.$JKEOC_B76AssignmentMode, $summary, $stations, $inbox, global.$JKEOC_B76PreviousAssignmentMode]" />
+        <debug_text text="'[JKEOC][B83G_R6][LUA_LAUNCH] stations=%1 inbox=%2'.[$stations.count, $inbox.count]" filter="general" />
+        <open_menu menu="JKEOC_SettingsMenu" param="$params" param2="null" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_Settings_Receive" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" /></conditions>
+      <actions>
+          <do_if value="event.param2 == 'INIT'"><raise_lua_event name="'JKEOC_SettingsMenu.INIT'" /><debug_text text="'[JKEOC][B83G_R6][LUA_READY]'" filter="general" /></do_if>
+        <do_elseif value="event.param2 == 'opened'"><signal_cue_instantly cue="JKEOC_Settings_ClearBackgroundConversation" /></do_elseif>
+        <do_elseif value="event.param2 == 'trade.managed'"><signal_cue_instantly cue="md.JKEOC_Trade_Order_Manager.JKEOC_B73_ApplyManaged" /></do_elseif>
+        <do_elseif value="event.param2 == 'trade.advisor'"><signal_cue_instantly cue="md.JKEOC_Trade_Order_Manager.JKEOC_B73_ApplyAdvisor" /></do_elseif>
+        <do_elseif value="event.param2 == 'trade.review'"><signal_cue_instantly cue="md.JKEOC_Trade_Order_Manager.JKEOC_B73_Reconcile" /></do_elseif>
+        <do_elseif value="event.param2 == 'shipping.approval'"><set_value name="global.$JKEOC_B76AssignmentMode" exact="'APPROVAL REQUIRED'" /><set_value name="global.$JKEOC_B76PreviousAssignmentMode" exact="'APPROVAL REQUIRED'" /><show_notification text="'ACTION: Ship assignment mode changed to Approval Required.'" timeout="6s" /></do_elseif>
+        <do_elseif value="event.param2 == 'shipping.auto'"><set_value name="global.$JKEOC_B76AssignmentMode" exact="'AUTO-ASSIGN REGISTERED'" /><set_value name="global.$JKEOC_B76PreviousAssignmentMode" exact="'AUTO-ASSIGN REGISTERED'" /><show_notification text="'ACTION: Auto-assignment enabled for registered ships.'" timeout="6s" /></do_elseif>
+        <do_elseif value="event.param2 == 'shipping.disabled'"><set_value name="global.$JKEOC_B76AssignmentMode" exact="'DISABLED'" /><show_notification text="'ACTION: Ship assignment disabled; instructions only.'" timeout="6s" /></do_elseif>
+        <do_elseif value="event.param2 == 'shipping.toggle'">
+          <do_if value="global.$JKEOC_B76AssignmentMode == 'DISABLED'">
+            <set_value name="global.$JKEOC_B76AssignmentMode" exact="if global.$JKEOC_B76PreviousAssignmentMode? and global.$JKEOC_B76PreviousAssignmentMode != 'DISABLED' then global.$JKEOC_B76PreviousAssignmentMode else 'APPROVAL REQUIRED'" />
+            <show_notification text="'ACTION: Ship assignment enabled in %1 mode.'.[global.$JKEOC_B76AssignmentMode]" timeout="6s" />
+          </do_if>
+          <do_else>
+            <set_value name="global.$JKEOC_B76PreviousAssignmentMode" exact="global.$JKEOC_B76AssignmentMode" />
+            <set_value name="global.$JKEOC_B76AssignmentMode" exact="'DISABLED'" />
+            <show_notification text="'ACTION: Ship assignment disabled; recommendations continue.'" timeout="6s" />
+          </do_else>
+          <debug_text text="'[JKEOC][B83G_R6][SHIP_TOGGLE] mode=%1 previous=%2'.[global.$JKEOC_B76AssignmentMode, global.$JKEOC_B76PreviousAssignmentMode]" filter="general" />
+        </do_elseif>
+        <do_elseif value="event.param2 == 'shipping.scan'"><signal_cue_instantly cue="md.JKEOC_Shipping_Control.JKEOC_B76_ScanBuildStorage" /><signal_cue_instantly cue="md.JKEOC_Shipping_Control.JKEOC_B78_MatchRegistered" /></do_elseif>
+        <do_elseif value="event.param2 == 'station.auto'"><set_value name="global.$JKEOC_B83DAutoRoleReason" exact="'LUA PLAYER SELECTED AUTO ASSIGN'" /><signal_cue_instantly cue="md.JKEOC_Executive_Advisor.JKEOC_B83D_AutoAssignRoles" /></do_elseif>
+        <do_elseif value="event.param2 == 'station.role' and event.param3.$index? and event.param3.$role? and event.param3.$index gt 0 and event.param3.$index le global.$JKEOC_B67Profiles.count">
+          <set_value name="$profile" exact="global.$JKEOC_B67Profiles.{event.param3.$index}" /><do_if value="$profile.$station? and $profile.$station.exists and $profile.$station.owner == faction.player"><set_value name="$profile.$role" exact="event.param3.$role" /><set_value name="$profile.$rolesource" exact="'PLAYER LUA'" /><show_notification text="'ACTION: %1 role changed to %2.'.[$profile.$station.name, event.param3.$role]" timeout="7s" /></do_if>
+        </do_elseif>
+        <do_elseif value="event.param2 == 'analysis.run' and not global.$JKEOC_LuaAnalysisRunning?">
+          <set_value name="global.$JKEOC_LuaAnalysisRunning" exact="true" /><show_notification text="'ACTION: Executive analysis started.'" timeout="4s" /><debug_text text="'[JKEOC][B83G_R6][LUA_ANALYSIS] state=RUNNING'" filter="general" />
+          <signal_cue_instantly cue="md.JKEOC_Executive_Advisor.JKEOC_B67_Analyze" /><signal_cue_instantly cue="md.JKEOC_Operational_Intelligence.JKEOC_SPOS_RunCycle" /><signal_cue_instantly cue="md.JKEOC_Operational_Remediation.JKEOC_B70_Analyze" /><signal_cue_instantly cue="md.JKEOC_Executive_Intelligence.JKEOC_B83_Calculate" /><signal_cue_instantly cue="JKEOC_Settings_AnalysisComplete" />
+        </do_elseif>
+        <do_elseif value="event.param2 == 'report.empire'"><signal_cue_instantly cue="JKEOC_Settings_ReportEmpire" /></do_elseif>
+        <do_elseif value="event.param2 == 'report.station'"><set_value name="global.$JKEOC_LuaReportIndex" exact="event.param3.$index" /><signal_cue_instantly cue="JKEOC_Settings_ReportStation" /></do_elseif>
+        <do_elseif value="event.param2 == 'report.remediation'"><signal_cue_instantly cue="JKEOC_Settings_ReportRemediation" /></do_elseif>
+        <do_elseif value="event.param2 == 'report.trade'"><signal_cue_instantly cue="JKEOC_Settings_ReportTrade" /></do_elseif>
+        <do_elseif value="event.param2 == 'closed'"><set_value name="global.$JKEOC_SettingsReturnReason" exact="if event.param3.$reason? then event.param3.$reason else 'close'" /><do_if value="global.$JKEOC_SettingsReturnReason != 'shared'"><signal_cue_instantly cue="JKEOC_Settings_ReturnToEOC" /></do_if></do_elseif>
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_Settings_AnalysisComplete" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions><delay exact="1s" /><actions>
+        <set_value name="$summary" exact="[if global.$JKEOC_B83Health? then global.$JKEOC_B83Health else 0, if global.$JKEOC_B83Trend? then global.$JKEOC_B83Trend else 'STABLE', if global.$JKEOC_B83Economy? then global.$JKEOC_B83Economy else 0, if global.$JKEOC_B83Logistics? then global.$JKEOC_B83Logistics else 0, if global.$JKEOC_B83Workforce? then global.$JKEOC_B83Workforce else 0, if global.$JKEOC_B83Defense? then global.$JKEOC_B83Defense else 0, if global.$JKEOC_B83Growth? then global.$JKEOC_B83Growth else 0, if global.$JKEOC_B83Stations? then global.$JKEOC_B83Stations else 0, if global.$JKEOC_B83Productive? then global.$JKEOC_B83Productive else 0, if global.$JKEOC_B83ShipUtilization? then global.$JKEOC_B83ShipUtilization else 0, if global.$JKEOC_B83ActiveCases? then global.$JKEOC_B83ActiveCases else 0, if global.$JKEOC_B83Attention? then global.$JKEOC_B83Attention else 0, if global.$JKEOC_B83New? then global.$JKEOC_B83New else 0, if global.$JKEOC_B83Resolved? then global.$JKEOC_B83Resolved else 0, if global.$JKEOC_B83Worsening? then global.$JKEOC_B83Worsening else 0, if global.$JKEOC_B83Improving? then global.$JKEOC_B83Improving else 0]" />
+        <set_value name="$inbox" exact="[]" /><do_for_each name="$message" in="global.$JKEOC_B83Inbox"><append_to_list name="$inbox" exact="[if $message.$type? then $message.$type else 'UPDATE', if $message.$text? then $message.$text else 'Executive update available']" /></do_for_each>
+        <set_value name="$analysistext" exact="'EXECUTIVE ANALYSIS COMPLETE\n\nEmpire Health: %1 / 100 | Trend: %2\nEconomy: %3 | Logistics: %4\nWorkforce: %5 | Defense: %6\nGrowth: %7 | Ship Utilization: %8\nStations: %9 | Productive: %10\nActive Cases: %11 | Require Attention: %12\nNew: %13 | Resolved: %14 | Worsening: %15 | Improving: %16'.[$summary.{1}, $summary.{2}, $summary.{3}, $summary.{4}, $summary.{5}, $summary.{6}, $summary.{7}, $summary.{10}, $summary.{8}, $summary.{9}, $summary.{11}, $summary.{12}, $summary.{13}, $summary.{14}, $summary.{15}, $summary.{16}]" />
+        <remove_value name="global.$JKEOC_LuaAnalysisRunning" /><raise_lua_event name="'JKEOC_SettingsMenu.analysis.complete'" param="[$summary, $inbox, player.age, $analysistext]" /><show_notification text="'ACTION: Executive analysis complete.'" timeout="5s" /><debug_text text="'[JKEOC][B83G_R6][LUA_ANALYSIS] state=COMPLETE health=%1 inbox=%2'.[global.$JKEOC_B83Health, $inbox.count]" filter="general" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_Settings_ReportEmpire" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="$reporttext" exact="'Empire Health: %1 | Economy: %2 | Logistics: %3 | Workforce: %4 | Defense: %5 | Growth: %6\nActive cases: %7 | Stations requiring attention: %8\n\nEND OF REPORT'.[if global.$JKEOC_B83Health? then global.$JKEOC_B83Health else 0, if global.$JKEOC_B83Economy? then global.$JKEOC_B83Economy else 0, if global.$JKEOC_B83Logistics? then global.$JKEOC_B83Logistics else 0, if global.$JKEOC_B83Workforce? then global.$JKEOC_B83Workforce else 0, if global.$JKEOC_B83Defense? then global.$JKEOC_B83Defense else 0, if global.$JKEOC_B83Growth? then global.$JKEOC_B83Growth else 0, if global.$JKEOC_B83ActiveCases? then global.$JKEOC_B83ActiveCases else 0, if global.$JKEOC_B83Attention? then global.$JKEOC_B83Attention else 0]" />
+        <write_to_logbook category="tips" title="'EOC Empire Executive Report'" text="$reporttext" />
+        <show_notification text="'REPORT: Empire Executive Report saved to Tips.'" timeout="7s" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.report.saved'" param="['EMPIRE EXECUTIVE', $reporttext]" />
+        <debug_text text="'[JKEOC][B83G_R6][LUA_REPORT] type=EMPIRE status=SAVED_TO_TIPS'" filter="general" />
+      </actions>
+    </cue>
+    <cue name="JKEOC_Settings_ReportStation" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <do_if value="global.$JKEOC_LuaReportIndex? and global.$JKEOC_LuaReportIndex gt 0 and global.$JKEOC_LuaReportIndex le global.$JKEOC_B67Profiles.count">
+          <set_value name="$profile" exact="global.$JKEOC_B67Profiles.{global.$JKEOC_LuaReportIndex}" />
+          <set_value name="$reporttext" exact="'Role: %1\nHealth: %2\nTrend: %3\nPriority: %4\nRecommendation: %5\n\nEND OF REPORT'.[if $profile.$role? then $profile.$role else 'UNDEFINED', if $profile.$overall? then $profile.$overall else 'MONITORING', if $profile.$trend? then $profile.$trend else 'STABLE', if $profile.$priority? then $profile.$priority else 'NOTE', if $profile.$recommendation? then $profile.$recommendation else 'No recommendation']" />
+          <write_to_logbook category="tips" title="'EOC Station Report - %1'.[if $profile.$stationname? then $profile.$stationname else 'Station']" text="$reporttext" />
+          <show_notification text="'REPORT: Selected station report saved to Tips.'" timeout="7s" />
+          <raise_lua_event name="'JKEOC_SettingsMenu.report.saved'" param="['SELECTED STATION', $reporttext]" />
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="JKEOC_Settings_ReportRemediation" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="$reporttext" exact="'Open: %1 | Verifying: %2 | Resolved: %3\n\nEND OF REPORT'.[if global.$JKEOC_B70Open? then global.$JKEOC_B70Open else 0, if global.$JKEOC_B70Verifying? then global.$JKEOC_B70Verifying else 0, if global.$JKEOC_B70Resolved? then global.$JKEOC_B70Resolved else 0]" />
+        <write_to_logbook category="tips" title="'EOC Operational Remediation Status'" text="$reporttext" />
+        <show_notification text="'REPORT: Operational Remediation status saved to Tips.'" timeout="7s" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.report.saved'" param="['OPERATIONAL REMEDIATION', $reporttext]" />
+      </actions>
+    </cue>
+    <cue name="JKEOC_Settings_ReportTrade" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="$reporttext" exact="'Mode: %1\nEOC-owned offers: %2\n\nEND OF REPORT'.[global.$JKEOC_B73TradeMode, global.$JKEOC_B73Offers.count]" />
+        <write_to_logbook category="tips" title="'EOC Trade Order Status'" text="$reporttext" />
+        <show_notification text="'REPORT: Trade Order Status saved to Tips.'" timeout="7s" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.report.saved'" param="['TRADE ORDER STATUS', $reporttext]" />
+      </actions>
+    </cue>
+    <cue name="JKEOC_Settings_ReturnToEOC" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="1s" /><actions><start_conversation actor="player.computer" conversation="JKSM_EmpireOperations" type="unqueued" /></actions></cue>
+    <cue name="JKEOC_Settings_ClearBackgroundConversation" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="1s" /><actions><cancel_conversation actor="player.computer" /><debug_text text="'[JKEOC][B83G_R6][BACKGROUND_CLOSED]'" filter="general" /></actions></cue>
+  </cues>
+</mdscript>
