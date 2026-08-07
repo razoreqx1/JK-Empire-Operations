@@ -6,10 +6,11 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-        <show_notification text="'EOC 1.0 GA | Empire Operations Center'" timeout="12s" />
-        <debug_text text="'[JKEOC][GA1][STARTUP] version=1.0GA notification=shown'" filter="general" />
+        <show_notification text="'EOC 1.3 GA | Native Free-Ship Discovery'" timeout="12s" />
+        <debug_text text="'[JKEOC][GA1.3][STARTUP] release=1.3 compatibility=x4_8_and_9 notification=shown'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
+        <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>
         <set_value name="global.$JKEOC_B67NextCycle" exact="player.age" />
         <signal_cue_instantly cue="JKEOC_B67_Analyze" />
         <debug_text text="'[JKEOC][B67][ADVISOR_READY] profiles=%1 schema=%2'.[global.$JKEOC_B67Profiles.count, global.$JKEOC_B67Schema]" filter="general" />
@@ -75,17 +76,23 @@
           </do_for_each>
         </do_if>
         <set_value name="global.$JKEOC_B67LastStations" exact="$stations" /><set_value name="global.$JKEOC_B67Undefined" exact="$undefined" />
+        <do_if value="$undefined gt 0">
+          <set_value name="global.$JKEOC_B83DUndefinedCycles" exact="global.$JKEOC_B83DUndefinedCycles + 1" />
+          <do_if value="global.$JKEOC_B83DUndefinedCycles ge 3"><set_value name="global.$JKEOC_B83DAutoRoleReason" exact="'BOUNDED FALLBACK AFTER 3 OBSERVATION CYCLES'" /><signal_cue_instantly cue="JKEOC_B83D_AutoAssignRoles" /></do_if>
+        </do_if>
+        <do_else><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_else>
         <debug_text text="'[JKEOC][B67][ANALYSIS] stations=%1 profiles=%2 undefined=%3'.[$stations, global.$JKEOC_B67Profiles.count, $undefined]" filter="general" />
+        <signal_cue_instantly cue="md.JKEOC_Executive_Intelligence.JKEOC_B83_Calculate" />
       </actions>
     </cue>
 
     <cue name="JKEOC_B67_Hub" instantiate="true" namespace="this">
       <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B67_Hub" /></conditions>
       <actions>
-        <add_player_choice_sub text="'STATION ROLE ASSIGNMENT'" position="top_left" section="JKEOC_B69_RoleListStart" />
-        <add_player_choice_sub text="'OPEN SELECTED STATION ADVISOR'" position="left" section="JKEOC_B67_Selected" />
-        <add_player_choice_sub text="'OPERATIONAL REMEDIATION / TRADE CONTROL'" position="bottom_left" section="JKEOC_B72_OperationsHub" />
-        <add_player_choice_sub text="'ANALYZE NOW'" position="top_right" section="JKEOC_B67_RunNow" />
+        <add_player_choice_sub text="'EXECUTIVE INTELLIGENCE DASHBOARD'" position="top_left" section="JKEOC_B83_Dashboard" />
+        <add_player_choice_sub text="'STATION ROLE ASSIGNMENT'" position="left" section="JKEOC_B69_RoleListStart" />
+        <add_player_choice_sub text="'OPEN SELECTED STATION ADVISOR'" position="bottom_left" section="JKEOC_B67_Selected" />
+        <add_player_choice_sub text="'OPERATIONAL REMEDIATION / TRADE CONTROL'" position="top_right" section="JKEOC_B72_OperationsHub" />
         <add_player_choice_sub text="'REPORT: GENERATE EMPIRE EXECUTIVE REPORT'" position="right" section="JKEOC_B67_EmpireReport" />
         <add_player_choice_sub text="'BACK TO EOC'" position="bottom_right" section="JKSM_EmpireOperations" />
       </actions>
@@ -115,12 +122,56 @@
       </actions>
     </cue>
 
+    <cue name="JKEOC_B83D_RoleAutomation" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B83D_RoleAutomation" /></conditions>
+      <actions>
+        <add_player_choice_sub text="'INFO: EOC CAN CLASSIFY UNDEFINED STATIONS FROM VERIFIED OPERATIONAL EVIDENCE. THE PLAYER MAY CHANGE ANY ROLE LATER.'" position="top_left" section="JKEOC_B83D_RoleAutomation" />
+        <add_player_choice_sub text="'AUTO ASSIGN ALL UNDEFINED ROLES NOW'" position="right" section="JKEOC_B83D_AutoAssignNow" />
+        <add_player_choice_sub text="'BACK TO STATION ROLE ASSIGNMENT'" position="bottom_right" section="JKEOC_B69_RoleList" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B83D_AutoAssignNow" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B83D_AutoAssignNow" /></conditions>
+      <actions><set_value name="global.$JKEOC_B83DAutoRoleReason" exact="'PLAYER SELECTED AUTO ASSIGN'" /><signal_cue_instantly cue="JKEOC_B83D_AutoAssignRoles" /></actions>
+    </cue>
+
+    <cue name="JKEOC_B83D_AutoAssignRoles" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="$assigned" exact="0" />
+        <do_for_each name="$profile" in="global.$JKEOC_B67Profiles">
+          <do_if value="$profile.$station.exists and $profile.$station.owner == faction.player and $profile.$role == 'UNDEFINED'">
+            <set_value name="$role" exact="'HYBRID'" /><set_value name="$evidence" exact="'No specialized function was proven; safe general role selected'" /><set_value name="$source" exact="'EOC AUTO - GENERAL'" />
+            <do_if value="$profile.$infrastructure == 'DEFENSE PLATFORM'"><set_value name="$role" exact="'DEFENSE'" /><set_value name="$evidence" exact="'Verified defense-platform infrastructure profile'" /><set_value name="$source" exact="'EOC AUTO - VERIFIED'" /></do_if>
+            <do_elseif value="$profile.$infrastructure == 'TRADE / DISTRIBUTION HUB'"><set_value name="$role" exact="'TRADING HUB'" /><set_value name="$evidence" exact="'Verified trade and distribution infrastructure profile'" /><set_value name="$source" exact="'EOC AUTO - VERIFIED'" /></do_elseif>
+            <do_elseif value="$profile.$infrastructure == 'MIXED INDUSTRIAL COMPLEX'"><set_value name="$role" exact="'HYBRID'" /><set_value name="$evidence" exact="'Verified mixed industrial infrastructure profile'" /><set_value name="$source" exact="'EOC AUTO - VERIFIED'" /></do_elseif>
+            <do_elseif value="$profile.$infrastructure == 'PRODUCTION STATION'"><set_value name="$role" exact="'FACTORY'" /><set_value name="$evidence" exact="'Verified production infrastructure profile'" /><set_value name="$source" exact="'EOC AUTO - VERIFIED'" /></do_elseif>
+            <do_elseif value="$profile.$miningships gt 0"><set_value name="$role" exact="'MINING HUB'" /><set_value name="$evidence" exact="'Verified subordinate mining ships'" /><set_value name="$source" exact="'EOC AUTO - VERIFIED'" /></do_elseif>
+            <do_elseif value="$profile.$tradeships gt 0"><set_value name="$role" exact="'TRADING HUB'" /><set_value name="$evidence" exact="'Verified subordinate trade ships'" /><set_value name="$source" exact="'EOC AUTO - VERIFIED'" /></do_elseif>
+            <set_value name="$profile.$role" exact="$role" /><set_value name="$profile.$rolesource" exact="$source" /><set_value name="$profile.$rolechanged" exact="player.age" /><set_value name="$assigned" exact="$assigned + 1" />
+            <write_to_logbook category="tips" title="'EOC Automatic Station Role — %1'.[$profile.$stationname]" text="'Assigned role: %1\nEvidence: %2\nTrigger: %3\n\nThe player may change this role at any time through Station Role Assignment.'.[$role, $evidence, global.$JKEOC_B83DAutoRoleReason]" />
+            <debug_text text="'[JKEOC][B83D][ROLE_AUTO_ASSIGNED] station=%1 role=%2 source=%3 evidence=%4 trigger=%5'.[$profile.$stationname, $role, $source, $evidence, global.$JKEOC_B83DAutoRoleReason]" filter="general" />
+          </do_if>
+        </do_for_each>
+        <set_value name="global.$JKEOC_B67Undefined" exact="0" /><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" />
+        <show_notification text="'ACTION: EOC assigned %1 undefined station role(s). INFO: Each assignment and its evidence were saved to Tips. Roles remain player-editable.'.[$assigned]" timeout="12s" />
+        <debug_text text="'[JKEOC][B83D][ROLE_AUTO_COMPLETE] assigned=%1 trigger=%2'.[$assigned, global.$JKEOC_B83DAutoRoleReason]" filter="general" />
+        <do_if value="global.$JKEOC_B83DAutoRoleReason == 'PLAYER SELECTED AUTO ASSIGN'">
+          <set_value name="global.$JKEOC_B69RoleList" exact="[]" />
+          <do_for_each name="$profile" in="global.$JKEOC_B67Profiles"><do_if value="$profile.$station.exists and $profile.$station.owner == faction.player"><append_to_list name="global.$JKEOC_B69RoleList" exact="$profile" /></do_if></do_for_each>
+          <set_value name="global.$JKEOC_B69RolePage" exact="0" /><set_value name="global.$JKEOC_B69RoleIndex" exact="0" />
+          <signal_cue_instantly cue="JKEOC_B69_RoleList" />
+        </do_if>
+      </actions>
+    </cue>
+
     <cue name="JKEOC_B69_RoleList" instantiate="true" namespace="this">
       <conditions><check_any><event_cue_signalled /><event_conversation_next_section actor="player.computer" section="JKEOC_B69_RoleList" /></check_any></conditions>
       <actions>
         <set_value name="$pages" exact="[((global.$JKEOC_B69RoleList.count + 1) / 2)i, 1].max" />
         <set_value name="$first" exact="global.$JKEOC_B69RolePage * 2 + 1" /><set_value name="$second" exact="$first + 1" />
-        <add_player_choice_sub text="'STATION ROLE ASSIGNMENT | UNDEFINED ROLES: %1 | PAGE %2 OF %3'.[global.$JKEOC_B67Undefined, global.$JKEOC_B69RolePage + 1, $pages]" position="top_left" section="JKEOC_B69_RoleList" />
+        <add_player_choice_sub text="'ACTION: ROLE AUTOMATION | UNDEFINED: %1 | PAGE %2 OF %3'.[global.$JKEOC_B67Undefined, global.$JKEOC_B69RolePage + 1, $pages]" position="top_left" section="JKEOC_B83D_RoleAutomation" />
         <do_if value="$first le global.$JKEOC_B69RoleList.count"><set_value name="$p1" exact="global.$JKEOC_B69RoleList.{$first}" /><add_player_choice_sub text="'%1%2 | ROLE: %3'.[if global.$JKEOC_B69RoleIndex == $first then 'SELECTED: ' else '', $p1.$stationname, $p1.$role]" position="left" section="JKEOC_B69_SelectFirst" /></do_if>
         <do_if value="$second le global.$JKEOC_B69RoleList.count"><set_value name="$p2" exact="global.$JKEOC_B69RoleList.{$second}" /><add_player_choice_sub text="'%1%2 | ROLE: %3'.[if global.$JKEOC_B69RoleIndex == $second then 'SELECTED: ' else '', $p2.$stationname, $p2.$role]" position="bottom_left" section="JKEOC_B69_SelectSecond" /></do_if>
         <do_if value="global.$JKEOC_B69RolePage gt 0"><add_player_choice_sub text="'PREVIOUS PAGE'" position="top_right" section="JKEOC_B69_RolePrevious" /></do_if>
@@ -133,7 +184,7 @@
     <cue name="JKEOC_B69_SelectFirst" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B69_SelectFirst" /></conditions><actions><set_value name="global.$JKEOC_B69RoleIndex" exact="global.$JKEOC_B69RolePage * 2 + 1" /><set_value name="global.$JKEOC_B69SelectedProfile" exact="global.$JKEOC_B69RoleList.{global.$JKEOC_B69RoleIndex}" /><signal_cue_instantly cue="JKEOC_B69_Roles1" /></actions></cue>
     <cue name="JKEOC_B69_SelectSecond" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B69_SelectSecond" /></conditions><actions><set_value name="global.$JKEOC_B69RoleIndex" exact="global.$JKEOC_B69RolePage * 2 + 2" /><set_value name="global.$JKEOC_B69SelectedProfile" exact="global.$JKEOC_B69RoleList.{global.$JKEOC_B69RoleIndex}" /><signal_cue_instantly cue="JKEOC_B69_Roles1" /></actions></cue>
 
-    <cue name="JKEOC_B69_Roles1" instantiate="true" namespace="this"><conditions><check_any><event_cue_signalled /><event_conversation_next_section actor="player.computer" section="JKEOC_B69_Roles1" /></check_any></conditions><actions><add_player_choice_sub text="'%1 | CURRENT ROLE: %2'.[global.$JKEOC_B69SelectedProfile.$stationname, global.$JKEOC_B69SelectedProfile.$role]" position="top_left" section="JKEOC_B69_Roles1" /><add_player_choice_sub text="'SET ROLE: SHIPYARD'" position="left" section="JKEOC_B69_SetShipyard" /><add_player_choice_sub text="'SET ROLE: WHARF'" position="bottom_left" section="JKEOC_B69_SetWharf" /><add_player_choice_sub text="'SET ROLE: DEFENSE'" position="top_right" section="JKEOC_B69_SetDefense" /><add_player_choice_sub text="'SET ROLE: FACTORY'" position="right" section="JKEOC_B69_SetFactory" /><add_player_choice_sub text="'MORE ROLES'" position="bottom_right" section="JKEOC_B69_Roles2" /></actions></cue>
+    <cue name="JKEOC_B69_Roles1" instantiate="true" namespace="this"><conditions><check_any><event_cue_signalled /><event_conversation_next_section actor="player.computer" section="JKEOC_B69_Roles1" /></check_any></conditions><actions><add_player_choice_sub text="'INFO: %1 | CURRENT ROLE: %2'.[global.$JKEOC_B69SelectedProfile.$stationname, global.$JKEOC_B69SelectedProfile.$role]" position="top_left" section="JKEOC_B69_Roles1" /><add_player_choice_sub text="'SET ROLE: SHIPYARD'" position="left" section="JKEOC_B69_SetShipyard" /><add_player_choice_sub text="'SET ROLE: WHARF'" position="bottom_left" section="JKEOC_B69_SetWharf" /><add_player_choice_sub text="'SET ROLE: DEFENSE'" position="top_right" section="JKEOC_B69_SetDefense" /><add_player_choice_sub text="'SET ROLE: FACTORY'" position="right" section="JKEOC_B69_SetFactory" /><add_player_choice_sub text="'MORE ROLES'" position="bottom_right" section="JKEOC_B69_Roles2" /></actions></cue>
     <cue name="JKEOC_B69_Roles2" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B69_Roles2" /></conditions><actions><add_player_choice_sub text="'SET ROLE: MINING HUB'" position="top_left" section="JKEOC_B69_SetMiningHub" /><add_player_choice_sub text="'SET ROLE: TRADING HUB'" position="left" section="JKEOC_B69_SetTradingHub" /><add_player_choice_sub text="'SET ROLE: FOOD'" position="bottom_left" section="JKEOC_B69_SetFood" /><add_player_choice_sub text="'SET ROLE: TECHNOLOGY'" position="top_right" section="JKEOC_B69_SetTechnology" /><add_player_choice_sub text="'MORE ROLES'" position="right" section="JKEOC_B69_Roles3" /><add_player_choice_sub text="'PREVIOUS ROLES'" position="bottom_right" section="JKEOC_B69_Roles1" /></actions></cue>
     <cue name="JKEOC_B69_Roles3" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B69_Roles3" /></conditions><actions><add_player_choice_sub text="'SET ROLE: HEADQUARTERS'" position="top_left" section="JKEOC_B69_SetHeadquarters" /><add_player_choice_sub text="'SET ROLE: HYBRID'" position="left" section="JKEOC_B69_SetHybrid" /><add_player_choice_sub text="'PREVIOUS ROLES'" position="right" section="JKEOC_B69_Roles2" /><add_player_choice_sub text="'CANCEL - RETURN TO STATION LIST'" position="bottom_right" section="JKEOC_B69_RoleReturn" /></actions></cue>
     <cue name="JKEOC_B69_RoleReturn" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B69_RoleReturn" /></conditions><actions><signal_cue_instantly cue="JKEOC_B69_RoleList" /></actions></cue>

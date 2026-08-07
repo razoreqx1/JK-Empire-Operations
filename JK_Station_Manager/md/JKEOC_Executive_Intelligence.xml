@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<mdscript name="JKEOC_Executive_Intelligence" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+    <!-- Build 83 derives every executive value from existing bounded station profiles. -->
+    <cue name="JKEOC_B83_Initialize" instantiate="true" namespace="this">
+      <conditions><event_game_loaded /></conditions>
+      <delay exact="32s" />
+      <actions>
+        <do_if value="not global.$JKEOC_B83Inbox?"><set_value name="global.$JKEOC_B83Inbox" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B83Cycle?"><set_value name="global.$JKEOC_B83Cycle" exact="0" /></do_if>
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B83_Calculate" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <do_if value="not global.$JKEOC_B83Inbox?"><set_value name="global.$JKEOC_B83Inbox" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_B83Cycle?"><set_value name="global.$JKEOC_B83Cycle" exact="0" /></do_if>
+        <set_value name="$stations" exact="0" /><set_value name="$productive" exact="if global.$JKSM_ProductiveCount? then global.$JKSM_ProductiveCount else 0" />
+        <set_value name="$active" exact="0" /><set_value name="$critical" exact="0" /><set_value name="$workforceissues" exact="if global.$JKEOC_WorkforceIssueCount? then global.$JKEOC_WorkforceIssueCount else 0" />
+        <set_value name="$supported" exact="0" /><set_value name="$defensestations" exact="0" /><set_value name="$defenseready" exact="0" />
+        <set_value name="$stablegrowth" exact="0" /><set_value name="$assignedships" exact="0" /><set_value name="$newissues" exact="0" /><set_value name="$resolvedissues" exact="0" /><set_value name="$worsening" exact="0" /><set_value name="$improving" exact="0" />
+        <do_if value="global.$JKEOC_B67Profiles?">
+          <do_for_each name="$profile" in="global.$JKEOC_B67Profiles">
+            <do_if value="$profile.$station.exists and $profile.$station.owner == faction.player">
+              <set_value name="$stations" exact="$stations + 1" /><set_value name="$active" exact="$active + $profile.$active" /><set_value name="$critical" exact="$critical + $profile.$critical" /><set_value name="$assignedships" exact="$assignedships + $profile.$assignedships" />
+              <do_if value="$profile.$active == 0 or $profile.$assignedships gt 0"><set_value name="$supported" exact="$supported + 1" /></do_if>
+              <do_if value="$profile.$role == 'DEFENSE'"><set_value name="$defensestations" exact="$defensestations + 1" /><do_if value="$profile.$active == 0 or $profile.$assignedships gt 0"><set_value name="$defenseready" exact="$defenseready + 1" /></do_if></do_if>
+              <do_if value="$profile.$trend != 'DETERIORATING' and $profile.$trend != 'RELAPSED'"><set_value name="$stablegrowth" exact="$stablegrowth + 1" /></do_if>
+              <do_if value="global.$JKEOC_B83Initialized?">
+                <set_value name="$prioractive" exact="if $profile.$b83active? then $profile.$b83active else 0" /><set_value name="$prioroverall" exact="if $profile.$b83overall? then $profile.$b83overall else 'MONITORING'" />
+                <do_if value="$prioractive == 0 and $profile.$active gt 0"><set_value name="$newissues" exact="$newissues + 1" /></do_if>
+                <do_if value="$prioractive gt 0 and $profile.$active == 0"><set_value name="$resolvedissues" exact="$resolvedissues + 1" /></do_if>
+                <do_if value="($profile.$overall == 'CRITICAL' or $profile.$overall == 'CHRONIC' or $profile.$overall == 'RELAPSED') and $profile.$overall != $prioroverall"><set_value name="$worsening" exact="$worsening + 1" /></do_if>
+                <do_if value="($profile.$overall == 'RECOVERING' or $profile.$overall == 'RESOLVED') and $profile.$overall != $prioroverall"><set_value name="$improving" exact="$improving + 1" /></do_if>
+              </do_if>
+              <set_value name="$profile.$b83active" exact="$profile.$active" /><set_value name="$profile.$b83overall" exact="$profile.$overall" />
+            </do_if>
+          </do_for_each>
+        </do_if>
+        <set_value name="$economy" exact="if $stations gt 0 then (($productive * 100) / $stations)i else 100" />
+        <set_value name="$logistics" exact="if $stations gt 0 then (($supported * 100) / $stations)i else 100" />
+        <set_value name="$workforce" exact="if $stations gt 0 then 100 - (([$workforceissues, $stations].min * 100) / $stations)i else 100" />
+        <set_value name="$defense" exact="if $defensestations gt 0 then (($defenseready * 100) / $defensestations)i else if $stations gt 0 then 100 - (([$critical, $stations].min * 100) / $stations)i else 100" />
+        <set_value name="$growth" exact="if $stations gt 0 then (($stablegrowth * 100) / $stations)i else 100" />
+        <set_value name="$economy" exact="[$economy, 0].max" /><set_value name="$economy" exact="[$economy, 100].min" />
+        <set_value name="$logistics" exact="[$logistics, 0].max" /><set_value name="$logistics" exact="[$logistics, 100].min" />
+        <set_value name="$workforce" exact="[$workforce, 0].max" /><set_value name="$workforce" exact="[$workforce, 100].min" />
+        <set_value name="$defense" exact="[$defense, 0].max" /><set_value name="$defense" exact="[$defense, 100].min" />
+        <set_value name="$growth" exact="[$growth, 0].max" /><set_value name="$growth" exact="[$growth, 100].min" />
+        <set_value name="$health" exact="(($economy + $logistics + $workforce + $defense + $growth) / 5)i" />
+        <set_value name="$trend" exact="if not global.$JKEOC_B83Health? then '→ STABLE' else if $health ge global.$JKEOC_B83Health + 2 then '↑ IMPROVING' else if $health le global.$JKEOC_B83Health - 2 then '↓ DECLINING' else '→ STABLE'" />
+        <set_value name="$economytrend" exact="if not global.$JKEOC_B83Economy? then '→' else if $economy ge global.$JKEOC_B83Economy + 2 then '↑' else if $economy le global.$JKEOC_B83Economy - 2 then '↓' else '→'" />
+        <set_value name="$logisticstrend" exact="if not global.$JKEOC_B83Logistics? then '→' else if $logistics ge global.$JKEOC_B83Logistics + 2 then '↑' else if $logistics le global.$JKEOC_B83Logistics - 2 then '↓' else '→'" />
+        <set_value name="$workforcetrend" exact="if not global.$JKEOC_B83Workforce? then '→' else if $workforce ge global.$JKEOC_B83Workforce + 2 then '↑' else if $workforce le global.$JKEOC_B83Workforce - 2 then '↓' else '→'" />
+        <set_value name="$defensetrend" exact="if not global.$JKEOC_B83Defense? then '→' else if $defense ge global.$JKEOC_B83Defense + 2 then '↑' else if $defense le global.$JKEOC_B83Defense - 2 then '↓' else '→'" />
+        <set_value name="$growthtrend" exact="if not global.$JKEOC_B83Growth? then '→' else if $growth ge global.$JKEOC_B83Growth + 2 then '↑' else if $growth le global.$JKEOC_B83Growth - 2 then '↓' else '→'" />
+        <set_value name="global.$JKEOC_B83PriorHealth" exact="if global.$JKEOC_B83Health? then global.$JKEOC_B83Health else $health" /><set_value name="global.$JKEOC_B83Health" exact="$health" /><set_value name="global.$JKEOC_B83Trend" exact="$trend" />
+        <set_value name="global.$JKEOC_B83Economy" exact="$economy" /><set_value name="global.$JKEOC_B83Logistics" exact="$logistics" /><set_value name="global.$JKEOC_B83Workforce" exact="$workforce" /><set_value name="global.$JKEOC_B83Defense" exact="$defense" /><set_value name="global.$JKEOC_B83Growth" exact="$growth" />
+        <set_value name="global.$JKEOC_B83EconomyTrend" exact="$economytrend" /><set_value name="global.$JKEOC_B83LogisticsTrend" exact="$logisticstrend" /><set_value name="global.$JKEOC_B83WorkforceTrend" exact="$workforcetrend" /><set_value name="global.$JKEOC_B83DefenseTrend" exact="$defensetrend" /><set_value name="global.$JKEOC_B83GrowthTrend" exact="$growthtrend" />
+        <set_value name="$availablelogistics" exact="if global.$JKEOC_B76EligibleShips? then global.$JKEOC_B76EligibleShips.count else 0" /><set_value name="$shiputilization" exact="if $assignedships + $availablelogistics gt 0 then (($assignedships * 100) / ($assignedships + $availablelogistics))i else 100" />
+        <set_value name="global.$JKEOC_B83Stations" exact="$stations" /><set_value name="global.$JKEOC_B83Productive" exact="$productive" /><set_value name="global.$JKEOC_B83AssignedShips" exact="$assignedships" /><set_value name="global.$JKEOC_B83ShipUtilization" exact="$shiputilization" /><set_value name="global.$JKEOC_B83ActiveCases" exact="$active" /><set_value name="global.$JKEOC_B83Attention" exact="$critical + $workforceissues" />
+        <set_value name="global.$JKEOC_B83New" exact="$newissues" /><set_value name="global.$JKEOC_B83Resolved" exact="$resolvedissues" /><set_value name="global.$JKEOC_B83Worsening" exact="$worsening" /><set_value name="global.$JKEOC_B83Improving" exact="$improving" /><set_value name="global.$JKEOC_B83Cycle" exact="global.$JKEOC_B83Cycle + 1" />
+        <do_if value="global.$JKEOC_B83Inbox.count ge 32"><remove_value name="global.$JKEOC_B83Inbox.{1}" /></do_if>
+        <set_value name="$inboxtype" exact="if $critical gt 0 then 'CRITICAL ALERT' else if $newissues gt 0 or $worsening gt 0 then 'OPERATIONAL UPDATE' else if $resolvedissues gt 0 or $improving gt 0 then 'COMPLETED REMEDIATION' else 'NO ACTION REQUIRED'" />
+        <set_value name="$inboxtext" exact="if $critical gt 0 then '%1 critical station(s) require drill-down review'.[$critical] else if $newissues gt 0 or $worsening gt 0 then '%1 new and %2 worsening issue(s) detected'.[$newissues, $worsening] else if $resolvedissues gt 0 or $improving gt 0 then '%1 resolved and %2 improving issue(s) verified'.[$resolvedissues, $improving] else 'Observation cycle found no material executive change'" />
+        <append_to_list name="global.$JKEOC_B83Inbox" exact="table[$cycle=global.$JKEOC_B83Cycle, $age=player.age, $type=$inboxtype, $text=$inboxtext]" />
+        <set_value name="global.$JKEOC_B83Initialized" exact="true" />
+        <debug_text text="'[JKEOC][B83][EXECUTIVE_CYCLE] cycle=%1 health=%2 trend=%3 economy=%4 logistics=%5 workforce=%6 defense=%7 growth=%8 stations=%9 productive=%10 assignedships=%11 active=%12 attention=%13 new=%14 resolved=%15 worsening=%16 improving=%17 inbox=%18'.[global.$JKEOC_B83Cycle, $health, $trend, $economy, $logistics, $workforce, $defense, $growth, $stations, $productive, $assignedships, $active, global.$JKEOC_B83Attention, $newissues, $resolvedissues, $worsening, $improving, global.$JKEOC_B83Inbox.count]" filter="general" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B83_Dashboard" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B83_Dashboard" /></conditions>
+      <actions>
+        <add_player_choice_sub text="'INFO: EMPIRE HEALTH: %1 / 100 | %2'.[global.$JKEOC_B83Health, global.$JKEOC_B83Trend]" position="top_left" section="JKEOC_B83_Dashboard" />
+        <add_player_choice_sub text="'EXECUTIVE KPI DASHBOARD'" position="left" section="JKEOC_B83_KPIs" />
+        <add_player_choice_sub text="'WHAT CHANGED?'" position="bottom_left" section="JKEOC_B83_Changed" />
+        <add_player_choice_sub text="'EXECUTIVE INBOX | %1 MESSAGE(S)'.[global.$JKEOC_B83Inbox.count]" position="top_right" section="JKEOC_B83_Inbox" />
+        <add_player_choice_sub text="'ANALYZE NOW'" position="right" section="JKEOC_B67_RunNow" />
+        <add_player_choice_sub text="'BACK TO EXECUTIVE ADVISOR'" position="bottom_right" section="JKEOC_B67_Hub" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B83_KPIs" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B83_KPIs" /></conditions>
+      <actions>
+        <add_player_choice_sub text="'INFO: ECONOMY %1 %2 | LOGISTICS %3 %4'.[global.$JKEOC_B83Economy, global.$JKEOC_B83EconomyTrend, global.$JKEOC_B83Logistics, global.$JKEOC_B83LogisticsTrend]" position="top_left" section="JKEOC_B83_KPIs" />
+        <add_player_choice_sub text="'INFO: WORKFORCE %1 %2 | DEFENSE %3 %4 | GROWTH %5 %6'.[global.$JKEOC_B83Workforce, global.$JKEOC_B83WorkforceTrend, global.$JKEOC_B83Defense, global.$JKEOC_B83DefenseTrend, global.$JKEOC_B83Growth, global.$JKEOC_B83GrowthTrend]" position="left" section="JKEOC_B83_KPIs" />
+        <add_player_choice_sub text="'INFO: STATION HEALTH %1 | PRODUCTION EFFICIENCY %2'.[global.$JKEOC_B83Health, global.$JKEOC_B83Economy]" position="bottom_left" section="JKEOC_B83_KPIs" />
+        <add_player_choice_sub text="'INFO: SHIP UTILIZATION %1 | ACTIVE CASES %2'.[global.$JKEOC_B83ShipUtilization, global.$JKEOC_B83ActiveCases]" position="top_right" section="JKEOC_B83_KPIs" />
+        <add_player_choice_sub text="'INFO: STATIONS REQUIRING ATTENTION %1'.[global.$JKEOC_B83Attention]" position="right" section="JKEOC_B83_KPIs" />
+        <add_player_choice_sub text="'BACK TO DASHBOARD'" position="bottom_right" section="JKEOC_B83_Dashboard" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B83_Changed" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B83_Changed" /></conditions>
+      <actions>
+        <add_player_choice_sub text="'INFO: OBSERVATION CYCLE %1 | EMPIRE HEALTH %2'.[global.$JKEOC_B83Cycle, global.$JKEOC_B83Health]" position="top_left" section="JKEOC_B83_Changed" />
+        <add_player_choice_sub text="'INFO: NEW ISSUES: %1'.[global.$JKEOC_B83New]" position="left" section="JKEOC_B83_Changed" />
+        <add_player_choice_sub text="'INFO: RESOLVED ISSUES: %1'.[global.$JKEOC_B83Resolved]" position="bottom_left" section="JKEOC_B83_Changed" />
+        <add_player_choice_sub text="'INFO: WORSENING ISSUES: %1'.[global.$JKEOC_B83Worsening]" position="top_right" section="JKEOC_B83_Changed" />
+        <add_player_choice_sub text="'INFO: IMPROVING ISSUES: %1'.[global.$JKEOC_B83Improving]" position="right" section="JKEOC_B83_Changed" />
+        <add_player_choice_sub text="'BACK TO DASHBOARD'" position="bottom_right" section="JKEOC_B83_Dashboard" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B83_Inbox" instantiate="true" namespace="this">
+      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B83_Inbox" /></conditions>
+      <actions>
+        <set_value name="$count" exact="global.$JKEOC_B83Inbox.count" />
+        <add_player_choice_sub text="'INFO: EXECUTIVE INBOX | %1 RETAINED MESSAGE(S)'.[$count]" position="top_left" section="JKEOC_B83_Inbox" />
+        <do_if value="$count ge 1"><set_value name="$m1" exact="global.$JKEOC_B83Inbox.{$count}" /><add_player_choice_sub text="'INFO: %1: %2'.[$m1.$type, $m1.$text]" position="left" section="JKEOC_B83_Inbox" /></do_if>
+        <do_if value="$count ge 2"><set_value name="$m2" exact="global.$JKEOC_B83Inbox.{$count - 1}" /><add_player_choice_sub text="'INFO: %1: %2'.[$m2.$type, $m2.$text]" position="bottom_left" section="JKEOC_B83_Inbox" /></do_if>
+        <do_if value="$count ge 3"><set_value name="$m3" exact="global.$JKEOC_B83Inbox.{$count - 2}" /><add_player_choice_sub text="'INFO: %1: %2'.[$m3.$type, $m3.$text]" position="right" section="JKEOC_B83_Inbox" /></do_if>
+        <add_player_choice_sub text="'BACK TO DASHBOARD'" position="bottom_right" section="JKEOC_B83_Dashboard" />
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

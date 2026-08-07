@@ -6,17 +6,19 @@ EOC is an intelligent empire-management advisor for **X4: Foundations**. It obse
 
 ## Current release
 
-**Version 1.0 GA**  
-**Supported game version:** X4: Foundations 9.0 or newer  
+**Version 1.3 GA**  
+**Supported game versions:** X4: Foundations 8.0 and 9.0  
 **Author:** RazorEQX  
 **Steam Workshop:** [EOC - Executive Operations Center](https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957)
 
-> X4 8.0 is not supported by the current GA release. Two Mission Director constants used by EOC were introduced in X4 9.0; on 8.0, the central station manager may fail to initialize and display null values.
+> EOC checks optional game constants before using them so the same release can initialize safely on X4 8.0 and 9.0.
 
 ## What EOC does
 
 - Monitors player stations and preserves long-term station intelligence.
 - Lets the player classify every station by operational role.
+- Can assign evidence-based roles to undefined stations immediately or after three observation cycles; every role remains manually editable.
+- Provides an Executive Intelligence Dashboard with empire health, operational KPIs, trends, and change summaries.
 - Identifies critical cases, warnings, and stations requiring action.
 - Produces empire, station, and operational-remediation reports in the X4 Tips log.
 - Diagnoses repeated shortages, overflow, workforce problems, station-health decline, logistics gaps, and related blockers.
@@ -54,7 +56,7 @@ EOC does not buy ships, blueprints, variants, or equipment. It does not intentio
 
 ## First-time setup
 
-1. Load the game and confirm the EOC 1.0 GA startup ticker entry.
+1. Load the game and confirm the EOC 1.3 GA startup ticker entry.
 2. Open **Extension Options > EOC**.
 3. Open **Executive Advisor**.
 4. Choose **Station Role Assignment** and classify every player station.
@@ -67,13 +69,15 @@ EOC does not buy ships, blueprints, variants, or equipment. It does not intentio
 
 The illustrated 15-page manual covers installation, every primary menu, station roles, analysis, reports, remediation, managed trade orders, shipping-control modes, ship assignment, verification, and troubleshooting.
 
-**[Download the EOC 1.0 GA New User Guide (PDF)](docs/EOC_1.0_GA_New_User_Guide.pdf)**
+**[Download the illustrated EOC New User Guide (PDF)](docs/EOC_1.0_GA_New_User_Guide.pdf)**
+
+The guide documents the core EOC workflow. New 1.3 capabilities are summarized in the current release notes.
 
 ## Repository layout
 
 - `JK_Station_Manager/` - clean runtime extension files required by X4.
 - `docs/EOC_1.0_GA_New_User_Guide.pdf` - illustrated user manual.
-- `docs/RELEASE_NOTES_1.0_GA.md` - GA release summary and known limitations.
+- `docs/RELEASE_NOTES_1.3_GA.md` - current GA release summary and known boundaries.
 - `docs/images/` - public documentation artwork.
 
 Internal test plans, debug snapshots, engineering handoffs, and development archives are intentionally excluded from the public GA repository.

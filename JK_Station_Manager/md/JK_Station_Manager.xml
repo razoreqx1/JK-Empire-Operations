@@ -694,7 +694,9 @@ subordinates, storage modules, and funds. No station or ship settings are change
             </do_if>
             <!-- Build 48: Allographyne is a transmutable/optional substitute ware.
                  An empty optional substitute must not become an empire-critical case. -->
-            <do_if value="$maximum gt 0 and $amount le 0 and $targetamount gt 0 and $ware != ware.khaakalloy">
+            <!-- Build 83A: Do not reference version-specific ware constants.  Active
+                 demand remains the version-neutral admission test. -->
+            <do_if value="$maximum gt 0 and $amount le 0 and $targetamount gt 0">
               <set_value name="$stationempty" exact="$stationempty + 1" />
               <set_value name="$emptyresources" exact="$emptyresources + 1" />
               <set_value name="$storagetype" exact="'UNKNOWN'" />
@@ -914,258 +916,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
               <do_if value="not global.$JKSM_FirstEmptyStation?">
                 <set_value name="global.$JKSM_FirstEmptyStation" exact="$station.name" />
                 <set_value name="global.$JKSM_FirstEmptyStationObject" exact="$station" />
-                <substitute_text text="global.$JKSM_FirstEmptyStationDisplay" source="$station.name">
-                  <replace string="' (RFM_1_)'" with="''" />
-                  <replace string="' (RFM_2_)'" with="''" />
-                  <replace string="' (RFM_3_)'" with="''" />
-                  <replace string="' (RFM_4_)'" with="''" />
-                  <replace string="' (RFM_5_)'" with="''" />
-                  <replace string="' (RFM_6_)'" with="''" />
-                  <replace string="' (RFM_7_)'" with="''" />
-                  <replace string="' (RFM_8_)'" with="''" />
-                  <replace string="' (RFM_9_)'" with="''" />
-                  <replace string="' (RFM_10_)'" with="''" />
-                  <replace string="' (RFM_11_)'" with="''" />
-                  <replace string="' (RFM_12_)'" with="''" />
-                  <replace string="' (RFM_13_)'" with="''" />
-                  <replace string="' (RFM_14_)'" with="''" />
-                  <replace string="' (RFM_15_)'" with="''" />
-                  <replace string="' (RFM_16_)'" with="''" />
-                  <replace string="' (RFM_17_)'" with="''" />
-                  <replace string="' (RFM_18_)'" with="''" />
-                  <replace string="' (RFM_19_)'" with="''" />
-                  <replace string="' (RFM_20_)'" with="''" />
-                  <replace string="' (RFM_21_)'" with="''" />
-                  <replace string="' (RFM_22_)'" with="''" />
-                  <replace string="' (RFM_23_)'" with="''" />
-                  <replace string="' (RFM_24_)'" with="''" />
-                  <replace string="' (RFM_25_)'" with="''" />
-                  <replace string="' (RFM_26_)'" with="''" />
-                  <replace string="' (RFM_27_)'" with="''" />
-                  <replace string="' (RFM_28_)'" with="''" />
-                  <replace string="' (RFM_29_)'" with="''" />
-                  <replace string="' (RFM_30_)'" with="''" />
-                  <replace string="' (RFM_31_)'" with="''" />
-                  <replace string="' (RFM_32_)'" with="''" />
-                  <replace string="' (RFM_33_)'" with="''" />
-                  <replace string="' (RFM_34_)'" with="''" />
-                  <replace string="' (RFM_35_)'" with="''" />
-                  <replace string="' (RFM_36_)'" with="''" />
-                  <replace string="' (RFM_37_)'" with="''" />
-                  <replace string="' (RFM_38_)'" with="''" />
-                  <replace string="' (RFM_39_)'" with="''" />
-                  <replace string="' (RFM_40_)'" with="''" />
-                  <replace string="' (RFM_41_)'" with="''" />
-                  <replace string="' (RFM_42_)'" with="''" />
-                  <replace string="' (RFM_43_)'" with="''" />
-                  <replace string="' (RFM_44_)'" with="''" />
-                  <replace string="' (RFM_45_)'" with="''" />
-                  <replace string="' (RFM_46_)'" with="''" />
-                  <replace string="' (RFM_47_)'" with="''" />
-                  <replace string="' (RFM_48_)'" with="''" />
-                  <replace string="' (RFM_49_)'" with="''" />
-                  <replace string="' (RFM_50_)'" with="''" />
-                  <replace string="' (RFM_51_)'" with="''" />
-                  <replace string="' (RFM_52_)'" with="''" />
-                  <replace string="' (RFM_53_)'" with="''" />
-                  <replace string="' (RFM_54_)'" with="''" />
-                  <replace string="' (RFM_55_)'" with="''" />
-                  <replace string="' (RFM_56_)'" with="''" />
-                  <replace string="' (RFM_57_)'" with="''" />
-                  <replace string="' (RFM_58_)'" with="''" />
-                  <replace string="' (RFM_59_)'" with="''" />
-                  <replace string="' (RFM_60_)'" with="''" />
-                  <replace string="' (RFM_61_)'" with="''" />
-                  <replace string="' (RFM_62_)'" with="''" />
-                  <replace string="' (RFM_63_)'" with="''" />
-                  <replace string="' (RFM_64_)'" with="''" />
-                  <replace string="' (RFM_65_)'" with="''" />
-                  <replace string="' (RFM_66_)'" with="''" />
-                  <replace string="' (RFM_67_)'" with="''" />
-                  <replace string="' (RFM_68_)'" with="''" />
-                  <replace string="' (RFM_69_)'" with="''" />
-                  <replace string="' (RFM_70_)'" with="''" />
-                  <replace string="' (RFM_71_)'" with="''" />
-                  <replace string="' (RFM_72_)'" with="''" />
-                  <replace string="' (RFM_73_)'" with="''" />
-                  <replace string="' (RFM_74_)'" with="''" />
-                  <replace string="' (RFM_75_)'" with="''" />
-                  <replace string="' (RFM_76_)'" with="''" />
-                  <replace string="' (RFM_77_)'" with="''" />
-                  <replace string="' (RFM_78_)'" with="''" />
-                  <replace string="' (RFM_79_)'" with="''" />
-                  <replace string="' (RFM_80_)'" with="''" />
-                  <replace string="' (RFM_81_)'" with="''" />
-                  <replace string="' (RFM_82_)'" with="''" />
-                  <replace string="' (RFM_83_)'" with="''" />
-                  <replace string="' (RFM_84_)'" with="''" />
-                  <replace string="' (RFM_85_)'" with="''" />
-                  <replace string="' (RFM_86_)'" with="''" />
-                  <replace string="' (RFM_87_)'" with="''" />
-                  <replace string="' (RFM_88_)'" with="''" />
-                  <replace string="' (RFM_89_)'" with="''" />
-                  <replace string="' (RFM_90_)'" with="''" />
-                  <replace string="' (RFM_91_)'" with="''" />
-                  <replace string="' (RFM_92_)'" with="''" />
-                  <replace string="' (RFM_93_)'" with="''" />
-                  <replace string="' (RFM_94_)'" with="''" />
-                  <replace string="' (RFM_95_)'" with="''" />
-                  <replace string="' (RFM_96_)'" with="''" />
-                  <replace string="' (RFM_97_)'" with="''" />
-                  <replace string="' (RFM_98_)'" with="''" />
-                  <replace string="' (RFM_99_)'" with="''" />
-                  <replace string="' (RFM_100_)'" with="''" />
-                  <replace string="' (RFM_101_)'" with="''" />
-                  <replace string="' (RFM_102_)'" with="''" />
-                  <replace string="' (RFM_103_)'" with="''" />
-                  <replace string="' (RFM_104_)'" with="''" />
-                  <replace string="' (RFM_105_)'" with="''" />
-                  <replace string="' (RFM_106_)'" with="''" />
-                  <replace string="' (RFM_107_)'" with="''" />
-                  <replace string="' (RFM_108_)'" with="''" />
-                  <replace string="' (RFM_109_)'" with="''" />
-                  <replace string="' (RFM_110_)'" with="''" />
-                  <replace string="' (RFM_111_)'" with="''" />
-                  <replace string="' (RFM_112_)'" with="''" />
-                  <replace string="' (RFM_113_)'" with="''" />
-                  <replace string="' (RFM_114_)'" with="''" />
-                  <replace string="' (RFM_115_)'" with="''" />
-                  <replace string="' (RFM_116_)'" with="''" />
-                  <replace string="' (RFM_117_)'" with="''" />
-                  <replace string="' (RFM_118_)'" with="''" />
-                  <replace string="' (RFM_119_)'" with="''" />
-                  <replace string="' (RFM_120_)'" with="''" />
-                  <replace string="' (RFM_121_)'" with="''" />
-                  <replace string="' (RFM_122_)'" with="''" />
-                  <replace string="' (RFM_123_)'" with="''" />
-                  <replace string="' (RFM_124_)'" with="''" />
-                  <replace string="' (RFM_125_)'" with="''" />
-                  <replace string="' (RFM_126_)'" with="''" />
-                  <replace string="' (RFM_127_)'" with="''" />
-                  <replace string="' (RFM_128_)'" with="''" />
-                  <replace string="' (RFM_129_)'" with="''" />
-                  <replace string="' (RFM_130_)'" with="''" />
-                  <replace string="' (RFM_131_)'" with="''" />
-                  <replace string="' (RFM_132_)'" with="''" />
-                  <replace string="' (RFM_133_)'" with="''" />
-                  <replace string="' (RFM_134_)'" with="''" />
-                  <replace string="' (RFM_135_)'" with="''" />
-                  <replace string="' (RFM_136_)'" with="''" />
-                  <replace string="' (RFM_137_)'" with="''" />
-                  <replace string="' (RFM_138_)'" with="''" />
-                  <replace string="' (RFM_139_)'" with="''" />
-                  <replace string="' (RFM_140_)'" with="''" />
-                  <replace string="' (RFM_141_)'" with="''" />
-                  <replace string="' (RFM_142_)'" with="''" />
-                  <replace string="' (RFM_143_)'" with="''" />
-                  <replace string="' (RFM_144_)'" with="''" />
-                  <replace string="' (RFM_145_)'" with="''" />
-                  <replace string="' (RFM_146_)'" with="''" />
-                  <replace string="' (RFM_147_)'" with="''" />
-                  <replace string="' (RFM_148_)'" with="''" />
-                  <replace string="' (RFM_149_)'" with="''" />
-                  <replace string="' (RFM_150_)'" with="''" />
-                  <replace string="' (RFM_151_)'" with="''" />
-                  <replace string="' (RFM_152_)'" with="''" />
-                  <replace string="' (RFM_153_)'" with="''" />
-                  <replace string="' (RFM_154_)'" with="''" />
-                  <replace string="' (RFM_155_)'" with="''" />
-                  <replace string="' (RFM_156_)'" with="''" />
-                  <replace string="' (RFM_157_)'" with="''" />
-                  <replace string="' (RFM_158_)'" with="''" />
-                  <replace string="' (RFM_159_)'" with="''" />
-                  <replace string="' (RFM_160_)'" with="''" />
-                  <replace string="' (RFM_161_)'" with="''" />
-                  <replace string="' (RFM_162_)'" with="''" />
-                  <replace string="' (RFM_163_)'" with="''" />
-                  <replace string="' (RFM_164_)'" with="''" />
-                  <replace string="' (RFM_165_)'" with="''" />
-                  <replace string="' (RFM_166_)'" with="''" />
-                  <replace string="' (RFM_167_)'" with="''" />
-                  <replace string="' (RFM_168_)'" with="''" />
-                  <replace string="' (RFM_169_)'" with="''" />
-                  <replace string="' (RFM_170_)'" with="''" />
-                  <replace string="' (RFM_171_)'" with="''" />
-                  <replace string="' (RFM_172_)'" with="''" />
-                  <replace string="' (RFM_173_)'" with="''" />
-                  <replace string="' (RFM_174_)'" with="''" />
-                  <replace string="' (RFM_175_)'" with="''" />
-                  <replace string="' (RFM_176_)'" with="''" />
-                  <replace string="' (RFM_177_)'" with="''" />
-                  <replace string="' (RFM_178_)'" with="''" />
-                  <replace string="' (RFM_179_)'" with="''" />
-                  <replace string="' (RFM_180_)'" with="''" />
-                  <replace string="' (RFM_181_)'" with="''" />
-                  <replace string="' (RFM_182_)'" with="''" />
-                  <replace string="' (RFM_183_)'" with="''" />
-                  <replace string="' (RFM_184_)'" with="''" />
-                  <replace string="' (RFM_185_)'" with="''" />
-                  <replace string="' (RFM_186_)'" with="''" />
-                  <replace string="' (RFM_187_)'" with="''" />
-                  <replace string="' (RFM_188_)'" with="''" />
-                  <replace string="' (RFM_189_)'" with="''" />
-                  <replace string="' (RFM_190_)'" with="''" />
-                  <replace string="' (RFM_191_)'" with="''" />
-                  <replace string="' (RFM_192_)'" with="''" />
-                  <replace string="' (RFM_193_)'" with="''" />
-                  <replace string="' (RFM_194_)'" with="''" />
-                  <replace string="' (RFM_195_)'" with="''" />
-                  <replace string="' (RFM_196_)'" with="''" />
-                  <replace string="' (RFM_197_)'" with="''" />
-                  <replace string="' (RFM_198_)'" with="''" />
-                  <replace string="' (RFM_199_)'" with="''" />
-                  <replace string="' (RFM_200_)'" with="''" />
-                  <replace string="' (RFM_201_)'" with="''" />
-                  <replace string="' (RFM_202_)'" with="''" />
-                  <replace string="' (RFM_203_)'" with="''" />
-                  <replace string="' (RFM_204_)'" with="''" />
-                  <replace string="' (RFM_205_)'" with="''" />
-                  <replace string="' (RFM_206_)'" with="''" />
-                  <replace string="' (RFM_207_)'" with="''" />
-                  <replace string="' (RFM_208_)'" with="''" />
-                  <replace string="' (RFM_209_)'" with="''" />
-                  <replace string="' (RFM_210_)'" with="''" />
-                  <replace string="' (RFM_211_)'" with="''" />
-                  <replace string="' (RFM_212_)'" with="''" />
-                  <replace string="' (RFM_213_)'" with="''" />
-                  <replace string="' (RFM_214_)'" with="''" />
-                  <replace string="' (RFM_215_)'" with="''" />
-                  <replace string="' (RFM_216_)'" with="''" />
-                  <replace string="' (RFM_217_)'" with="''" />
-                  <replace string="' (RFM_218_)'" with="''" />
-                  <replace string="' (RFM_219_)'" with="''" />
-                  <replace string="' (RFM_220_)'" with="''" />
-                  <replace string="' (RFM_221_)'" with="''" />
-                  <replace string="' (RFM_222_)'" with="''" />
-                  <replace string="' (RFM_223_)'" with="''" />
-                  <replace string="' (RFM_224_)'" with="''" />
-                  <replace string="' (RFM_225_)'" with="''" />
-                  <replace string="' (RFM_226_)'" with="''" />
-                  <replace string="' (RFM_227_)'" with="''" />
-                  <replace string="' (RFM_228_)'" with="''" />
-                  <replace string="' (RFM_229_)'" with="''" />
-                  <replace string="' (RFM_230_)'" with="''" />
-                  <replace string="' (RFM_231_)'" with="''" />
-                  <replace string="' (RFM_232_)'" with="''" />
-                  <replace string="' (RFM_233_)'" with="''" />
-                  <replace string="' (RFM_234_)'" with="''" />
-                  <replace string="' (RFM_235_)'" with="''" />
-                  <replace string="' (RFM_236_)'" with="''" />
-                  <replace string="' (RFM_237_)'" with="''" />
-                  <replace string="' (RFM_238_)'" with="''" />
-                  <replace string="' (RFM_239_)'" with="''" />
-                  <replace string="' (RFM_240_)'" with="''" />
-                  <replace string="' (RFM_241_)'" with="''" />
-                  <replace string="' (RFM_242_)'" with="''" />
-                  <replace string="' (RFM_243_)'" with="''" />
-                  <replace string="' (RFM_244_)'" with="''" />
-                  <replace string="' (RFM_245_)'" with="''" />
-                  <replace string="' (RFM_246_)'" with="''" />
-                  <replace string="' (RFM_247_)'" with="''" />
-                  <replace string="' (RFM_248_)'" with="''" />
-                  <replace string="' (RFM_249_)'" with="''" />
-                  <replace string="' (RFM_250_)'" with="''" />
-                </substitute_text>
+                <set_value name="global.$JKSM_FirstEmptyStationDisplay" exact="$station.name" />
                 <set_value name="global.$JKSM_FirstEmptyWare" exact="$ware.name" />
                 <set_value name="global.$JKSM_FirstEmptyWareObject" exact="$ware" />
                 <set_value name="global.$JKSM_FirstEmptyAmount" exact="$amount" />
@@ -1230,9 +981,6 @@ subordinates, storage modules, and funds. No station or ship settings are change
               </do_if>
               <debug_text text="'[JKEOC][V330][RESOURCE_EMPTY] %1 | %2 | amount=%3 max=%4 target=%5'.[$station.name, $ware.name, $amount, $maximum, $station.cargo.{$ware}.target]" filter="general" />
             </do_if>
-            <do_elseif value="$maximum gt 0 and $amount le 0 and $ware == ware.khaakalloy">
-              <debug_text text="'[JKEOC][V420][RESOURCE_EMPTY_IGNORED] %1 | %2 | amount=%3 max=%4 target=%5 reason=optional_transmutable_substitute'.[$station.name, $ware.name, $amount, $maximum, $targetamount]" filter="general" />
-            </do_elseif>
             <do_elseif value="$maximum gt 0 and $amount le 0 and $targetamount le 0">
               <debug_text text="'[JKEOC][V420][RESOURCE_EMPTY_IGNORED] %1 | %2 | amount=%3 max=%4 target=%5 reason=no_active_demand'.[$station.name, $ware.name, $amount, $maximum, $targetamount]" filter="general" />
             </do_elseif>
@@ -1289,258 +1037,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
               <append_to_list name="global.$JKEOC_WarningCases" exact="$stationcases.{$stationcases.count}" />
               <do_if value="not global.$JKSM_FirstFullStation?">
                 <set_value name="global.$JKSM_FirstFullStation" exact="$station.name" />
-                <substitute_text text="global.$JKSM_FirstFullStationDisplay" source="$station.name">
-                  <replace string="' (RFM_1_)'" with="''" />
-                  <replace string="' (RFM_2_)'" with="''" />
-                  <replace string="' (RFM_3_)'" with="''" />
-                  <replace string="' (RFM_4_)'" with="''" />
-                  <replace string="' (RFM_5_)'" with="''" />
-                  <replace string="' (RFM_6_)'" with="''" />
-                  <replace string="' (RFM_7_)'" with="''" />
-                  <replace string="' (RFM_8_)'" with="''" />
-                  <replace string="' (RFM_9_)'" with="''" />
-                  <replace string="' (RFM_10_)'" with="''" />
-                  <replace string="' (RFM_11_)'" with="''" />
-                  <replace string="' (RFM_12_)'" with="''" />
-                  <replace string="' (RFM_13_)'" with="''" />
-                  <replace string="' (RFM_14_)'" with="''" />
-                  <replace string="' (RFM_15_)'" with="''" />
-                  <replace string="' (RFM_16_)'" with="''" />
-                  <replace string="' (RFM_17_)'" with="''" />
-                  <replace string="' (RFM_18_)'" with="''" />
-                  <replace string="' (RFM_19_)'" with="''" />
-                  <replace string="' (RFM_20_)'" with="''" />
-                  <replace string="' (RFM_21_)'" with="''" />
-                  <replace string="' (RFM_22_)'" with="''" />
-                  <replace string="' (RFM_23_)'" with="''" />
-                  <replace string="' (RFM_24_)'" with="''" />
-                  <replace string="' (RFM_25_)'" with="''" />
-                  <replace string="' (RFM_26_)'" with="''" />
-                  <replace string="' (RFM_27_)'" with="''" />
-                  <replace string="' (RFM_28_)'" with="''" />
-                  <replace string="' (RFM_29_)'" with="''" />
-                  <replace string="' (RFM_30_)'" with="''" />
-                  <replace string="' (RFM_31_)'" with="''" />
-                  <replace string="' (RFM_32_)'" with="''" />
-                  <replace string="' (RFM_33_)'" with="''" />
-                  <replace string="' (RFM_34_)'" with="''" />
-                  <replace string="' (RFM_35_)'" with="''" />
-                  <replace string="' (RFM_36_)'" with="''" />
-                  <replace string="' (RFM_37_)'" with="''" />
-                  <replace string="' (RFM_38_)'" with="''" />
-                  <replace string="' (RFM_39_)'" with="''" />
-                  <replace string="' (RFM_40_)'" with="''" />
-                  <replace string="' (RFM_41_)'" with="''" />
-                  <replace string="' (RFM_42_)'" with="''" />
-                  <replace string="' (RFM_43_)'" with="''" />
-                  <replace string="' (RFM_44_)'" with="''" />
-                  <replace string="' (RFM_45_)'" with="''" />
-                  <replace string="' (RFM_46_)'" with="''" />
-                  <replace string="' (RFM_47_)'" with="''" />
-                  <replace string="' (RFM_48_)'" with="''" />
-                  <replace string="' (RFM_49_)'" with="''" />
-                  <replace string="' (RFM_50_)'" with="''" />
-                  <replace string="' (RFM_51_)'" with="''" />
-                  <replace string="' (RFM_52_)'" with="''" />
-                  <replace string="' (RFM_53_)'" with="''" />
-                  <replace string="' (RFM_54_)'" with="''" />
-                  <replace string="' (RFM_55_)'" with="''" />
-                  <replace string="' (RFM_56_)'" with="''" />
-                  <replace string="' (RFM_57_)'" with="''" />
-                  <replace string="' (RFM_58_)'" with="''" />
-                  <replace string="' (RFM_59_)'" with="''" />
-                  <replace string="' (RFM_60_)'" with="''" />
-                  <replace string="' (RFM_61_)'" with="''" />
-                  <replace string="' (RFM_62_)'" with="''" />
-                  <replace string="' (RFM_63_)'" with="''" />
-                  <replace string="' (RFM_64_)'" with="''" />
-                  <replace string="' (RFM_65_)'" with="''" />
-                  <replace string="' (RFM_66_)'" with="''" />
-                  <replace string="' (RFM_67_)'" with="''" />
-                  <replace string="' (RFM_68_)'" with="''" />
-                  <replace string="' (RFM_69_)'" with="''" />
-                  <replace string="' (RFM_70_)'" with="''" />
-                  <replace string="' (RFM_71_)'" with="''" />
-                  <replace string="' (RFM_72_)'" with="''" />
-                  <replace string="' (RFM_73_)'" with="''" />
-                  <replace string="' (RFM_74_)'" with="''" />
-                  <replace string="' (RFM_75_)'" with="''" />
-                  <replace string="' (RFM_76_)'" with="''" />
-                  <replace string="' (RFM_77_)'" with="''" />
-                  <replace string="' (RFM_78_)'" with="''" />
-                  <replace string="' (RFM_79_)'" with="''" />
-                  <replace string="' (RFM_80_)'" with="''" />
-                  <replace string="' (RFM_81_)'" with="''" />
-                  <replace string="' (RFM_82_)'" with="''" />
-                  <replace string="' (RFM_83_)'" with="''" />
-                  <replace string="' (RFM_84_)'" with="''" />
-                  <replace string="' (RFM_85_)'" with="''" />
-                  <replace string="' (RFM_86_)'" with="''" />
-                  <replace string="' (RFM_87_)'" with="''" />
-                  <replace string="' (RFM_88_)'" with="''" />
-                  <replace string="' (RFM_89_)'" with="''" />
-                  <replace string="' (RFM_90_)'" with="''" />
-                  <replace string="' (RFM_91_)'" with="''" />
-                  <replace string="' (RFM_92_)'" with="''" />
-                  <replace string="' (RFM_93_)'" with="''" />
-                  <replace string="' (RFM_94_)'" with="''" />
-                  <replace string="' (RFM_95_)'" with="''" />
-                  <replace string="' (RFM_96_)'" with="''" />
-                  <replace string="' (RFM_97_)'" with="''" />
-                  <replace string="' (RFM_98_)'" with="''" />
-                  <replace string="' (RFM_99_)'" with="''" />
-                  <replace string="' (RFM_100_)'" with="''" />
-                  <replace string="' (RFM_101_)'" with="''" />
-                  <replace string="' (RFM_102_)'" with="''" />
-                  <replace string="' (RFM_103_)'" with="''" />
-                  <replace string="' (RFM_104_)'" with="''" />
-                  <replace string="' (RFM_105_)'" with="''" />
-                  <replace string="' (RFM_106_)'" with="''" />
-                  <replace string="' (RFM_107_)'" with="''" />
-                  <replace string="' (RFM_108_)'" with="''" />
-                  <replace string="' (RFM_109_)'" with="''" />
-                  <replace string="' (RFM_110_)'" with="''" />
-                  <replace string="' (RFM_111_)'" with="''" />
-                  <replace string="' (RFM_112_)'" with="''" />
-                  <replace string="' (RFM_113_)'" with="''" />
-                  <replace string="' (RFM_114_)'" with="''" />
-                  <replace string="' (RFM_115_)'" with="''" />
-                  <replace string="' (RFM_116_)'" with="''" />
-                  <replace string="' (RFM_117_)'" with="''" />
-                  <replace string="' (RFM_118_)'" with="''" />
-                  <replace string="' (RFM_119_)'" with="''" />
-                  <replace string="' (RFM_120_)'" with="''" />
-                  <replace string="' (RFM_121_)'" with="''" />
-                  <replace string="' (RFM_122_)'" with="''" />
-                  <replace string="' (RFM_123_)'" with="''" />
-                  <replace string="' (RFM_124_)'" with="''" />
-                  <replace string="' (RFM_125_)'" with="''" />
-                  <replace string="' (RFM_126_)'" with="''" />
-                  <replace string="' (RFM_127_)'" with="''" />
-                  <replace string="' (RFM_128_)'" with="''" />
-                  <replace string="' (RFM_129_)'" with="''" />
-                  <replace string="' (RFM_130_)'" with="''" />
-                  <replace string="' (RFM_131_)'" with="''" />
-                  <replace string="' (RFM_132_)'" with="''" />
-                  <replace string="' (RFM_133_)'" with="''" />
-                  <replace string="' (RFM_134_)'" with="''" />
-                  <replace string="' (RFM_135_)'" with="''" />
-                  <replace string="' (RFM_136_)'" with="''" />
-                  <replace string="' (RFM_137_)'" with="''" />
-                  <replace string="' (RFM_138_)'" with="''" />
-                  <replace string="' (RFM_139_)'" with="''" />
-                  <replace string="' (RFM_140_)'" with="''" />
-                  <replace string="' (RFM_141_)'" with="''" />
-                  <replace string="' (RFM_142_)'" with="''" />
-                  <replace string="' (RFM_143_)'" with="''" />
-                  <replace string="' (RFM_144_)'" with="''" />
-                  <replace string="' (RFM_145_)'" with="''" />
-                  <replace string="' (RFM_146_)'" with="''" />
-                  <replace string="' (RFM_147_)'" with="''" />
-                  <replace string="' (RFM_148_)'" with="''" />
-                  <replace string="' (RFM_149_)'" with="''" />
-                  <replace string="' (RFM_150_)'" with="''" />
-                  <replace string="' (RFM_151_)'" with="''" />
-                  <replace string="' (RFM_152_)'" with="''" />
-                  <replace string="' (RFM_153_)'" with="''" />
-                  <replace string="' (RFM_154_)'" with="''" />
-                  <replace string="' (RFM_155_)'" with="''" />
-                  <replace string="' (RFM_156_)'" with="''" />
-                  <replace string="' (RFM_157_)'" with="''" />
-                  <replace string="' (RFM_158_)'" with="''" />
-                  <replace string="' (RFM_159_)'" with="''" />
-                  <replace string="' (RFM_160_)'" with="''" />
-                  <replace string="' (RFM_161_)'" with="''" />
-                  <replace string="' (RFM_162_)'" with="''" />
-                  <replace string="' (RFM_163_)'" with="''" />
-                  <replace string="' (RFM_164_)'" with="''" />
-                  <replace string="' (RFM_165_)'" with="''" />
-                  <replace string="' (RFM_166_)'" with="''" />
-                  <replace string="' (RFM_167_)'" with="''" />
-                  <replace string="' (RFM_168_)'" with="''" />
-                  <replace string="' (RFM_169_)'" with="''" />
-                  <replace string="' (RFM_170_)'" with="''" />
-                  <replace string="' (RFM_171_)'" with="''" />
-                  <replace string="' (RFM_172_)'" with="''" />
-                  <replace string="' (RFM_173_)'" with="''" />
-                  <replace string="' (RFM_174_)'" with="''" />
-                  <replace string="' (RFM_175_)'" with="''" />
-                  <replace string="' (RFM_176_)'" with="''" />
-                  <replace string="' (RFM_177_)'" with="''" />
-                  <replace string="' (RFM_178_)'" with="''" />
-                  <replace string="' (RFM_179_)'" with="''" />
-                  <replace string="' (RFM_180_)'" with="''" />
-                  <replace string="' (RFM_181_)'" with="''" />
-                  <replace string="' (RFM_182_)'" with="''" />
-                  <replace string="' (RFM_183_)'" with="''" />
-                  <replace string="' (RFM_184_)'" with="''" />
-                  <replace string="' (RFM_185_)'" with="''" />
-                  <replace string="' (RFM_186_)'" with="''" />
-                  <replace string="' (RFM_187_)'" with="''" />
-                  <replace string="' (RFM_188_)'" with="''" />
-                  <replace string="' (RFM_189_)'" with="''" />
-                  <replace string="' (RFM_190_)'" with="''" />
-                  <replace string="' (RFM_191_)'" with="''" />
-                  <replace string="' (RFM_192_)'" with="''" />
-                  <replace string="' (RFM_193_)'" with="''" />
-                  <replace string="' (RFM_194_)'" with="''" />
-                  <replace string="' (RFM_195_)'" with="''" />
-                  <replace string="' (RFM_196_)'" with="''" />
-                  <replace string="' (RFM_197_)'" with="''" />
-                  <replace string="' (RFM_198_)'" with="''" />
-                  <replace string="' (RFM_199_)'" with="''" />
-                  <replace string="' (RFM_200_)'" with="''" />
-                  <replace string="' (RFM_201_)'" with="''" />
-                  <replace string="' (RFM_202_)'" with="''" />
-                  <replace string="' (RFM_203_)'" with="''" />
-                  <replace string="' (RFM_204_)'" with="''" />
-                  <replace string="' (RFM_205_)'" with="''" />
-                  <replace string="' (RFM_206_)'" with="''" />
-                  <replace string="' (RFM_207_)'" with="''" />
-                  <replace string="' (RFM_208_)'" with="''" />
-                  <replace string="' (RFM_209_)'" with="''" />
-                  <replace string="' (RFM_210_)'" with="''" />
-                  <replace string="' (RFM_211_)'" with="''" />
-                  <replace string="' (RFM_212_)'" with="''" />
-                  <replace string="' (RFM_213_)'" with="''" />
-                  <replace string="' (RFM_214_)'" with="''" />
-                  <replace string="' (RFM_215_)'" with="''" />
-                  <replace string="' (RFM_216_)'" with="''" />
-                  <replace string="' (RFM_217_)'" with="''" />
-                  <replace string="' (RFM_218_)'" with="''" />
-                  <replace string="' (RFM_219_)'" with="''" />
-                  <replace string="' (RFM_220_)'" with="''" />
-                  <replace string="' (RFM_221_)'" with="''" />
-                  <replace string="' (RFM_222_)'" with="''" />
-                  <replace string="' (RFM_223_)'" with="''" />
-                  <replace string="' (RFM_224_)'" with="''" />
-                  <replace string="' (RFM_225_)'" with="''" />
-                  <replace string="' (RFM_226_)'" with="''" />
-                  <replace string="' (RFM_227_)'" with="''" />
-                  <replace string="' (RFM_228_)'" with="''" />
-                  <replace string="' (RFM_229_)'" with="''" />
-                  <replace string="' (RFM_230_)'" with="''" />
-                  <replace string="' (RFM_231_)'" with="''" />
-                  <replace string="' (RFM_232_)'" with="''" />
-                  <replace string="' (RFM_233_)'" with="''" />
-                  <replace string="' (RFM_234_)'" with="''" />
-                  <replace string="' (RFM_235_)'" with="''" />
-                  <replace string="' (RFM_236_)'" with="''" />
-                  <replace string="' (RFM_237_)'" with="''" />
-                  <replace string="' (RFM_238_)'" with="''" />
-                  <replace string="' (RFM_239_)'" with="''" />
-                  <replace string="' (RFM_240_)'" with="''" />
-                  <replace string="' (RFM_241_)'" with="''" />
-                  <replace string="' (RFM_242_)'" with="''" />
-                  <replace string="' (RFM_243_)'" with="''" />
-                  <replace string="' (RFM_244_)'" with="''" />
-                  <replace string="' (RFM_245_)'" with="''" />
-                  <replace string="' (RFM_246_)'" with="''" />
-                  <replace string="' (RFM_247_)'" with="''" />
-                  <replace string="' (RFM_248_)'" with="''" />
-                  <replace string="' (RFM_249_)'" with="''" />
-                  <replace string="' (RFM_250_)'" with="''" />
-                </substitute_text>
+                <set_value name="global.$JKSM_FirstFullStationDisplay" exact="$station.name" />
                 <set_value name="global.$JKSM_FirstFullWare" exact="$ware.name" />
                 <set_value name="global.$JKSM_FirstFullAmount" exact="$amount" />
                 <set_value name="global.$JKSM_FirstFullMaximum" exact="$maximum" />
@@ -2491,7 +1988,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
     </cue>
     <cue name="JKSM_CriticalListMore" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_CriticalListMore" /></conditions>
-      <actions><do_if value="(global.$JKEOC_CriticalPage + 1) * 3 lt global.$JKEOC_CriticalCases.count"><set_value name="global.$JKEOC_CriticalPage" exact="global.$JKEOC_CriticalPage + 1" /></do_if><signal_cue_instantly cue="JKSM_CriticalList" /></actions>
+      <actions><do_if value="(global.$JKEOC_CriticalPage + 1) * 4 lt global.$JKEOC_CriticalCases.count"><set_value name="global.$JKEOC_CriticalPage" exact="global.$JKEOC_CriticalPage + 1" /></do_if><do_else><set_value name="global.$JKEOC_CriticalPage" exact="0" /></do_else><signal_cue_instantly cue="JKSM_CriticalList" /></actions>
     </cue>
     <cue name="JKSM_CriticalListPrevious" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_CriticalListPrevious" /></conditions>
@@ -2500,14 +1997,15 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_CriticalList" namespace="this" instantiate="true">
       <conditions><check_any><event_conversation_next_section actor="player.computer" section="JKSM_CriticalList" /><event_cue_signalled /></check_any></conditions>
       <actions>
-        <set_value name="$base" exact="global.$JKEOC_CriticalPage * 3" />
-        <set_value name="$totalpages" exact="((global.$JKEOC_CriticalCases.count + 2) / 3)i" />
-        <do_if value="$base + 1 le global.$JKEOC_CriticalCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_CriticalCases.{$base+1}.$stationname, global.$JKEOC_CriticalCases.{$base+1}.$ware]" position="top_left" section="JKSM_CriticalPageSelect1" /></do_if>
-        <do_if value="$base + 2 le global.$JKEOC_CriticalCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_CriticalCases.{$base+2}.$stationname, global.$JKEOC_CriticalCases.{$base+2}.$ware]" position="left" section="JKSM_CriticalPageSelect2" /></do_if>
-        <do_if value="$base + 3 le global.$JKEOC_CriticalCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_CriticalCases.{$base+3}.$stationname, global.$JKEOC_CriticalCases.{$base+3}.$ware]" position="bottom_left" section="JKSM_CriticalPageSelect3" /></do_if>
-        <do_if value="global.$JKEOC_CriticalPage gt 0"><add_player_choice_sub text="'PREVIOUS — PAGE %1 OF %2'.[global.$JKEOC_CriticalPage, $totalpages]" position="top_right" section="JKSM_CriticalListPrevious" /></do_if>
-        <do_if value="$base + 3 lt global.$JKEOC_CriticalCases.count"><add_player_choice_sub text="'NEXT — PAGE %1 OF %2'.[global.$JKEOC_CriticalPage+2, $totalpages]" position="right" section="JKSM_CriticalListMore" /></do_if>
-        <do_else><add_player_choice_sub text="'END OF LIST — PAGE %1 OF %2'.[global.$JKEOC_CriticalPage+1, $totalpages]" position="right" section="JKSM_MenuHealth" /></do_else>
+        <set_value name="$base" exact="global.$JKEOC_CriticalPage * 4" />
+        <set_value name="$totalpages" exact="((global.$JKEOC_CriticalCases.count + 3) / 4)i" />
+        <do_if value="$base + 1 le global.$JKEOC_CriticalCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_CriticalCases.{$base+1}.$stationname, global.$JKEOC_CriticalCases.{$base+1}.$ware]" position="top_left" section="JKSM_CriticalSelect1" /></do_if>
+        <do_if value="$base + 2 le global.$JKEOC_CriticalCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_CriticalCases.{$base+2}.$stationname, global.$JKEOC_CriticalCases.{$base+2}.$ware]" position="left" section="JKSM_CriticalSelect2" /></do_if>
+        <do_if value="$base + 3 le global.$JKEOC_CriticalCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_CriticalCases.{$base+3}.$stationname, global.$JKEOC_CriticalCases.{$base+3}.$ware]" position="bottom_left" section="JKSM_CriticalSelect3" /></do_if>
+        <do_if value="$base + 4 le global.$JKEOC_CriticalCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_CriticalCases.{$base+4}.$stationname, global.$JKEOC_CriticalCases.{$base+4}.$ware]" position="top_right" section="JKSM_CriticalSelect4" /></do_if>
+        <do_if value="$totalpages gt 1 and $base + 4 lt global.$JKEOC_CriticalCases.count"><add_player_choice_sub text="'PAGE %1 OF %2 — NEXT PAGE'.[global.$JKEOC_CriticalPage+1, $totalpages]" position="right" section="JKSM_CriticalListMore" /></do_if>
+        <do_elseif value="$totalpages gt 1"><add_player_choice_sub text="'PAGE %1 OF %2 — RETURN TO PAGE 1'.[global.$JKEOC_CriticalPage+1, $totalpages]" position="right" section="JKSM_CriticalListMore" /></do_elseif>
+        <do_else><add_player_choice_sub text="'PAGE 1 OF 1 — END OF LIST'" position="right" section="JKSM_MenuHealth" /></do_else>
         <add_player_choice_sub text="'BACK TO EOC'" position="bottom_right" section="JKSM_EmpireOperations" />
       </actions>
     </cue>
@@ -2536,7 +2034,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
     </cue>
     <cue name="JKSM_WarningListMore" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_WarningListMore" /></conditions>
-      <actions><do_if value="(global.$JKEOC_WarningPage + 1) * 3 lt global.$JKEOC_WarningCases.count"><set_value name="global.$JKEOC_WarningPage" exact="global.$JKEOC_WarningPage + 1" /></do_if><signal_cue_instantly cue="JKSM_WarningList" /></actions>
+      <actions><do_if value="(global.$JKEOC_WarningPage + 1) * 4 lt global.$JKEOC_WarningCases.count"><set_value name="global.$JKEOC_WarningPage" exact="global.$JKEOC_WarningPage + 1" /></do_if><do_else><set_value name="global.$JKEOC_WarningPage" exact="0" /></do_else><signal_cue_instantly cue="JKSM_WarningList" /></actions>
     </cue>
     <cue name="JKSM_WarningListPrevious" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_WarningListPrevious" /></conditions>
@@ -2545,13 +2043,14 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_WarningList" namespace="this" instantiate="true">
       <conditions><check_any><event_conversation_next_section actor="player.computer" section="JKSM_WarningList" /><event_cue_signalled /></check_any></conditions>
       <actions>
-        <set_value name="$base" exact="global.$JKEOC_WarningPage * 3" /><set_value name="$totalpages" exact="((global.$JKEOC_WarningCases.count + 2) / 3)i" />
-        <do_if value="$base+1 le global.$JKEOC_WarningCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_WarningCases.{$base+1}.$stationname, global.$JKEOC_WarningCases.{$base+1}.$ware]" position="top_left" section="JKSM_WarningPageSelect1" /></do_if>
-        <do_if value="$base+2 le global.$JKEOC_WarningCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_WarningCases.{$base+2}.$stationname, global.$JKEOC_WarningCases.{$base+2}.$ware]" position="left" section="JKSM_WarningPageSelect2" /></do_if>
-        <do_if value="$base+3 le global.$JKEOC_WarningCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_WarningCases.{$base+3}.$stationname, global.$JKEOC_WarningCases.{$base+3}.$ware]" position="bottom_left" section="JKSM_WarningPageSelect3" /></do_if>
-        <do_if value="global.$JKEOC_WarningPage gt 0"><add_player_choice_sub text="'PREVIOUS — PAGE %1 OF %2'.[global.$JKEOC_WarningPage, $totalpages]" position="top_right" section="JKSM_WarningListPrevious" /></do_if>
-        <do_if value="$base+3 lt global.$JKEOC_WarningCases.count"><add_player_choice_sub text="'NEXT — PAGE %1 OF %2'.[global.$JKEOC_WarningPage+2, $totalpages]" position="right" section="JKSM_WarningListMore" /></do_if>
-        <do_else><add_player_choice_sub text="'END OF LIST — PAGE %1 OF %2'.[global.$JKEOC_WarningPage+1, $totalpages]" position="right" section="JKSM_MenuHealth" /></do_else>
+        <set_value name="$base" exact="global.$JKEOC_WarningPage * 4" /><set_value name="$totalpages" exact="((global.$JKEOC_WarningCases.count + 3) / 4)i" />
+        <do_if value="$base+1 le global.$JKEOC_WarningCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_WarningCases.{$base+1}.$stationname, global.$JKEOC_WarningCases.{$base+1}.$ware]" position="top_left" section="JKSM_WarningSelect1" /></do_if>
+        <do_if value="$base+2 le global.$JKEOC_WarningCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_WarningCases.{$base+2}.$stationname, global.$JKEOC_WarningCases.{$base+2}.$ware]" position="left" section="JKSM_WarningSelect2" /></do_if>
+        <do_if value="$base+3 le global.$JKEOC_WarningCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_WarningCases.{$base+3}.$stationname, global.$JKEOC_WarningCases.{$base+3}.$ware]" position="bottom_left" section="JKSM_WarningSelect3" /></do_if>
+        <do_if value="$base+4 le global.$JKEOC_WarningCases.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_WarningCases.{$base+4}.$stationname, global.$JKEOC_WarningCases.{$base+4}.$ware]" position="top_right" section="JKSM_WarningSelect4" /></do_if>
+        <do_if value="$totalpages gt 1 and $base+4 lt global.$JKEOC_WarningCases.count"><add_player_choice_sub text="'PAGE %1 OF %2 — NEXT PAGE'.[global.$JKEOC_WarningPage+1, $totalpages]" position="right" section="JKSM_WarningListMore" /></do_if>
+        <do_elseif value="$totalpages gt 1"><add_player_choice_sub text="'PAGE %1 OF %2 — RETURN TO PAGE 1'.[global.$JKEOC_WarningPage+1, $totalpages]" position="right" section="JKSM_WarningListMore" /></do_elseif>
+        <do_else><add_player_choice_sub text="'PAGE 1 OF 1 — END OF LIST'" position="right" section="JKSM_MenuHealth" /></do_else>
         <add_player_choice_sub text="'BACK TO EOC'" position="bottom_right" section="JKSM_EmpireOperations" />
       </actions>
     </cue>
@@ -2616,10 +2115,10 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <write_to_logbook category="tips" title="'EOC Report — Why — %1'.[$case.$stationname]" text="$whyreport" />
         <debug_text text="'[JKEOC][V520][WHY_REPORT] station=%1 ware=%2 status=%3 cause=%4 dependency=%5 next=%6'.[$case.$stationname, $subjectware, $case.$status, $case.$rootcause, $dependency, $nextconstraint]" filter="general" />
 
-        <add_player_choice_sub text="'STATION: %1 | WHY — %2'.[$case.$stationname, $subjectware]" position="top_left" section="JKSM_CaseWhyReport" />
-        <add_player_choice_sub text="'ROOT CAUSE: %1'.[$case.$rootcause]" position="left" section="JKSM_CaseWhyReport" />
-        <add_player_choice_sub text="'DEPENDENCY: %1'.[$dependency]" position="bottom_left" section="JKSM_CaseWhyReport" />
-        <add_player_choice_sub text="'EVIDENCE: STOCK %1/%2 | %3 FREE %4'.[$case.$amount, $case.$maximum, $case.$storagetype, $case.$storagefree]" position="top_right" section="JKSM_CaseWhyReport" />
+        <add_player_choice_sub text="'INFO: STATION: %1 | WHY — %2'.[$case.$stationname, $subjectware]" position="top_left" section="JKSM_CaseWhyReport" />
+        <add_player_choice_sub text="'INFO: ROOT CAUSE: %1'.[$case.$rootcause]" position="left" section="JKSM_CaseWhyReport" />
+        <add_player_choice_sub text="'INFO: DEPENDENCY: %1'.[$dependency]" position="bottom_left" section="JKSM_CaseWhyReport" />
+        <add_player_choice_sub text="'INFO: EVIDENCE: STOCK %1/%2 | %3 FREE %4'.[$case.$amount, $case.$maximum, $case.$storagetype, $case.$storagefree]" position="top_right" section="JKSM_CaseWhyReport" />
         <add_player_choice_sub text="'NEXT: %1'.[$case.$corrective]" position="right" section="JKSM_OpenRecommendedFix" />
         <add_player_choice_sub text="'REPORT SAVED TO LOGBOOK | BACK TO ACTION'" position="bottom_right" section="JKSM_CaseAction" />
       </actions>
@@ -2691,9 +2190,9 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <set_value name="$utilization" exact="if $case.$maximum gt 0 then (($case.$amount * 100) / $case.$maximum)i else 0" />
         <set_value name="$abovetarget" exact="[$case.$amount - $case.$target, 0].max" />
         <debug_text text="'[JKEOC][V450][STORAGE_ASSESSMENT] station=%1 ware=%2 stock=%3 maximum=%4 target=%5 above_target=%6 utilization=%7 class=%8 free=%9'.[$case.$stationname, $case.$ware, $case.$amount, $case.$maximum, $case.$target, $abovetarget, $utilization, $case.$storagetype, $case.$storagefree]" filter="general" />
-        <add_player_choice_sub text="'STATION: %1 | STORAGE PRESSURE: %2'.[$case.$stationname, $case.$ware]" position="top_left" section="JKSM_StoragePressureAssessment" />
-        <add_player_choice_sub text="'STOCK: %1 / %2 | UTILIZATION: %3%%'.[$case.$amount, $case.$maximum, $utilization]" position="left" section="JKSM_StoragePressureAssessment" />
-        <add_player_choice_sub text="'TARGET: %1 | ABOVE TARGET: %2 | %3 STORAGE FREE: %4'.[$case.$target, $abovetarget, $case.$storagetype, $case.$storagefree]" position="bottom_left" section="JKSM_StoragePressureAssessment" />
+        <add_player_choice_sub text="'INFO: STATION: %1 | STORAGE PRESSURE: %2'.[$case.$stationname, $case.$ware]" position="top_left" section="JKSM_StoragePressureAssessment" />
+        <add_player_choice_sub text="'INFO: STOCK: %1 / %2 | UTILIZATION: %3%%'.[$case.$amount, $case.$maximum, $utilization]" position="left" section="JKSM_StoragePressureAssessment" />
+        <add_player_choice_sub text="'INFO: TARGET: %1 | ABOVE TARGET: %2 | %3 STORAGE FREE: %4'.[$case.$target, $abovetarget, $case.$storagetype, $case.$storagefree]" position="bottom_left" section="JKSM_StoragePressureAssessment" />
         <do_if value="$case.$plannedstoragematches gt 0">
           <add_player_choice_sub text="'PLANNED REMEDIATION: %1 STORAGE MODULE(S) | +%2 CAPACITY'.[$case.$plannedstoragematches, $case.$plannedstoragecapacity]" position="top_right" section="JKSM_CaseConstructionStart" />
         </do_if>
@@ -2722,7 +2221,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
         </do_elseif>
         <do_else>
           <add_player_choice_sub text="'STATION: %1 | NO MATCHING REMEDIATION MODULE DETECTED — REFRESH AFTER CHANGING THE BUILD PLAN'.[global.$JKEOC_SelectedCase.$stationname]" position="top_left" section="JKSM_WarningRefresh" />
-          <add_player_choice_sub text="'ESTIMATE: %1 x %2'.[global.$JKEOC_SelectedCase.$recommendedcount, global.$JKEOC_SelectedCase.$recommendedmodule]" position="left" section="JKSM_CaseActionEvidence" />
+          <add_player_choice_sub text="'INFO: ESTIMATE: %1 x %2'.[global.$JKEOC_SelectedCase.$recommendedcount, global.$JKEOC_SelectedCase.$recommendedmodule]" position="left" section="JKSM_CaseActionEvidence" />
         </do_else>
         <add_player_choice_sub text="'REFRESH ANALYSIS AND RETURN TO THIS WARNING'" position="top_right" section="JKSM_WarningRefresh" />
         <add_player_choice_sub text="'FOCUS ON STATION WHILE FIXING'" position="right" section="JKSM_FocusPrompt" />
@@ -2752,9 +2251,9 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <debug_text text="'[JKEOC][V450][RESOURCE_ASSESSMENT_COMPLETE] station=%1 ware=%2 current=%3 safety=%4 target=%5 need_safety=%6 need_target=%7 own_offers=%8 market_offers=%9'.[$case.$stationname, $case.$supplywarename, $case.$amount, $case.$immediatethreshold, $case.$target, $case.$immediateneed, $case.$targetshortfall, $case.$ownsuppliercount, $case.$npcsuppliercount]" filter="general" />
           <debug_text text="'[JKEOC][V450][RESOURCE_ASSESSMENT_DETAIL] station=%1 compatible_traders=%2 local_modules=%3 planned_modules=%4'.[$case.$stationname, $case.$compatibletradercount, $case.$productionmodulecount, $case.$plannedproductionmatches]" filter="general" />
         </do_if>
-        <add_player_choice_sub text="'[i] %1 | RESOURCE ASSESSMENT: %2'.[$case.$stationname, $case.$supplywarename]" position="top_left" section="JKSM_ResourceAssessment" />
+        <add_player_choice_sub text="'INFO: [i] %1 | RESOURCE ASSESSMENT: %2'.[$case.$stationname, $case.$supplywarename]" position="top_left" section="JKSM_ResourceAssessment" />
         <add_player_choice_sub text="'VIEW DETAILED EOC REPORT'" position="left" section="JKSM_OpenResourceReport" />
-        <add_player_choice_sub text="'[i] NEED NOW: %1 | TO TARGET: %2 | %3 FREE: %4'.[$case.$immediateneed, $case.$targetshortfall, $case.$storagetype, $case.$storagefree]" position="bottom_left" section="JKSM_ResourceAssessment" />
+        <add_player_choice_sub text="'INFO: [i] NEED NOW: %1 | TO TARGET: %2 | %3 FREE: %4'.[$case.$immediateneed, $case.$targetshortfall, $case.$storagetype, $case.$storagefree]" position="bottom_left" section="JKSM_ResourceAssessment" />
         <add_player_choice_sub text="'COMPARE SUPPLY OPTIONS — OWN %1 | MARKET %2 | SUITABLE TRADERS %3'.[$case.$ownsuppliercount, $case.$npcsuppliercount, $case.$compatibletradercount]" position="top_right" section="JKSM_ResourceSupplyOptions" />
         <add_player_choice_sub text="'REVIEW LOCAL PRODUCTION OPTION — %1 EXISTING | %2 PLANNED'.[$case.$productionmodulecount, $case.$plannedproductionmatches]" position="right" section="JKSM_ResourceProductionOption" />
         <add_player_choice_sub text="'BACK'" position="bottom_right" section="JKSM_ResourceAssessmentBack" />
@@ -2827,10 +2326,10 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_EOCReportPage1" namespace="this" instantiate="true">
       <conditions><check_any><event_conversation_next_section actor="player.computer" section="JKSM_EOCReportPage1" /><event_cue_signalled /></check_any></conditions>
       <actions>
-        <add_player_choice_sub text="'[i] %1 | %2 | REPORT 1/2'.[global.$JKEOC_ReportStation, global.$JKEOC_ReportType]" position="top_left" section="JKSM_EOCReportPage1" />
-        <add_player_choice_sub text="'[i] %1'.[global.$JKEOC_ReportLine1]" position="left" section="JKSM_EOCReportPage1" />
-        <add_player_choice_sub text="'[i] %1'.[global.$JKEOC_ReportLine2]" position="bottom_left" section="JKSM_EOCReportPage1" />
-        <add_player_choice_sub text="'[i] %1'.[global.$JKEOC_ReportLine3]" position="top_right" section="JKSM_EOCReportPage1" />
+        <add_player_choice_sub text="'INFO: [i] %1 | %2 | REPORT 1/2'.[global.$JKEOC_ReportStation, global.$JKEOC_ReportType]" position="top_left" section="JKSM_EOCReportPage1" />
+        <add_player_choice_sub text="'INFO: [i] %1'.[global.$JKEOC_ReportLine1]" position="left" section="JKSM_EOCReportPage1" />
+        <add_player_choice_sub text="'INFO: [i] %1'.[global.$JKEOC_ReportLine2]" position="bottom_left" section="JKSM_EOCReportPage1" />
+        <add_player_choice_sub text="'INFO: [i] %1'.[global.$JKEOC_ReportLine3]" position="top_right" section="JKSM_EOCReportPage1" />
         <add_player_choice_sub text="'NEXT — REPORT PAGE 2 OF 2'" position="right" section="JKSM_EOCReportPage2" />
         <add_player_choice_sub text="'BACK TO ASSESSMENT'" position="bottom_right" section="JKSM_EOCReportBack" />
       </actions>
@@ -2838,10 +2337,10 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_EOCReportPage2" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_EOCReportPage2" /></conditions>
       <actions>
-        <add_player_choice_sub text="'[i] %1 | %2 | REPORT 2/2'.[global.$JKEOC_ReportStation, global.$JKEOC_ReportType]" position="top_left" section="JKSM_EOCReportPage2" />
-        <add_player_choice_sub text="'[i] %1'.[global.$JKEOC_ReportLine4]" position="left" section="JKSM_EOCReportPage2" />
-        <add_player_choice_sub text="'[i] %1'.[global.$JKEOC_ReportLine5]" position="bottom_left" section="JKSM_EOCReportPage2" />
-        <add_player_choice_sub text="'[i] %1'.[global.$JKEOC_ReportLine6]" position="top_right" section="JKSM_EOCReportPage2" />
+        <add_player_choice_sub text="'INFO: [i] %1 | %2 | REPORT 2/2'.[global.$JKEOC_ReportStation, global.$JKEOC_ReportType]" position="top_left" section="JKSM_EOCReportPage2" />
+        <add_player_choice_sub text="'INFO: [i] %1'.[global.$JKEOC_ReportLine4]" position="left" section="JKSM_EOCReportPage2" />
+        <add_player_choice_sub text="'INFO: [i] %1'.[global.$JKEOC_ReportLine5]" position="bottom_left" section="JKSM_EOCReportPage2" />
+        <add_player_choice_sub text="'INFO: [i] %1'.[global.$JKEOC_ReportLine6]" position="top_right" section="JKSM_EOCReportPage2" />
         <add_player_choice_sub text="'PREVIOUS — REPORT PAGE 1 OF 2'" position="right" section="JKSM_EOCReportPage1" />
         <add_player_choice_sub text="'BACK TO ASSESSMENT'" position="bottom_right" section="JKSM_EOCReportBack" />
       </actions>
@@ -2861,9 +2360,9 @@ subordinates, storage modules, and funds. No station or ship settings are change
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_ResourceSupplyOptions" /></conditions>
       <actions>
         <set_value name="$case" exact="global.$JKEOC_SelectedCase" />
-        <add_player_choice_sub text="'STATION: %1 | SUPPLY OPTIONS FOR %2'.[$case.$stationname, $case.$supplywarename]" position="top_left" section="JKSM_ResourceSupplyOptions" />
-        <add_player_choice_sub text="'OWN EMPIRE: %1 OFFER(S) | NO MARKET PURCHASE COST'.[$case.$ownsuppliercount]" position="left" section="JKSM_ResourceSupplyOptions" />
-<add_player_choice_sub text="'EXTERNAL MARKET: %1 OFFER(S) | PRICE RANGE %2-%3 Cr'.[$case.$npcsuppliercount, ($case.$npcminunitprice / 1Cr)i, ($case.$npcmaxunitprice / 1Cr)i]" position="bottom_left" section="JKSM_ResourceSupplyOptions" />
+        <add_player_choice_sub text="'INFO: STATION: %1 | SUPPLY OPTIONS FOR %2'.[$case.$stationname, $case.$supplywarename]" position="top_left" section="JKSM_ResourceSupplyOptions" />
+        <add_player_choice_sub text="'INFO: OWN EMPIRE: %1 OFFER(S) | NO MARKET PURCHASE COST'.[$case.$ownsuppliercount]" position="left" section="JKSM_ResourceSupplyOptions" />
+<add_player_choice_sub text="'INFO: EXTERNAL MARKET: %1 OFFER(S) | PRICE RANGE %2-%3 Cr'.[$case.$npcsuppliercount, ($case.$npcminunitprice / 1Cr)i, ($case.$npcmaxunitprice / 1Cr)i]" position="bottom_left" section="JKSM_ResourceSupplyOptions" />
         <do_if value="global.$JKEOC_SupplyAttemptStation? and global.$JKEOC_SupplyAttemptCaseWare? and global.$JKEOC_SupplyAttemptStation == $case.$station and global.$JKEOC_SupplyAttemptCaseWare == $case.$wareobject">
           <add_player_choice_sub text="'OPEN ACTIVE 30-MINUTE TEST STATUS'" position="top_right" section="JKSM_SupplyAttemptStatus" />
         </do_if>
@@ -2874,7 +2373,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <add_player_choice_sub text="'AUTHORIZE MARKET 30-MINUTE TEST — PLAYER APPROVAL REQUIRED'" position="right" section="JKSM_SelectMarketSupplyAttempt" />
         </do_if>
         <do_else>
-          <add_player_choice_sub text="'NO MARKET TEST AVAILABLE — OFFERS %1 | SUITABLE TRADERS %2'.[$case.$npcsuppliercount, $case.$compatibletradercount]" position="right" section="JKSM_ResourceSupplyOptions" />
+          <add_player_choice_sub text="'INFO: NO MARKET TEST AVAILABLE — OFFERS %1 | SUITABLE TRADERS %2'.[$case.$npcsuppliercount, $case.$compatibletradercount]" position="right" section="JKSM_ResourceSupplyOptions" />
         </do_else>
         <add_player_choice_sub text="'BACK TO ASSESSMENT'" position="bottom_right" section="JKSM_ResourceAssessment" />
       </actions>
@@ -2891,10 +2390,10 @@ subordinates, storage modules, and funds. No station or ship settings are change
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_ResourceProductionOption" /></conditions>
       <actions>
         <set_value name="$case" exact="global.$JKEOC_SelectedCase" />
-        <add_player_choice_sub text="'STATION: %1 | LOCAL PRODUCTION OPTION: %2'.[$case.$stationname, $case.$ware]" position="top_left" section="JKSM_ResourceProductionOption" />
-        <add_player_choice_sub text="'LOCAL MODULES: %1 | MANUALLY PAUSED: %2'.[$case.$productionmodulecount, if $case.$productionpaused then 'YES' else 'NO']" position="left" section="JKSM_ResourceProductionOption" />
-        <add_player_choice_sub text="'CONFIRMED INPUTS: %1 | MISSING NOW: %2'.[if $case.$inputnames != '' then $case.$inputnames else 'NONE REPORTED', if $case.$missinginputnames != '' then $case.$missinginputnames else 'NONE CONFIRMED']" position="bottom_left" section="JKSM_ResourceProductionOption" />
-        <add_player_choice_sub text="'PLANNED MODULES: %1 | STORAGE: %2 CAPACITY, %3 FREE'.[$case.$plannedproductionmatches, $case.$storagecapacity, $case.$storagefree]" position="top_right" section="JKSM_ResourceProductionOption" />
+        <add_player_choice_sub text="'INFO: STATION: %1 | LOCAL PRODUCTION OPTION: %2'.[$case.$stationname, $case.$ware]" position="top_left" section="JKSM_ResourceProductionOption" />
+        <add_player_choice_sub text="'INFO: LOCAL MODULES: %1 | MANUALLY PAUSED: %2'.[$case.$productionmodulecount, if $case.$productionpaused then 'YES' else 'NO']" position="left" section="JKSM_ResourceProductionOption" />
+        <add_player_choice_sub text="'INFO: CONFIRMED INPUTS: %1 | MISSING NOW: %2'.[if $case.$inputnames != '' then $case.$inputnames else 'NONE REPORTED', if $case.$missinginputnames != '' then $case.$missinginputnames else 'NONE CONFIRMED']" position="bottom_left" section="JKSM_ResourceProductionOption" />
+        <add_player_choice_sub text="'INFO: PLANNED MODULES: %1 | STORAGE: %2 CAPACITY, %3 FREE'.[$case.$plannedproductionmatches, $case.$storagecapacity, $case.$storagefree]" position="top_right" section="JKSM_ResourceProductionOption" />
         <do_if value="$case.$productionmodulecount gt 0">
           <add_player_choice_sub text="'FACT-BASED ACTION: REPAIR PAUSE/INPUT/SUPPLY CAUSE BEFORE DUPLICATING PRODUCTION'" position="right" section="JKSM_ResourceAssessment" />
         </do_if>
@@ -3114,9 +2613,9 @@ subordinates, storage modules, and funds. No station or ship settings are change
           </do_if>
           <debug_text text="'[JKEOC][V450][SUPPLY_ATTEMPT_STATUS] station=%1 ware=%2 source=%3 ship=%4 seller=%5 status=%6 elapsed_min=%7 initial=%8 current=%9'.[$station.name, $ware.name, if global.$JKEOC_SupplyAttemptSourceType? then global.$JKEOC_SupplyAttemptSourceType else 'UNKNOWN', if $ship.exists then $ship.name else 'UNAVAILABLE', if $seller.exists then $seller.name else 'UNAVAILABLE', $attemptstatus, $elapsed, global.$JKEOC_SupplyAttemptInitialAmount, $currentamount]" filter="general" />
           <debug_text text="'[JKEOC][V450][SUPPLY_ATTEMPT_STATUS_DETAIL] delivered=%1 requested=%2 target=%3'.[$delivered, global.$JKEOC_SupplyAttemptRequestedAmount, global.$JKEOC_SupplyAttemptTargetAmount]" filter="general" />
-          <add_player_choice_sub text="'%1 — %2 FOR %3'.[$attemptstatus, $ware.name, $station.name]" position="top_left" section="JKSM_SupplyAttemptStatus" />
-          <add_player_choice_sub text="'SHIP: %1 | SOURCE: %2 — %3'.[if $ship.exists then $ship.name else 'UNAVAILABLE', if global.$JKEOC_SupplyAttemptSourceType? then global.$JKEOC_SupplyAttemptSourceType else 'UNKNOWN', if $seller.exists then $seller.name else 'UNAVAILABLE']" position="left" section="JKSM_SupplyAttemptStatus" />
-          <add_player_choice_sub text="'ELAPSED: %1 MIN | REQUESTED: %2 | DELIVERED: %3 | EST. COST: %4 Cr'.[$elapsed, global.$JKEOC_SupplyAttemptRequestedAmount, $delivered, ($estimatedcost / 1Cr)i]" position="bottom_left" section="JKSM_SupplyAttemptStatus" />
+          <add_player_choice_sub text="'INFO: %1 — %2 FOR %3'.[$attemptstatus, $ware.name, $station.name]" position="top_left" section="JKSM_SupplyAttemptStatus" />
+          <add_player_choice_sub text="'INFO: SHIP: %1 | SOURCE: %2 — %3'.[if $ship.exists then $ship.name else 'UNAVAILABLE', if global.$JKEOC_SupplyAttemptSourceType? then global.$JKEOC_SupplyAttemptSourceType else 'UNKNOWN', if $seller.exists then $seller.name else 'UNAVAILABLE']" position="left" section="JKSM_SupplyAttemptStatus" />
+          <add_player_choice_sub text="'INFO: ELAPSED: %1 MIN | REQUESTED: %2 | DELIVERED: %3 | EST. COST: %4 Cr'.[$elapsed, global.$JKEOC_SupplyAttemptRequestedAmount, $delivered, ($estimatedcost / 1Cr)i]" position="bottom_left" section="JKSM_SupplyAttemptStatus" />
           <add_player_choice_sub text="'REFRESH ATTEMPT STATUS'" position="top_right" section="JKSM_SupplyAttemptStatus" />
           <do_if value="(global.$JKEOC_SupplyAttemptTargetAmount? and $currentamount ge global.$JKEOC_SupplyAttemptTargetAmount) or not $ship.exists or player.age ge global.$JKEOC_SupplyAttemptUntil">
             <add_player_choice_sub text="'CLOSE ATTEMPT AND RETURN TO CASE'" position="right" section="JKSM_ClearSupplyAttempt" />
@@ -3254,8 +2753,8 @@ subordinates, storage modules, and funds. No station or ship settings are change
       <conditions><check_any><event_cue_signalled /><event_conversation_next_section actor="player.computer" section="JKSM_ConstructionList" /></check_any></conditions>
       <actions>
         <do_if value="global.$JKEOC_CurrentConstructionItems.count le 0">
-          <add_player_choice_sub text="'STATION: %1 | NO ACTIVE CONSTRUCTION — NO PLANNED OR BUILDING MODULES'.[global.$JKEOC_ConstructionStationDisplay]" position="top_left" section="JKSM_ConstructionList" />
-          <add_player_choice_sub text="'LATEST EOC SCAN FOUND NO UNFINISHED MODULES'" position="left" section="JKSM_ConstructionList" />
+          <add_player_choice_sub text="'INFO: STATION: %1 | NO ACTIVE CONSTRUCTION — NO PLANNED OR BUILDING MODULES'.[global.$JKEOC_ConstructionStationDisplay]" position="top_left" section="JKSM_ConstructionList" />
+          <add_player_choice_sub text="'INFO: LATEST EOC SCAN FOUND NO UNFINISHED MODULES'" position="left" section="JKSM_ConstructionList" />
           <add_player_choice_sub text="'BACK TO EOC'" position="top_right" section="JKSM_EmpireOperations" />
           <do_if value="global.$JKEOC_ConstructionReturn == 'FOCUS'">
             <add_player_choice_sub text="'BACK TO STATION RECOVERY'" position="bottom_right" section="JKSM_FocusDashboard" />
@@ -3275,7 +2774,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <do_if value="$base + 3 le global.$JKEOC_CurrentConstructionItems.count"><add_player_choice_sub text="'%1 — %2'.[global.$JKEOC_CurrentConstructionItems.{$base+3}.$name, global.$JKEOC_CurrentConstructionItems.{$base+3}.$status]" position="bottom_left" section="JKSM_ConstructionSelect3" /></do_if>
           <do_if value="global.$JKEOC_ConstructionPage gt 0"><add_player_choice_sub text="'PREVIOUS — PAGE %1 OF %2'.[global.$JKEOC_ConstructionPage, $totalpages]" position="top_right" section="JKSM_ConstructionPrevious" /></do_if>
           <do_if value="$base + 3 lt global.$JKEOC_CurrentConstructionItems.count"><add_player_choice_sub text="'NEXT — PAGE %1 OF %2'.[global.$JKEOC_ConstructionPage+2, $totalpages]" position="right" section="JKSM_ConstructionNext" /></do_if>
-          <do_else><add_player_choice_sub text="'END OF LIST — PAGE %1 OF %2'.[global.$JKEOC_ConstructionPage+1, $totalpages]" position="right" section="JKSM_ConstructionList" /></do_else>
+          <do_else><add_player_choice_sub text="'INFO: END OF LIST — PAGE %1 OF %2'.[global.$JKEOC_ConstructionPage+1, $totalpages]" position="right" section="JKSM_ConstructionList" /></do_else>
           <do_if value="global.$JKEOC_ConstructionReturn == 'FOCUS'">
             <add_player_choice_sub text="'BACK TO STATION RECOVERY'" position="bottom_right" section="JKSM_FocusDashboard" />
           </do_if>
@@ -3298,14 +2797,14 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_ConstructionDetail" namespace="this" instantiate="true">
       <conditions><check_any><event_cue_signalled /><event_conversation_next_section actor="player.computer" section="JKSM_ConstructionDetail" /></check_any></conditions>
       <actions>
-        <add_player_choice_sub text="'STATION: %1 | MODULE: %2'.[global.$JKEOC_ConstructionStationDisplay, global.$JKEOC_SelectedConstruction.$name]" position="top_left" section="JKSM_ConstructionDetail" />
-        <add_player_choice_sub text="'CATEGORY: %1'.[global.$JKEOC_SelectedConstruction.$type]" position="left" section="JKSM_ConstructionDetail" />
-        <add_player_choice_sub text="'STATUS: %1 | HULL: %2%%'.[global.$JKEOC_SelectedConstruction.$status, global.$JKEOC_SelectedConstruction.$progress]" position="bottom_left" section="JKSM_ConstructionDetail" />
+        <add_player_choice_sub text="'INFO: STATION: %1 | MODULE: %2'.[global.$JKEOC_ConstructionStationDisplay, global.$JKEOC_SelectedConstruction.$name]" position="top_left" section="JKSM_ConstructionDetail" />
+        <add_player_choice_sub text="'INFO: CATEGORY: %1'.[global.$JKEOC_SelectedConstruction.$type]" position="left" section="JKSM_ConstructionDetail" />
+        <add_player_choice_sub text="'INFO: STATUS: %1 | HULL: %2%%'.[global.$JKEOC_SelectedConstruction.$status, global.$JKEOC_SelectedConstruction.$progress]" position="bottom_left" section="JKSM_ConstructionDetail" />
         <do_if value="global.$JKEOC_SelectedConstruction.$type == 'STORAGE'">
-          <add_player_choice_sub text="'ADDS %1 %2 CAPACITY'.[global.$JKEOC_SelectedConstruction.$capacity, global.$JKEOC_SelectedConstruction.$storagetype]" position="top_right" section="JKSM_ConstructionDetail" />
+          <add_player_choice_sub text="'INFO: ADDS %1 %2 CAPACITY'.[global.$JKEOC_SelectedConstruction.$capacity, global.$JKEOC_SelectedConstruction.$storagetype]" position="top_right" section="JKSM_ConstructionDetail" />
         </do_if>
         <do_else>
-          <add_player_choice_sub text="'PURPOSE: %1'.[global.$JKEOC_SelectedConstruction.$effect]" position="top_right" section="JKSM_ConstructionDetail" />
+          <add_player_choice_sub text="'INFO: PURPOSE: %1'.[global.$JKEOC_SelectedConstruction.$effect]" position="top_right" section="JKSM_ConstructionDetail" />
         </do_else>
         <add_player_choice_sub text="'BACK TO CONSTRUCTION LIST'" position="right" section="JKSM_ConstructionList" />
         <do_if value="global.$JKEOC_ConstructionReturn == 'FOCUS'"><add_player_choice_sub text="'BACK TO STATION RECOVERY'" position="bottom_right" section="JKSM_FocusDashboard" /></do_if>
@@ -3326,7 +2825,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
             <add_player_choice_sub text="'OPEN WORKFORCE WARNING DETAILS'" position="left" section="JKSM_StationWorkforceHealth" />
           </do_if>
           <do_else>
-            <add_player_choice_sub text="'STATION: %1 | NO ACTIVE CASES — CURRENTLY HEALTHY'.[global.$JKEOC_SelectedStation.$stationname]" position="top_left" section="JKSM_StationCaseList" />
+            <add_player_choice_sub text="'INFO: STATION: %1 | NO ACTIVE CASES — CURRENTLY HEALTHY'.[global.$JKEOC_SelectedStation.$stationname]" position="top_left" section="JKSM_StationCaseList" />
             <add_player_choice_sub text="'CONSTRUCTION AND CAPACITY REMAIN AVAILABLE IN THE STATION FILE'" position="left" section="JKSM_StationDetail" />
           </do_else>
           <add_player_choice_sub text="'BACK TO EOC'" position="top_right" section="JKSM_EmpireOperations" />
@@ -3366,8 +2865,8 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_StorageTypeDetail" namespace="this" instantiate="true">
       <conditions><check_any><event_cue_signalled /><event_conversation_next_section actor="player.computer" section="JKSM_StorageTypeDetail" /></check_any></conditions>
       <actions>
-        <add_player_choice_sub text="'STATION: %1 | %2 STORAGE — CURRENT CAPACITY %3'.[global.$JKEOC_SelectedStation.$stationname, global.$JKEOC_SelectedStorageType, global.$JKEOC_SelectedStorageCapacity]" position="top_left" section="JKSM_StorageTypeDetail" />
-        <add_player_choice_sub text="'FREE NOW: %1'.[global.$JKEOC_SelectedStorageFree]" position="left" section="JKSM_StorageTypeDetail" />
+        <add_player_choice_sub text="'INFO: STATION: %1 | %2 STORAGE — CURRENT CAPACITY %3'.[global.$JKEOC_SelectedStation.$stationname, global.$JKEOC_SelectedStorageType, global.$JKEOC_SelectedStorageCapacity]" position="top_left" section="JKSM_StorageTypeDetail" />
+        <add_player_choice_sub text="'INFO: FREE NOW: %1'.[global.$JKEOC_SelectedStorageFree]" position="left" section="JKSM_StorageTypeDetail" />
         <add_player_choice_sub text="'PLANNED: %1 MODULE(S) | PROJECTED ADDITION: %2'.[global.$JKEOC_SelectedStoragePlannedCount, global.$JKEOC_SelectedStoragePlannedCapacity]" position="bottom_left" section="JKSM_StationConstructionStart" />
         <add_player_choice_sub text="'OPEN ALL ACTIVE CONSTRUCTION'" position="top_right" section="JKSM_StationConstructionStart" />
         <add_player_choice_sub text="'FOCUS ON STATION'" position="right" section="JKSM_FocusPrompt" />
@@ -3403,42 +2902,43 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <set_value name="$interceptioncount" exact="global.$JKEOC_SelectedStation.$station.subordinates.{assignment.interception}.count" />
         <set_value name="$bombardmentcount" exact="global.$JKEOC_SelectedStation.$station.subordinates.{assignment.bombardment}.count" />
         <set_value name="$followcount" exact="global.$JKEOC_SelectedStation.$station.subordinates.{assignment.follow}.count" />
-        <set_value name="$prospectcount" exact="global.$JKEOC_SelectedStation.$station.subordinates.{assignment.prospect}.count" />
         <set_value name="$buildcount" exact="global.$JKEOC_SelectedStation.$station.subordinates.{assignment.build}.count" />
-        <set_value name="$othercount" exact="$directcount - $tradecount - $miningcount - $buildstoragecount - $salvagecount - $defencecount - $assistcount - $supplyfleetcount - $positiondefencecount - $attackcount - $interceptioncount - $bombardmentcount - $followcount - $prospectcount - $buildcount" />
+        <!-- Build 83A: assignments unavailable to an older game version remain
+             represented by the existing OTHER bucket. -->
+        <set_value name="$othercount" exact="$directcount - $tradecount - $miningcount - $buildstoragecount - $salvagecount - $defencecount - $assistcount - $supplyfleetcount - $positiondefencecount - $attackcount - $interceptioncount - $bombardmentcount - $followcount - $buildcount" />
         <do_if value="$othercount lt 0"><set_value name="$othercount" exact="0" /></do_if>
 
         <do_if value="$directcount == 0">
-          <add_player_choice_sub text="'TOTAL STATION-ASSIGNED SHIPS: 0'" position="top_left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'NO SHIPS ARE CURRENTLY ASSIGNED TO THIS STATION'" position="left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: TOTAL STATION-ASSIGNED SHIPS: 0'" position="top_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: NO SHIPS ARE CURRENTLY ASSIGNED TO THIS STATION'" position="left" section="JKSM_StationInventoryList" />
           <add_player_choice_sub text="'SAVE EMPTY SHIP INTELLIGENCE REPORT'" position="right" section="JKSM_StationShipIntelligenceReport" />
           <add_player_choice_sub text="'BACK TO STATION FILE'" position="bottom_right" section="JKSM_StationDetail" />
         </do_if>
         <do_else>
         <do_if value="global.$JKEOC_StationInventoryPage == 0">
-          <add_player_choice_sub text="'TRADE: %1 | PAGE 1 OF 5'.[$tradecount]" position="top_left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'MINING: %1'.[$miningcount]" position="left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'BUILD STORAGE TRADE: %1'.[$buildstoragecount]" position="bottom_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: TRADE: %1 | PAGE 1 OF 5'.[$tradecount]" position="top_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: MINING: %1'.[$miningcount]" position="left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: BUILD STORAGE TRADE: %1'.[$buildstoragecount]" position="bottom_left" section="JKSM_StationInventoryList" />
         </do_if>
         <do_elseif value="global.$JKEOC_StationInventoryPage == 1">
-          <add_player_choice_sub text="'SALVAGE / TUG: %1 | PAGE 2 OF 5'.[$salvagecount]" position="top_left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'STATION DEFENCE: %1'.[$defencecount]" position="left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'ASSIST COMMANDER: %1'.[$assistcount]" position="bottom_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: SALVAGE / TUG: %1 | PAGE 2 OF 5'.[$salvagecount]" position="top_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: STATION DEFENCE: %1'.[$defencecount]" position="left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: ASSIST COMMANDER: %1'.[$assistcount]" position="bottom_left" section="JKSM_StationInventoryList" />
         </do_elseif>
         <do_elseif value="global.$JKEOC_StationInventoryPage == 2">
-          <add_player_choice_sub text="'SUPPLY COMMANDER: %1 | PAGE 3 OF 5'.[$supplyfleetcount]" position="top_left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'POSITION DEFENCE: %1'.[$positiondefencecount]" position="left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'ATTACK WITH COMMANDER: %1'.[$attackcount]" position="bottom_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: SUPPLY COMMANDER: %1 | PAGE 3 OF 5'.[$supplyfleetcount]" position="top_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: POSITION DEFENCE: %1'.[$positiondefencecount]" position="left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: ATTACK WITH COMMANDER: %1'.[$attackcount]" position="bottom_left" section="JKSM_StationInventoryList" />
         </do_elseif>
         <do_elseif value="global.$JKEOC_StationInventoryPage == 3">
-          <add_player_choice_sub text="'INTERCEPT FOR COMMANDER: %1 | PAGE 4 OF 5'.[$interceptioncount]" position="top_left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'BOMBARD FOR COMMANDER: %1'.[$bombardmentcount]" position="left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'FOLLOW COMMANDER: %1'.[$followcount]" position="bottom_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: INTERCEPT FOR COMMANDER: %1 | PAGE 4 OF 5'.[$interceptioncount]" position="top_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: BOMBARD FOR COMMANDER: %1'.[$bombardmentcount]" position="left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: FOLLOW COMMANDER: %1'.[$followcount]" position="bottom_left" section="JKSM_StationInventoryList" />
         </do_elseif>
         <do_else>
-          <add_player_choice_sub text="'PROSPECT / RESOURCE SCOUT: %1 | PAGE 5 OF 5'.[$prospectcount]" position="top_left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'BUILD / DEPLOY: %1'.[$buildcount]" position="left" section="JKSM_StationInventoryList" />
-          <add_player_choice_sub text="'OTHER ASSIGNMENT: %1'.[$othercount]" position="bottom_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: PROSPECT / RESOURCE SCOUT: %1 | PAGE 5 OF 5'.[$prospectcount]" position="top_left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: BUILD / DEPLOY: %1'.[$buildcount]" position="left" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: OTHER ASSIGNMENT: %1'.[$othercount]" position="bottom_left" section="JKSM_StationInventoryList" />
         </do_else>
 
         <do_if value="global.$JKEOC_StationInventoryPage gt 0">
@@ -3451,7 +2951,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <add_player_choice_sub text="'NEXT - PAGE %1 OF 5'.[global.$JKEOC_StationInventoryPage+2]" position="right" section="JKSM_StationInventoryNext" />
         </do_if>
         <do_else>
-          <add_player_choice_sub text="'END OF LIST - PAGE 5 OF 5'" position="right" section="JKSM_StationInventoryList" />
+          <add_player_choice_sub text="'INFO: END OF LIST - PAGE 5 OF 5'" position="right" section="JKSM_StationInventoryList" />
         </do_else>
         <add_player_choice_sub text="'BACK TO STATION FILE'" position="bottom_right" section="JKSM_StationDetail" />
         </do_else>
@@ -3489,7 +2989,6 @@ subordinates, storage modules, and funds. No station or ship settings are change
             <do_elseif value="$ship.assignment == assignment.interception"><set_value name="$assignmentlabel" exact="'INTERCEPT FOR COMMANDER'" /></do_elseif>
             <do_elseif value="$ship.assignment == assignment.bombardment"><set_value name="$assignmentlabel" exact="'BOMBARD FOR COMMANDER'" /></do_elseif>
             <do_elseif value="$ship.assignment == assignment.follow"><set_value name="$assignmentlabel" exact="'FOLLOW COMMANDER'" /></do_elseif>
-            <do_elseif value="$ship.assignment == assignment.prospect"><set_value name="$assignmentlabel" exact="'PROSPECT / RESOURCE SCOUT'" /></do_elseif>
             <do_elseif value="$ship.assignment == assignment.build"><set_value name="$assignmentlabel" exact="'BUILD / DEPLOY'" /></do_elseif>
             <set_value name="$commandername" exact="'NONE'" />
             <set_value name="$commanderassignment" exact="'NOT AVAILABLE'" />
@@ -3534,7 +3033,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
         </check_any>
       </conditions>
       <actions>
-        <add_player_choice_sub text="'NOTE: REPORT COMPLETE - %1 SHIPS ADDED TO %2 TIPS ENTRIES'.[global.$JKEOC_StationShipReportCount, global.$JKEOC_StationShipReportParts]" position="top_left" section="JKSM_StationShipIntelligenceSaved" />
+        <add_player_choice_sub text="'INFO: NOTE: REPORT COMPLETE - %1 SHIPS ADDED TO %2 TIPS ENTRIES'.[global.$JKEOC_StationShipReportCount, global.$JKEOC_StationShipReportParts]" position="top_left" section="JKSM_StationShipIntelligenceSaved" />
         <add_player_choice_sub text="'BACK TO STATION SHIP INVENTORY'" position="left" section="JKSM_StationLogistics" />
         <add_player_choice_sub text="'BACK TO EOC'" position="bottom_left" section="JKSM_EmpireOperations" />
       </actions>
@@ -3556,20 +3055,20 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_StationWorkforceHealth" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_StationWorkforceHealth" /></conditions>
       <actions>
-        <add_player_choice_sub text="'[i] %1 | WORKFORCE HEALTH: %2'.[global.$JKEOC_SelectedStation.$stationname, global.$JKEOC_SelectedStation.$workforcehealth]" position="top_left" section="JKSM_StationWorkforceHealth" />
+        <add_player_choice_sub text="'INFO: [i] %1 | WORKFORCE HEALTH: %2'.[global.$JKEOC_SelectedStation.$stationname, global.$JKEOC_SelectedStation.$workforcehealth]" position="top_left" section="JKSM_StationWorkforceHealth" />
         <add_player_choice_sub text="'VIEW DETAILED EOC REPORT'" position="left" section="JKSM_OpenWorkforceReport" />
-        <add_player_choice_sub text="'[i] TREND: %1 | CHANGE: %2'.[global.$JKEOC_SelectedStation.$workforcetrend, global.$JKEOC_SelectedStation.$workforcedelta]" position="bottom_left" section="JKSM_StationWorkforceHealth" />
+        <add_player_choice_sub text="'INFO: [i] TREND: %1 | CHANGE: %2'.[global.$JKEOC_SelectedStation.$workforcetrend, global.$JKEOC_SelectedStation.$workforcedelta]" position="bottom_left" section="JKSM_StationWorkforceHealth" />
         <do_if value="global.$JKEOC_SelectedStation.$workforcesupplyriskcount gt 0 and global.$JKEOC_SelectedStation.$workforcecriticalwareobject?">
           <add_player_choice_sub text="'ASSESS %1 SUPPLY OPTIONS WITH CURRENT FACTS'.[global.$JKEOC_SelectedStation.$workforcecriticalwarename]" position="top_right" section="JKSM_WorkforceResourceAssessmentStart" />
         </do_if>
         <do_else>
-          <add_player_choice_sub text="'PROVISIONS: %1'.[global.$JKEOC_SelectedStation.$workforcesupplysummary]" position="top_right" section="JKSM_StationWorkforceHealth" />
+          <add_player_choice_sub text="'INFO: PROVISIONS: %1'.[global.$JKEOC_SelectedStation.$workforcesupplysummary]" position="top_right" section="JKSM_StationWorkforceHealth" />
         </do_else>
         <do_if value="global.$JKEOC_SelectedStation.$habitatmodulecount gt 0">
           <add_player_choice_sub text="'PLAN HABITAT EXPANSION: %1 x %2'.[global.$JKEOC_SelectedStation.$habitatmodulecount, global.$JKEOC_SelectedStation.$habitatmodulename]" position="right" section="JKSM_WorkforceHabitatPlan" />
         </do_if>
         <do_else>
-          <add_player_choice_sub text="'RECOMMENDED ACTION: %1'.[global.$JKEOC_SelectedStation.$workforceaction]" position="right" section="JKSM_StationWorkforceHealth" />
+          <add_player_choice_sub text="'INFO: RECOMMENDED ACTION: %1'.[global.$JKEOC_SelectedStation.$workforceaction]" position="right" section="JKSM_StationWorkforceHealth" />
         </do_else>
         <add_player_choice_sub text="'BACK TO LOGISTICS'" position="bottom_right" section="JKSM_StationLogistics" />
       </actions>
@@ -3577,9 +3076,9 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_WorkforceHabitatPlan" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_WorkforceHabitatPlan" /></conditions>
       <actions>
-        <add_player_choice_sub text="'STATION: %1 | HABITAT EXPANSION PLAN'.[global.$JKEOC_SelectedStation.$stationname]" position="top_left" section="JKSM_WorkforceHabitatPlan" />
-        <add_player_choice_sub text="'BUILD %1 x %2 | %3 CAPACITY EACH'.[global.$JKEOC_SelectedStation.$habitatmodulecount, global.$JKEOC_SelectedStation.$habitatmodulename, global.$JKEOC_SelectedStation.$habitatmodulecapacity]" position="left" section="JKSM_WorkforceHabitatPlan" />
-        <add_player_choice_sub text="'CAPACITY: %1 → %2 | OPTIMAL: %3 | HEADROOM: %4'.[global.$JKEOC_SelectedStation.$workforcecapacity, global.$JKEOC_SelectedStation.$habitatprojectedcapacity, global.$JKEOC_SelectedStation.$workforceoptimal, global.$JKEOC_SelectedStation.$habitatheadroom]" position="bottom_left" section="JKSM_WorkforceHabitatPlan" />
+        <add_player_choice_sub text="'INFO: STATION: %1 | HABITAT EXPANSION PLAN'.[global.$JKEOC_SelectedStation.$stationname]" position="top_left" section="JKSM_WorkforceHabitatPlan" />
+        <add_player_choice_sub text="'INFO: BUILD %1 x %2 | %3 CAPACITY EACH'.[global.$JKEOC_SelectedStation.$habitatmodulecount, global.$JKEOC_SelectedStation.$habitatmodulename, global.$JKEOC_SelectedStation.$habitatmodulecapacity]" position="left" section="JKSM_WorkforceHabitatPlan" />
+        <add_player_choice_sub text="'INFO: CAPACITY: %1 → %2 | OPTIMAL: %3 | HEADROOM: %4'.[global.$JKEOC_SelectedStation.$workforcecapacity, global.$JKEOC_SelectedStation.$habitatprojectedcapacity, global.$JKEOC_SelectedStation.$workforceoptimal, global.$JKEOC_SelectedStation.$habitatheadroom]" position="bottom_left" section="JKSM_WorkforceHabitatPlan" />
         <add_player_choice_sub text="'PROVISION IMPACT: %1 WARE(S) | %2 LOCAL | %3 IMPORT DEPENDENCIES'.[global.$JKEOC_SelectedStation.$habitatprovisionplan.count, global.$JKEOC_SelectedStation.$habitatprovisionlocalcount, global.$JKEOC_SelectedStation.$habitatprovisionimportcount]" position="top_right" section="JKSM_WorkforceHabitatProvisions" />
         <add_player_choice_sub text="'STORAGE CHECK: +%1 SAFE-STOCK | %2 CONTAINER FREE | %3'.[global.$JKEOC_SelectedStation.$habitatprovisionadditional, global.$JKEOC_SelectedStation.$containerfree, global.$JKEOC_SelectedStation.$habitatstoragecheck]" position="right" section="JKSM_WorkforceHabitatProvisions" />
         <add_player_choice_sub text="'BACK TO WORKFORCE HEALTH'" position="bottom_right" section="JKSM_StationWorkforceHealth" />
@@ -3589,16 +3088,16 @@ subordinates, storage modules, and funds. No station or ship settings are change
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_WorkforceHabitatProvisions" /></conditions>
       <actions>
         <do_if value="global.$JKEOC_SelectedStation.$habitatprovisionplan.count ge 1">
-          <add_player_choice_sub text="'STATION: %1 | %2 TARGET: %3 → %4 (+%5) | %6'.[global.$JKEOC_SelectedStation.$stationname, global.$JKEOC_SelectedStation.$habitatprovisionplan.{1}.$name, global.$JKEOC_SelectedStation.$habitatprovisionplan.{1}.$currenttarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{1}.$projectedtarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{1}.$additional, global.$JKEOC_SelectedStation.$habitatprovisionplan.{1}.$source]" position="top_left" section="JKSM_WorkforceHabitatProvisions" />
+          <add_player_choice_sub text="'INFO: STATION: %1 | %2 TARGET: %3 → %4 (+%5) | %6'.[global.$JKEOC_SelectedStation.$stationname, global.$JKEOC_SelectedStation.$habitatprovisionplan.{1}.$name, global.$JKEOC_SelectedStation.$habitatprovisionplan.{1}.$currenttarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{1}.$projectedtarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{1}.$additional, global.$JKEOC_SelectedStation.$habitatprovisionplan.{1}.$source]" position="top_left" section="JKSM_WorkforceHabitatProvisions" />
         </do_if>
         <do_if value="global.$JKEOC_SelectedStation.$habitatprovisionplan.count ge 2">
-          <add_player_choice_sub text="'%1 TARGET: %2 → %3 (+%4) | %5'.[global.$JKEOC_SelectedStation.$habitatprovisionplan.{2}.$name, global.$JKEOC_SelectedStation.$habitatprovisionplan.{2}.$currenttarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{2}.$projectedtarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{2}.$additional, global.$JKEOC_SelectedStation.$habitatprovisionplan.{2}.$source]" position="left" section="JKSM_WorkforceHabitatProvisions" />
+          <add_player_choice_sub text="'INFO: %1 TARGET: %2 → %3 (+%4) | %5'.[global.$JKEOC_SelectedStation.$habitatprovisionplan.{2}.$name, global.$JKEOC_SelectedStation.$habitatprovisionplan.{2}.$currenttarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{2}.$projectedtarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{2}.$additional, global.$JKEOC_SelectedStation.$habitatprovisionplan.{2}.$source]" position="left" section="JKSM_WorkforceHabitatProvisions" />
         </do_if>
         <do_if value="global.$JKEOC_SelectedStation.$habitatprovisionplan.count ge 3">
-          <add_player_choice_sub text="'%1 TARGET: %2 → %3 (+%4) | %5'.[global.$JKEOC_SelectedStation.$habitatprovisionplan.{3}.$name, global.$JKEOC_SelectedStation.$habitatprovisionplan.{3}.$currenttarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{3}.$projectedtarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{3}.$additional, global.$JKEOC_SelectedStation.$habitatprovisionplan.{3}.$source]" position="bottom_left" section="JKSM_WorkforceHabitatProvisions" />
+          <add_player_choice_sub text="'INFO: %1 TARGET: %2 → %3 (+%4) | %5'.[global.$JKEOC_SelectedStation.$habitatprovisionplan.{3}.$name, global.$JKEOC_SelectedStation.$habitatprovisionplan.{3}.$currenttarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{3}.$projectedtarget, global.$JKEOC_SelectedStation.$habitatprovisionplan.{3}.$additional, global.$JKEOC_SelectedStation.$habitatprovisionplan.{3}.$source]" position="bottom_left" section="JKSM_WorkforceHabitatProvisions" />
         </do_if>
-        <add_player_choice_sub text="'PROJECTED SAFE-STOCK INCREASE: %1 | CONTAINER FREE: %2'.[global.$JKEOC_SelectedStation.$habitatprovisionadditional, global.$JKEOC_SelectedStation.$containerfree]" position="top_right" section="JKSM_WorkforceHabitatProvisions" />
-        <add_player_choice_sub text="'RESULT: %1'.[global.$JKEOC_SelectedStation.$habitatstoragecheck]" position="right" section="JKSM_WorkforceHabitatProvisions" />
+        <add_player_choice_sub text="'INFO: PROJECTED SAFE-STOCK INCREASE: %1 | CONTAINER FREE: %2'.[global.$JKEOC_SelectedStation.$habitatprovisionadditional, global.$JKEOC_SelectedStation.$containerfree]" position="top_right" section="JKSM_WorkforceHabitatProvisions" />
+        <add_player_choice_sub text="'INFO: RESULT: %1'.[global.$JKEOC_SelectedStation.$habitatstoragecheck]" position="right" section="JKSM_WorkforceHabitatProvisions" />
         <add_player_choice_sub text="'BACK TO HABITAT PLAN'" position="bottom_right" section="JKSM_WorkforceHabitatPlan" />
       </actions>
     </cue>
@@ -3701,10 +3200,10 @@ subordinates, storage modules, and funds. No station or ship settings are change
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_FocusPrompt" /></conditions>
       <actions>
         <debug_text text="'[JKEOC][V330][FOCUS_PROMPT] station=%1'.[global.$JKEOC_ViewStation]" filter="general" />
-        <add_player_choice_sub text="'STATION RECOVERY MODE — %1'.[global.$JKEOC_ViewStation]" position="top_left" section="JKSM_FocusPrompt" />
-        <add_player_choice_sub text="'Focus station: %1'.[global.$JKEOC_ViewStation]" position="left" section="JKSM_FocusPrompt" />
-        <add_player_choice_sub text="'The EOC will show only this station while Focus Mode is active'" position="bottom_left" section="JKSM_FocusPrompt" />
-        <add_player_choice_sub text="'Routine information from all other stations will be hidden'" position="top_right" section="JKSM_FocusPrompt" />
+        <add_player_choice_sub text="'INFO: STATION RECOVERY MODE — %1'.[global.$JKEOC_ViewStation]" position="top_left" section="JKSM_FocusPrompt" />
+        <add_player_choice_sub text="'INFO: Focus station: %1'.[global.$JKEOC_ViewStation]" position="left" section="JKSM_FocusPrompt" />
+        <add_player_choice_sub text="'INFO: The EOC will show only this station while Focus Mode is active'" position="bottom_left" section="JKSM_FocusPrompt" />
+        <add_player_choice_sub text="'INFO: Routine information from all other stations will be hidden'" position="top_right" section="JKSM_FocusPrompt" />
         <add_player_choice_sub text="'YES — BEGIN STATION RECOVERY'" position="right" section="JKSM_FocusBegin" />
         <add_player_choice_sub text="'NO — RETURN TO CASE'" position="bottom_right" section="JKSM_GenericCaseDetail" />
       </actions>
@@ -3765,33 +3264,33 @@ subordinates, storage modules, and funds. No station or ship settings are change
       <conditions><check_any><event_conversation_next_section actor="player.computer" section="JKSM_FocusDashboard" /><event_cue_signalled /></check_any></conditions>
       <actions>
         <debug_text text="'[JKEOC][V420][FOCUS_MENU] station=%1 status=%2 objective=%3 remaining=%4 complete=%5'.[global.$JKEOC_FocusStationDisplay, global.$JKEOC_RecoveryStatus, if global.$JKEOC_RecoveryObjectiveWare? then global.$JKEOC_RecoveryObjectiveWare else 'NONE', global.$JKEOC_RecoveryRemainingCount, global.$JKEOC_RecoveryComplete]" filter="general" />
-        <add_player_choice_sub text="'STATION: %1 | RECOVERY MODE'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_FocusDashboard" />
+        <add_player_choice_sub text="'INFO: STATION: %1 | RECOVERY MODE'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_FocusDashboard" />
         <do_if value="global.$JKEOC_FocusFoundThisScan?">
           <do_if value="global.$JKEOC_RecoveryComplete? and global.$JKEOC_RecoveryComplete == true and global.$JKEOC_RecoveryRemainingCount? and global.$JKEOC_RecoveryRemainingCount == 0 and global.$JKEOC_RecoveryStatus == 'RECOVERY COMPLETE' and not global.$JKEOC_RecoveryObjectiveWare?">
-            <add_player_choice_sub text="'STATION RECOVERY COMPLETE'" position="left" section="JKSM_FocusDashboard" />
-            <add_player_choice_sub text="'No empty required resources or critical storage pressure detected'" position="bottom_left" section="JKSM_FocusDashboard" />
-            <add_player_choice_sub text="'Completed objectives: %1 | Continue monitoring or exit recovery mode'.[global.$JKEOC_RecoveryCompletedCount]" position="top_right" section="JKSM_FocusDashboard" />
+            <add_player_choice_sub text="'INFO: STATION RECOVERY COMPLETE'" position="left" section="JKSM_FocusDashboard" />
+            <add_player_choice_sub text="'INFO: No empty required resources or critical storage pressure detected'" position="bottom_left" section="JKSM_FocusDashboard" />
+            <add_player_choice_sub text="'INFO: Completed objectives: %1 | Continue monitoring or exit recovery mode'.[global.$JKEOC_RecoveryCompletedCount]" position="top_right" section="JKSM_FocusDashboard" />
           </do_if>
           <do_else>
             <do_if value="global.$JKEOC_RecoveryObjectiveWare?">
-              <add_player_choice_sub text="'OPEN ISSUE: %1 is empty | Stock %2/%3'.[global.$JKEOC_RecoveryObjectiveWare, global.$JKEOC_ObjectiveCurrentAmount, global.$JKEOC_ObjectiveCurrentMaximum]" position="left" section="JKSM_FocusDashboard" />
-              <add_player_choice_sub text="'CASE %1 | STATUS: %2 | Completed: %3 | Remaining: %4'.[global.$JKEOC_FocusEntryCaseID, global.$JKEOC_RecoveryStatus, global.$JKEOC_RecoveryCompletedCount, global.$JKEOC_RecoveryRemainingCount]" position="bottom_left" section="JKSM_FocusDashboard" />
+              <add_player_choice_sub text="'INFO: OPEN ISSUE: %1 is empty | Stock %2/%3'.[global.$JKEOC_RecoveryObjectiveWare, global.$JKEOC_ObjectiveCurrentAmount, global.$JKEOC_ObjectiveCurrentMaximum]" position="left" section="JKSM_FocusDashboard" />
+              <add_player_choice_sub text="'INFO: CASE %1 | STATUS: %2 | Completed: %3 | Remaining: %4'.[global.$JKEOC_FocusEntryCaseID, global.$JKEOC_RecoveryStatus, global.$JKEOC_RecoveryCompletedCount, global.$JKEOC_RecoveryRemainingCount]" position="bottom_left" section="JKSM_FocusDashboard" />
               <add_player_choice_sub text="'OPEN VERIFIED FACTS AND ACTIONS'" position="top_right" section="JKSM_RecoveryDetails" />
             </do_if>
             <do_elseif value="global.$JKEOC_FocusFirstFullWare?">
-              <add_player_choice_sub text="'OPEN STORAGE ISSUE: %1 | Stock %2/%3'.[global.$JKEOC_FocusFirstFullWare, global.$JKEOC_FocusFirstFullAmount, global.$JKEOC_FocusFirstFullMaximum]" position="left" section="JKSM_FocusDashboard" />
-              <add_player_choice_sub text="'STATUS: %1 | Completed: %2 | Remaining: %3'.[global.$JKEOC_RecoveryStatus, global.$JKEOC_RecoveryCompletedCount, global.$JKEOC_RecoveryRemainingCount]" position="bottom_left" section="JKSM_FocusDashboard" />
+              <add_player_choice_sub text="'INFO: OPEN STORAGE ISSUE: %1 | Stock %2/%3'.[global.$JKEOC_FocusFirstFullWare, global.$JKEOC_FocusFirstFullAmount, global.$JKEOC_FocusFirstFullMaximum]" position="left" section="JKSM_FocusDashboard" />
+              <add_player_choice_sub text="'INFO: STATUS: %1 | Completed: %2 | Remaining: %3'.[global.$JKEOC_RecoveryStatus, global.$JKEOC_RecoveryCompletedCount, global.$JKEOC_RecoveryRemainingCount]" position="bottom_left" section="JKSM_FocusDashboard" />
               <add_player_choice_sub text="'OPEN STORAGE EVIDENCE AND ACTIONS'" position="top_right" section="JKSM_RecoveryDetails" />
             </do_elseif>
             <do_else>
-              <add_player_choice_sub text="'NO ACTIVE RECOVERY OBJECTIVE'" position="left" section="JKSM_FocusDashboard" />
+              <add_player_choice_sub text="'INFO: NO ACTIVE RECOVERY OBJECTIVE'" position="left" section="JKSM_FocusDashboard" />
               <add_player_choice_sub text="'Refresh Station Analysis to rebuild the current recovery state'" position="bottom_left" section="JKSM_FocusDashboard" />
               <add_player_choice_sub text="'REFRESH STATION ANALYSIS'" position="top_right" section="JKSM_FocusRefresh" />
             </do_else>
           </do_else>
         </do_if>
         <do_else>
-          <add_player_choice_sub text="'FOCUSED STATION NOT AVAILABLE IN THE LATEST SCAN'" position="left" section="JKSM_FocusDashboard" />
+          <add_player_choice_sub text="'INFO: FOCUSED STATION NOT AVAILABLE IN THE LATEST SCAN'" position="left" section="JKSM_FocusDashboard" />
           <add_player_choice_sub text="'Refresh the analysis or exit Station Recovery Mode'" position="bottom_left" section="JKSM_FocusDashboard" />
           <add_player_choice_sub text="'STATION UNAVAILABLE'" position="top_right" section="JKSM_FocusRefresh" />
         </do_else>
@@ -3815,10 +3314,10 @@ subordinates, storage modules, and funds. No station or ship settings are change
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_SelfSufficiencyAssessment" /></conditions>
       <actions>
         <debug_text text="'[JKEOC][V339][SELF_SUFFICIENCY] case=%1 station=%2 score=%3 grade=%4 gap=%5'.[global.$JKEOC_FocusEntryCaseID, global.$JKEOC_FocusStationDisplay, global.$JKEOC_SelfSufficiencyScore, global.$JKEOC_SelfSufficiencyGrade, global.$JKEOC_SelfSufficiencyPrimaryGap]" filter="general" />
-        <add_player_choice_sub text="'SELF-SUFFICIENCY ASSESSMENT — %1'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_SelfSufficiencyAssessment" />
-        <add_player_choice_sub text="'SCORE: %1%% | CONDITION: %2'.[global.$JKEOC_SelfSufficiencyScore, global.$JKEOC_SelfSufficiencyGrade]" position="left" section="JKSM_SelfSufficiencyAssessment" />
-        <add_player_choice_sub text="'PRIMARY GAP: %1'.[global.$JKEOC_SelfSufficiencyPrimaryGap]" position="bottom_left" section="JKSM_SelfSufficiencyAssessment" />
-        <add_player_choice_sub text="'STATION PROFILE: %1 products | %2 required resources | %3 assigned ships'.[global.$JKEOC_FocusProductCount, global.$JKEOC_FocusResourceCount, global.$JKEOC_FocusShipCount]" position="top_right" section="JKSM_SelfSufficiencyAssessment" />
+        <add_player_choice_sub text="'INFO: SELF-SUFFICIENCY ASSESSMENT — %1'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_SelfSufficiencyAssessment" />
+        <add_player_choice_sub text="'INFO: SCORE: %1%% | CONDITION: %2'.[global.$JKEOC_SelfSufficiencyScore, global.$JKEOC_SelfSufficiencyGrade]" position="left" section="JKSM_SelfSufficiencyAssessment" />
+        <add_player_choice_sub text="'INFO: PRIMARY GAP: %1'.[global.$JKEOC_SelfSufficiencyPrimaryGap]" position="bottom_left" section="JKSM_SelfSufficiencyAssessment" />
+        <add_player_choice_sub text="'INFO: STATION PROFILE: %1 products | %2 required resources | %3 assigned ships'.[global.$JKEOC_FocusProductCount, global.$JKEOC_FocusResourceCount, global.$JKEOC_FocusShipCount]" position="top_right" section="JKSM_SelfSufficiencyAssessment" />
         <add_player_choice_sub text="'NEXT IMPROVEMENT: %1'.[global.$JKEOC_SelfSufficiencyNextStep]" position="right" section="JKSM_SelfSufficiencyAssessment" />
         <add_player_choice_sub text="'BACK TO STATION RECOVERY'" position="bottom_right" section="JKSM_FocusDashboard" />
       </actions>
@@ -3829,9 +3328,9 @@ subordinates, storage modules, and funds. No station or ship settings are change
       <actions>
         <set_value name="$recoverySubject" exact="if global.$JKEOC_RecoveryObjectiveWare? then global.$JKEOC_RecoveryObjectiveWare else if global.$JKEOC_FocusFirstFullWare? then global.$JKEOC_FocusFirstFullWare else 'NO ACTIVE OBJECTIVE'" />
         <do_if value="global.$JKEOC_RecoveryObjectiveWare? or global.$JKEOC_FocusFirstFullWare?">
-          <add_player_choice_sub text="'STATION: %1 | GUIDED RECOVERY — %2'.[global.$JKEOC_FocusStationDisplay, $recoverySubject]" position="top_left" section="JKSM_RecoveryDetails" />
-          <add_player_choice_sub text="'INVESTIGATION: %1'.[global.$JKEOC_RecoveryInvestigationChain]" position="left" section="JKSM_RecoveryDetails" />
-          <add_player_choice_sub text="'DIAGNOSIS: %1 | Confidence: %2 | Remaining: %3'.[global.$JKEOC_RecoveryRootCause, global.$JKEOC_RecoveryRootConfidence, global.$JKEOC_RecoveryRemainingCount]" position="bottom_left" section="JKSM_RecoveryDetails" />
+          <add_player_choice_sub text="'INFO: STATION: %1 | GUIDED RECOVERY — %2'.[global.$JKEOC_FocusStationDisplay, $recoverySubject]" position="top_left" section="JKSM_RecoveryDetails" />
+          <add_player_choice_sub text="'INFO: INVESTIGATION: %1'.[global.$JKEOC_RecoveryInvestigationChain]" position="left" section="JKSM_RecoveryDetails" />
+          <add_player_choice_sub text="'INFO: DIAGNOSIS: %1 | Confidence: %2 | Remaining: %3'.[global.$JKEOC_RecoveryRootCause, global.$JKEOC_RecoveryRootConfidence, global.$JKEOC_RecoveryRemainingCount]" position="bottom_left" section="JKSM_RecoveryDetails" />
           <add_player_choice_sub text="'OPEN EVIDENCE'" position="top_right" section="JKSM_RecoveryEvidenceDetails" />
           <do_if value="global.$JKEOC_RecoveryObjectiveWare? and global.$JKEOC_RecoveryRootCause == 'IMPORT OR DELIVERY FAILURE'">
             <add_player_choice_sub text="'RUN DELIVERY DIAGNOSTIC'" position="right" section="JKSM_DiagnosticStart" />
@@ -3845,7 +3344,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <add_player_choice_sub text="'SCAN NOW / VERIFY CHANGE'" position="right" section="JKSM_FocusRefresh" />
         </do_if>
         <do_else>
-          <add_player_choice_sub text="'STATION: %1 | RECOVERY STATE UNAVAILABLE'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_RecoveryDetails" />
+          <add_player_choice_sub text="'INFO: STATION: %1 | RECOVERY STATE UNAVAILABLE'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_RecoveryDetails" />
           <add_player_choice_sub text="'Refresh Station Analysis to rebuild the current recovery state'" position="bottom_left" section="JKSM_RecoveryDetails" />
           <add_player_choice_sub text="'REFRESH STATION ANALYSIS'" position="right" section="JKSM_FocusRefresh" />
         </do_else>
@@ -3858,14 +3357,14 @@ subordinates, storage modules, and funds. No station or ship settings are change
       <actions>
         <set_value name="$recoverySubject" exact="if global.$JKEOC_RecoveryObjectiveWare? then global.$JKEOC_RecoveryObjectiveWare else if global.$JKEOC_FocusFirstFullWare? then global.$JKEOC_FocusFirstFullWare else 'NO ACTIVE OBJECTIVE'" />
         <do_if value="global.$JKEOC_RecoveryObjectiveWare? or global.$JKEOC_FocusFirstFullWare?">
-          <add_player_choice_sub text="'STATION: %1 | RECOVERY EVIDENCE — %2'.[global.$JKEOC_FocusStationDisplay, $recoverySubject]" position="top_left" section="JKSM_RecoveryEvidenceDetails" />
-          <add_player_choice_sub text="'ROOT CAUSE: %1'.[global.$JKEOC_RecoveryRootCause]" position="left" section="JKSM_RecoveryEvidenceDetails" />
-          <add_player_choice_sub text="'EVIDENCE: %1'.[global.$JKEOC_RecoveryRootEvidence]" position="bottom_left" section="JKSM_RecoveryEvidenceDetails" />
-          <add_player_choice_sub text="'CONFIDENCE: %1'.[global.$JKEOC_RecoveryRootConfidence]" position="top_right" section="JKSM_RecoveryEvidenceDetails" />
+          <add_player_choice_sub text="'INFO: STATION: %1 | RECOVERY EVIDENCE — %2'.[global.$JKEOC_FocusStationDisplay, $recoverySubject]" position="top_left" section="JKSM_RecoveryEvidenceDetails" />
+          <add_player_choice_sub text="'INFO: ROOT CAUSE: %1'.[global.$JKEOC_RecoveryRootCause]" position="left" section="JKSM_RecoveryEvidenceDetails" />
+          <add_player_choice_sub text="'INFO: EVIDENCE: %1'.[global.$JKEOC_RecoveryRootEvidence]" position="bottom_left" section="JKSM_RecoveryEvidenceDetails" />
+          <add_player_choice_sub text="'INFO: CONFIDENCE: %1'.[global.$JKEOC_RecoveryRootConfidence]" position="top_right" section="JKSM_RecoveryEvidenceDetails" />
           <add_player_choice_sub text="'OPEN NEXT RECOVERY STEP'" position="right" section="JKSM_RecoveryActionDetails" />
         </do_if>
         <do_else>
-          <add_player_choice_sub text="'STATION: %1 | RECOVERY EVIDENCE UNAVAILABLE'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_RecoveryEvidenceDetails" />
+          <add_player_choice_sub text="'INFO: STATION: %1 | RECOVERY EVIDENCE UNAVAILABLE'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_RecoveryEvidenceDetails" />
           <add_player_choice_sub text="'Refresh Station Analysis to rebuild the current recovery evidence'" position="bottom_left" section="JKSM_RecoveryEvidenceDetails" />
         </do_else>
         <add_player_choice_sub text="'BACK TO GUIDED RECOVERY'" position="bottom_right" section="JKSM_RecoveryDetails" />
@@ -3877,10 +3376,10 @@ subordinates, storage modules, and funds. No station or ship settings are change
       <actions>
         <set_value name="$recoverySubject" exact="if global.$JKEOC_RecoveryObjectiveWare? then global.$JKEOC_RecoveryObjectiveWare else if global.$JKEOC_FocusFirstFullWare? then global.$JKEOC_FocusFirstFullWare else 'NO ACTIVE OBJECTIVE'" />
         <do_if value="global.$JKEOC_RecoveryObjectiveWare? or global.$JKEOC_FocusFirstFullWare?">
-          <add_player_choice_sub text="'STATION: %1 | NEXT RECOVERY STEP — %2'.[global.$JKEOC_FocusStationDisplay, $recoverySubject]" position="top_left" section="JKSM_RecoveryActionDetails" />
-          <add_player_choice_sub text="'DO THIS NOW: %1'.[global.$JKEOC_RecoveryNextStep]" position="left" section="JKSM_RecoveryActionDetails" />
-          <add_player_choice_sub text="'SUCCESS CHECK: %1'.[global.$JKEOC_RecoverySuccessCheck]" position="bottom_left" section="JKSM_RecoveryActionDetails" />
-          <add_player_choice_sub text="'CURRENT RESULT: %1'.[global.$JKEOC_RecoveryVerification]" position="top_right" section="JKSM_RecoveryActionDetails" />
+          <add_player_choice_sub text="'INFO: STATION: %1 | NEXT RECOVERY STEP — %2'.[global.$JKEOC_FocusStationDisplay, $recoverySubject]" position="top_left" section="JKSM_RecoveryActionDetails" />
+          <add_player_choice_sub text="'INFO: DO THIS NOW: %1'.[global.$JKEOC_RecoveryNextStep]" position="left" section="JKSM_RecoveryActionDetails" />
+          <add_player_choice_sub text="'INFO: SUCCESS CHECK: %1'.[global.$JKEOC_RecoverySuccessCheck]" position="bottom_left" section="JKSM_RecoveryActionDetails" />
+          <add_player_choice_sub text="'INFO: CURRENT RESULT: %1'.[global.$JKEOC_RecoveryVerification]" position="top_right" section="JKSM_RecoveryActionDetails" />
           <do_if value="global.$JKEOC_RecoveryObjectiveWare? and global.$JKEOC_RecoveryRootCause == 'NO REACHABLE SUPPLIER STOCK'">
             <add_player_choice_sub text="'RUN UPSTREAM SUPPLIER DIAGNOSTIC'" position="right" section="JKSM_UpstreamStart" />
           </do_if>
@@ -3889,7 +3388,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           </do_else>
         </do_if>
         <do_else>
-          <add_player_choice_sub text="'STATION: %1 | NEXT RECOVERY STEP UNAVAILABLE'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_RecoveryActionDetails" />
+          <add_player_choice_sub text="'INFO: STATION: %1 | NEXT RECOVERY STEP UNAVAILABLE'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_RecoveryActionDetails" />
           <add_player_choice_sub text="'Refresh Station Analysis to rebuild the next recovery step'" position="bottom_left" section="JKSM_RecoveryActionDetails" />
           <add_player_choice_sub text="'REFRESH STATION ANALYSIS'" position="right" section="JKSM_FocusRefresh" />
         </do_else>
@@ -3914,29 +3413,29 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_DiagnosticCheck" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_DiagnosticCheck" /></conditions>
       <actions>
-        <add_player_choice_sub text="'STATION: %1 | DELIVERY DIAGNOSTIC — %2'.[global.$JKEOC_FocusStationDisplay, global.$JKEOC_RecoveryObjectiveWare]" position="top_left" section="JKSM_DiagnosticCheck" />
+        <add_player_choice_sub text="'INFO: STATION: %1 | DELIVERY DIAGNOSTIC — %2'.[global.$JKEOC_FocusStationDisplay, global.$JKEOC_RecoveryObjectiveWare]" position="top_left" section="JKSM_DiagnosticCheck" />
         <do_if value="global.$JKEOC_DiagnosticStage == 1">
-          <add_player_choice_sub text="'CHECK 1 OF 6: Is an active BUY OFFER enabled for this ware?'" position="left" section="JKSM_DiagnosticCheck" />
-          <add_player_choice_sub text="'Open Logical Station Overview and select %1. Confirm the BUY offer is active and the requested amount is above zero.'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_DiagnosticCheck" />
+          <add_player_choice_sub text="'INFO: CHECK 1 OF 6: Is an active BUY OFFER enabled for this ware?'" position="left" section="JKSM_DiagnosticCheck" />
+          <add_player_choice_sub text="'INFO: Open Logical Station Overview and select %1. Confirm the BUY offer is active and the requested amount is above zero.'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_DiagnosticCheck" />
         </do_if>
         <do_elseif value="global.$JKEOC_DiagnosticStage == 2">
-          <add_player_choice_sub text="'CHECK 2 OF 6: Is the correct STORAGE TYPE allocated with free capacity?'" position="left" section="JKSM_DiagnosticCheck" />
+          <add_player_choice_sub text="'INFO: CHECK 2 OF 6: Is the correct STORAGE TYPE allocated with free capacity?'" position="left" section="JKSM_DiagnosticCheck" />
           <add_player_choice_sub text="'Confirm %1 has allocated container, solid or liquid capacity and that the allocation is not full.'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_DiagnosticCheck" />
         </do_elseif>
         <do_elseif value="global.$JKEOC_DiagnosticStage == 3">
-          <add_player_choice_sub text="'CHECK 3 OF 6: Does the BUY OFFER trade rule allow an available supplier?'" position="left" section="JKSM_DiagnosticCheck" />
-          <add_player_choice_sub text="'Inspect the ware buy rule. It must allow your intended faction or supplier stations.'" position="bottom_left" section="JKSM_DiagnosticCheck" />
+          <add_player_choice_sub text="'INFO: CHECK 3 OF 6: Does the BUY OFFER trade rule allow an available supplier?'" position="left" section="JKSM_DiagnosticCheck" />
+          <add_player_choice_sub text="'INFO: Inspect the ware buy rule. It must allow your intended faction or supplier stations.'" position="bottom_left" section="JKSM_DiagnosticCheck" />
         </do_elseif>
         <do_elseif value="global.$JKEOC_DiagnosticStage == 4">
-          <add_player_choice_sub text="'CHECK 4 OF 6: Can the station manager reach a supplier?'" position="left" section="JKSM_DiagnosticCheck" />
-          <add_player_choice_sub text="'Compare manager skill and maximum gate distance with the nearest station selling %1.'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_DiagnosticCheck" />
+          <add_player_choice_sub text="'INFO: CHECK 4 OF 6: Can the station manager reach a supplier?'" position="left" section="JKSM_DiagnosticCheck" />
+          <add_player_choice_sub text="'INFO: Compare manager skill and maximum gate distance with the nearest station selling %1.'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_DiagnosticCheck" />
         </do_elseif>
         <do_elseif value="global.$JKEOC_DiagnosticStage == 5">
-          <add_player_choice_sub text="'CHECK 5 OF 6: Is an assigned trader available and suitable for this ware?'" position="left" section="JKSM_DiagnosticCheck" />
+          <add_player_choice_sub text="'INFO: CHECK 5 OF 6: Is an assigned trader available and suitable for this ware?'" position="left" section="JKSM_DiagnosticCheck" />
           <add_player_choice_sub text="'Confirm at least one station trader is assigned, not stuck, and has the correct cargo type.'" position="bottom_left" section="JKSM_DiagnosticCheck" />
         </do_elseif>
         <do_else>
-          <add_player_choice_sub text="'CHECK 6 OF 6: Is any reachable supplier offering stock at an acceptable price?'" position="left" section="JKSM_DiagnosticCheck" />
+          <add_player_choice_sub text="'INFO: CHECK 6 OF 6: Is any reachable supplier offering stock at an acceptable price?'" position="left" section="JKSM_DiagnosticCheck" />
           <add_player_choice_sub text="'Use Trade Offers or inspect your intended supplier. Confirm %1 is actually available for sale.'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_DiagnosticCheck" />
         </do_else>
         <add_player_choice_sub text="'BACK TO GUIDED RECOVERY'" position="bottom_right" section="JKSM_RecoveryDetails" />
@@ -4021,18 +3520,18 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_UpstreamCheck" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_UpstreamCheck" /></conditions>
       <actions>
-        <add_player_choice_sub text="'STATION: %1 | UPSTREAM SUPPLIER DIAGNOSTIC — CHECK %2 OF 4'.[global.$JKEOC_FocusStationDisplay, global.$JKEOC_UpstreamStage]" position="top_left" section="JKSM_UpstreamCheck" />
+        <add_player_choice_sub text="'INFO: STATION: %1 | UPSTREAM SUPPLIER DIAGNOSTIC — CHECK %2 OF 4'.[global.$JKEOC_FocusStationDisplay, global.$JKEOC_UpstreamStage]" position="top_left" section="JKSM_UpstreamCheck" />
         <do_if value="global.$JKEOC_UpstreamStage == 1">
-          <add_player_choice_sub text="'Identify the station intended to supply %1. Does that supplier have a SELL offer for this ware?'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_UpstreamCheck" />
+          <add_player_choice_sub text="'INFO: Identify the station intended to supply %1. Does that supplier have a SELL offer for this ware?'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_UpstreamCheck" />
         </do_if>
         <do_elseif value="global.$JKEOC_UpstreamStage == 2">
-          <add_player_choice_sub text="'At the supplier, is %1 produced locally and are its production modules operational?'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_UpstreamCheck" />
+          <add_player_choice_sub text="'INFO: At the supplier, is %1 produced locally and are its production modules operational?'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_UpstreamCheck" />
         </do_elseif>
         <do_elseif value="global.$JKEOC_UpstreamStage == 3">
-          <add_player_choice_sub text="'At the supplier, are any required production inputs empty or critically low?'" position="bottom_left" section="JKSM_UpstreamCheck" />
+          <add_player_choice_sub text="'INFO: At the supplier, are any required production inputs empty or critically low?'" position="bottom_left" section="JKSM_UpstreamCheck" />
         </do_elseif>
         <do_else>
-          <add_player_choice_sub text="'Can you manually transfer a small amount of %1 to prove the destination storage and production path work?'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_UpstreamCheck" />
+          <add_player_choice_sub text="'INFO: Can you manually transfer a small amount of %1 to prove the destination storage and production path work?'.[global.$JKEOC_RecoveryObjectiveWare]" position="bottom_left" section="JKSM_UpstreamCheck" />
         </do_else>
         <add_player_choice_sub text="'BACK TO CORRECTIVE ACTION'" position="bottom_right" section="JKSM_RecoveryActionDetails" />
       </actions>
@@ -4117,7 +3616,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <remove_value name="$JKEOC_SelectedShip" />
         <do_all exact="$JKEOC_AvailableShips.count" counter="$as">
           <set_value name="$candidate" exact="$JKEOC_AvailableShips.{$as}" />
-          <do_if value="not $JKEOC_SelectedShip? and $candidate != player.ship and $candidate.isrealclass.ship and $candidate.isoperational and not $candidate.isunit and not $candidate.isclass.ship_xs and not $candidate.commander? and (not global.$JKEOC_FocusObjectiveWareObject? or $candidate.waretransport.indexof.{global.$JKEOC_FocusObjectiveWareObject.waretransport})">
+          <do_if value="not $JKEOC_SelectedShip? and $candidate != player.ship and $candidate.isrealclass.ship and $candidate.isoperational and not $candidate.isunit and not $candidate.isclass.ship_xs and not $candidate.commander and not $candidate.subordinates.count and (not global.$JKEOC_FocusObjectiveWareObject? or $candidate.waretransport.indexof.{global.$JKEOC_FocusObjectiveWareObject.waretransport})">
             <set_value name="$JKEOC_SelectedShip" exact="$candidate" />
           </do_if>
         </do_all>
@@ -4260,3 +3759,4 @@ subordinates, storage modules, and funds. No station or ship settings are change
 
   </cues>
 </mdscript>
+

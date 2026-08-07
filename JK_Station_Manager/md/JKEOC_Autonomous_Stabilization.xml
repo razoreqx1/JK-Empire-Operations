@@ -236,7 +236,7 @@
       <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_MailboxMenu" /></conditions>
       <actions>
         <add_player_choice_sub text="'RUN APPROVED MEDICAL SUPPLIES BUY-OFFER PROOF'" position="top_left" section="JKEOC_B71_ConfirmBuyProof" />
-        <add_player_choice_sub text="'PROOF STATUS: %1'.[if global.$JKEOC_B71ProofStatus? then global.$JKEOC_B71ProofStatus else 'READY']" position="left" section="JKEOC_B64_MailboxMenu" />
+        <add_player_choice_sub text="'INFO: PROOF STATUS: %1'.[if global.$JKEOC_B71ProofStatus? then global.$JKEOC_B71ProofStatus else 'READY']" position="left" section="JKEOC_B64_MailboxMenu" />
         <add_player_choice_sub text="'PROBE RESERVED CARGO'" position="bottom_left" section="JKEOC_B64_MBMap" />
         <add_player_choice_sub text="'PROBE MODIFY TRADE RULE'" position="top_right" section="JKEOC_B64_MBPolicy" />
         <add_player_choice_sub text="'PROBE ASSIGN SHIP'" position="right" section="JKEOC_B64_MBReassign" />
@@ -257,10 +257,10 @@
         <remove_value name="global.$JKEOC_B71ProofTarget" />
         <do_for_each name="$r" in="global.$JKEOC_B70Remediations"><do_if value="not global.$JKEOC_B71ProofTarget? and $r.$identity == 'B70-R1' and $r.$subjectkey == ware.medicalsupplies and $r.$station.exists and $r.$station.owner == faction.player"><set_value name="global.$JKEOC_B71ProofTarget" exact="$r" /></do_if></do_for_each>
         <do_if value="global.$JKEOC_B71ProofTarget?">
-          <add_player_choice_sub text="'TARGET: %1 | WARE: MEDICAL SUPPLIES'.[global.$JKEOC_B71ProofTarget.$stationname]" position="top_left" section="JKEOC_B71_ConfirmBuyProof" />
+          <add_player_choice_sub text="'INFO: TARGET: %1 | WARE: MEDICAL SUPPLIES'.[global.$JKEOC_B71ProofTarget.$stationname]" position="top_left" section="JKEOC_B71_ConfirmBuyProof" />
           <add_player_choice_sub text="'CREATE PLAYER-ONLY BUY OFFER (1 UNIT / MINIMUM PRICE)'" position="right" section="JKEOC_B71_StartBuyProof" />
         </do_if>
-        <do_else><add_player_choice_sub text="'BLOCKED: APPROVED B70-R1 MEDICAL SUPPLIES TARGET NOT FOUND'" position="top_left" section="JKEOC_B71_ConfirmBuyProof" /></do_else>
+        <do_else><add_player_choice_sub text="'INFO: BLOCKED: APPROVED B70-R1 MEDICAL SUPPLIES TARGET NOT FOUND'" position="top_left" section="JKEOC_B71_ConfirmBuyProof" /></do_else>
         <add_player_choice_sub text="'BACK - NO CHANGE'" position="bottom_right" section="JKEOC_B64_MailboxMenu" />
       </actions>
     </cue>
