@@ -6,6 +6,9 @@ local menu = {
     page = "dashboard",
     selected = 1,
     analysisRunning = false,
+    actions = {},
+    reports = {},
+    selectedReport = 1,
 }
 
 local config = {
@@ -50,16 +53,104 @@ end
 
 local function text(value)
     if value == nil or value == "" then
-        return "UNAVAILABLE"
+        return "—"
     end
     return tostring(value)
+end
+
+local formatGameTime
+local pair
+
+local function formatNumber(value)
+    local number = tonumber(value)
+    if not number then
+        return text(value)
+    end
+    local formatted = tostring(math.floor(number))
+    while true do
+        local replaced
+        formatted, replaced = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
+        if replaced == 0 then
+            break
+        end
+    end
+    return formatted
+end
+
+local function actionState(action)
+    menu.actions[action] = menu.actions[action] or {
+        running = false,
+        result = nil,
+        lastRun = nil,
+    }
+    return menu.actions[action]
+end
+
+local function startAction(action)
+    local state = actionState(action)
+    if state.running then
+        return false
+    end
+    state.running = true
+    state.result = "WORKING"
+    menu.refresh()
+    return true
+end
+
+local function actionName(_, value)
+    menu.pendingAction = { name = tostring(value or "unknown") }
+end
+
+local function actionResultReceived(_, value)
+    menu.pendingAction = menu.pendingAction or { name = "unknown" }
+    menu.pendingAction.result = tostring(value or "Completed; no additional action was required.")
+end
+
+local function actionTimeReceived(_, value)
+    menu.pendingAction = menu.pendingAction or { name = "unknown" }
+    menu.pendingAction.time = value
+end
+
+local function actionValueReceived(_, value)
+    menu.pendingAction = menu.pendingAction or { name = "unknown" }
+    menu.pendingAction.value = value
+end
+
+local function actionComplete()
+    local payload = menu.pendingAction or { name = "unknown" }
+    local action = payload.name
+    local state = actionState(action)
+    state.running = false
+    state.result = text(payload.result)
+    state.lastRun = formatGameTime(payload.time)
+    if action == "trade.review" then
+        menu.offers = tonumber(payload.value) or menu.offers
+    end
+    menu.pendingAction = nil
+    if menu.frame then
+        menu.refresh()
+    end
+end
+
+local function actionLabel(action, readyLabel, runningLabel)
+    local state = actionState(action)
+    if state.running then
+        return runningLabel
+    end
+    return readyLabel
+end
+
+local function actionResult(tableWidget, action, purpose)
+    local state = actionState(action)
+    local row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText(state.result or purpose, { wordwrap = true })
 end
 
 local function clamp(value, low, high)
     return math.max(low, math.min(high, value))
 end
 
-local function formatGameTime(value)
+formatGameTime = function(value)
     local seconds = math.max(0, math.floor(tonumber(value) or 0))
     local hours = math.floor(seconds / 3600)
     local minutes = math.floor((seconds % 3600) / 60)
@@ -67,34 +158,84 @@ local function formatGameTime(value)
     return string.format("%02d:%02d:%02d", hours, minutes, remainder)
 end
 
-local function analysisComplete(_, payload)
+local function importReports(source)
+    local imported = {}
+    if type(source) ~= "table" then
+        return imported
+    end
+    for index = #source, 1, -1 do
+        local report = source[index]
+        table.insert(imported, {
+            text(v(report, 1, "EOC REPORT")),
+            text(v(report, 2, "No report text was returned.")),
+            formatGameTime(v(report, 3, 0)),
+        })
+    end
+    return imported
+end
+
+local function analysisOutputReceived(_, value)
+    menu.pendingAnalysisOutput = tostring(value or "Analysis completed.")
+end
+
+local function analysisTimeReceived(_, value)
+    menu.pendingAnalysisTime = value
+end
+
+local function analysisComplete()
     menu.analysisRunning = false
     menu.analysisStatus = "ANALYSIS COMPLETE"
     menu.analysisStatusUntil = getElapsedTime() + 3
 
-    if type(payload) == "table" then
-        menu.summary = v(payload, 1, menu.summary)
-        menu.inbox = v(payload, 2, menu.inbox)
-        menu.lastUpdated = formatGameTime(v(payload, 3, 0))
-        menu.analysisOutput = text(v(payload, 4, "Analysis completed."))
-    end
+    menu.lastUpdated = formatGameTime(menu.pendingAnalysisTime)
+    menu.analysisOutput = text(menu.pendingAnalysisOutput or "Analysis completed.")
+    menu.pendingAnalysisOutput = nil
+    menu.pendingAnalysisTime = nil
+
+
+    local state = actionState("analysis.run")
+    state.running = false
+    state.result = menu.analysisOutput or "Analysis completed and EOC intelligence was refreshed."
+    state.lastRun = menu.lastUpdated or formatGameTime(0)
 
     if menu.frame then
         menu.refresh()
     end
 end
 
-local function reportSaved(_, payload)
+local function reportTitleReceived(_, value)
+    menu.pendingReportTitle = tostring(value or menu.pendingReport or "EOC REPORT")
+end
+
+local function reportTextReceived(_, value)
+    menu.pendingReportText = tostring(value or "Report saved to Tips.")
+end
+
+local function reportTimeReceived(_, value)
+    menu.pendingReportTime = value
+end
+
+local function reportSaved()
     menu.reportStatus = "REPORT SAVED TO TIPS"
     menu.reportStatusUntil = getElapsedTime() + 4
 
-    if type(payload) == "table" then
-        menu.lastReport = text(v(payload, 1, "EOC REPORT"))
-        menu.reportOutput = text(v(payload, 2, "Report saved to Tips."))
-    else
-        menu.lastReport = text(payload)
-        menu.reportOutput = "Report saved to Tips."
+    menu.lastReport = text(menu.pendingReportTitle or menu.pendingReport or "EOC REPORT")
+    menu.reportOutput = text(menu.pendingReportText or "Report saved to Tips.")
+
+    table.insert(menu.reports, 1, {
+        menu.lastReport,
+        menu.reportOutput,
+        formatGameTime(menu.pendingReportTime),
+    })
+    while #menu.reports > 20 do
+        table.remove(menu.reports)
     end
+    menu.selectedReport = 1
+    menu.page = "reports"
+    menu.activeTab = "reports"
+    menu.pendingReportTitle = nil
+    menu.pendingReportText = nil
+    menu.pendingReportTime = nil
 
     if menu.frame then
         menu.refresh()
@@ -119,13 +260,23 @@ local function init()
     if Helper and Helper.registerMenu then
         Helper.registerMenu(menu)
     else
-        DebugError("[JKEOC][B83G_R6][LUA_ERROR] Helper.registerMenu unavailable")
+    DebugError("[JKEOC][B91][LUA_ERROR] Helper.registerMenu unavailable")
     end
 
     AddUITriggeredEvent(menu.name, "INIT", nil)
     RegisterEvent(menu.name .. ".INIT", menu.PrepareMenuData)
     RegisterEvent(menu.name .. ".analysis.complete", analysisComplete)
+    RegisterEvent(menu.name .. ".analysis.output", analysisOutputReceived)
+    RegisterEvent(menu.name .. ".analysis.time", analysisTimeReceived)
     RegisterEvent(menu.name .. ".report.saved", reportSaved)
+    RegisterEvent(menu.name .. ".report.title", reportTitleReceived)
+    RegisterEvent(menu.name .. ".report.text", reportTextReceived)
+    RegisterEvent(menu.name .. ".report.time", reportTimeReceived)
+    RegisterEvent(menu.name .. ".action.complete", actionComplete)
+    RegisterEvent(menu.name .. ".action.name", actionName)
+    RegisterEvent(menu.name .. ".action.result", actionResultReceived)
+    RegisterEvent(menu.name .. ".action.time", actionTimeReceived)
+    RegisterEvent(menu.name .. ".action.value", actionValueReceived)
 end
 
 function menu.onShowMenu()
@@ -137,6 +288,24 @@ function menu.onShowMenu()
     menu.stations = v(menu.param, 7, {})
     menu.inbox = v(menu.param, 8, {})
     menu.previousShipmode = v(menu.param, 9, "APPROVAL REQUIRED")
+    menu.reports = importReports(v(menu.param, 10, menu.reports or {}))
+    menu.cases = v(menu.param, 11, {})
+    menu.registeredShips = v(menu.param, 12, {})
+    menu.tradeOffers = v(menu.param, 13, {})
+    menu.pendingAssignments = v(menu.param, 14, {})
+    menu.stabilizationGoal = v(menu.param, 15, "OBSERVE AND ADVISE ONLY")
+    menu.stabilizationFindings = tonumber(v(menu.param, 16, 0)) or 0
+    menu.mailboxStatus = v(menu.param, 17, { "READY", "No engineering probe has been submitted." })
+    menu.proofStatus = v(menu.param, 18, "READY")
+    menu.caseScope = menu.caseScope or "global"
+    menu.caseSeverity = menu.caseSeverity or "all"
+    menu.selectedCase = clamp(menu.selectedCase or 1, 1, math.max(1, #menu.cases))
+    menu.casePage = math.max(1, tonumber(menu.casePage) or 1)
+    menu.fleetScope = menu.fleetScope or "global"
+    menu.fleetView = menu.fleetView or "stations"
+    menu.fleetPage = math.max(1, tonumber(menu.fleetPage) or 1)
+    menu.diagnosticView = menu.diagnosticView or "recovery"
+    menu.selectedReport = clamp(menu.selectedReport or 1, 1, math.max(1, #menu.reports))
     menu.analysisOutput = menu.analysisOutput or "Run Analyze Now to generate the current executive analysis."
     menu.reportOutput = menu.reportOutput or "Generate a report to preview its current output here."
     menu.selected = clamp(menu.selected or 1, 1, math.max(1, #menu.stations))
@@ -177,6 +346,7 @@ local function addTabButton(row, column, label, page)
 
     row[column]:createButton(properties):setText(label)
     row[column].handlers.onClick = function()
+        menu.reportOrigin = nil
         menu.page = page
         menu.activeTab = page
         menu.refresh()
@@ -199,7 +369,7 @@ local function section(tableWidget, label)
     })
 end
 
-local function pair(tableWidget, leftLabel, leftValue, rightLabel, rightValue)
+pair = function(tableWidget, leftLabel, leftValue, rightLabel, rightValue)
     local row = tableWidget:addRow(false)
     row[1]:createText(leftLabel)
     row[2]:createText(text(leftValue), { halign = "right" })
@@ -211,45 +381,89 @@ local function selectedStation()
     return menu.stations[menu.selected]
 end
 
+local function stationCases(station)
+    local matches = {}
+    local stationName = text(v(station, 1, ""))
+
+    for _, case in ipairs(menu.cases or {}) do
+        if text(v(case, 1, "")) == stationName then
+            table.insert(matches, case)
+        end
+    end
+
+    return matches
+end
+
+local function openCasesCenter()
+    menu.caseScope = "global"
+    menu.caseSeverity = "all"
+    menu.selectedCase = 1
+    menu.casePage = 1
+    menu.page = "cases"
+    menu.activeTab = "cases"
+    menu.refresh()
+end
+
+local function captureReportOrigin(page, label)
+    menu.reportOrigin = {
+        page = page,
+        label = label,
+        selected = menu.selected,
+        selectedCase = menu.selectedCase,
+        caseScope = menu.caseScope,
+        caseSeverity = menu.caseSeverity,
+        casePage = menu.casePage,
+        fleetScope = menu.fleetScope,
+        fleetView = menu.fleetView,
+        fleetPage = menu.fleetPage,
+    }
+end
+
 local function createHeader(frame, parentWidth)
     local titleHeight = Helper.scaleY(42)
     local tabHeight = Helper.scaleY(38)
     local headerHeight = titleHeight + tabHeight
     local usableWidth = parentWidth - 2 * Helper.borderSize
-    local tableWidget = frame:addTable(3, {
+    local tableWidget = frame:addTable(7, {
         tabOrder = 1,
         x = Helper.borderSize,
         y = Helper.borderSize,
         width = usableWidth,
         borderEnabled = true,
     })
-    local columnWidth = math.floor(usableWidth / 3)
+    local columnWidth = math.floor(usableWidth / 7)
 
     tableWidget:setColWidth(1, columnWidth, false)
     tableWidget:setColWidth(2, columnWidth, false)
+    tableWidget:setColWidth(3, columnWidth, false)
+    tableWidget:setColWidth(4, columnWidth, false)
+    tableWidget:setColWidth(5, columnWidth, false)
+    tableWidget:setColWidth(6, columnWidth, false)
 
-    local row = tableWidget:addRow(false, {
-        fixed = true,
-        minRowHeight = titleHeight,
-    })
-    row[1]:setColSpan(3):createText(menu.title, {
+    local row = tableWidget:addRow(false, { fixed = true })
+    row[1]:setColSpan(7):createText(menu.title, {
         halign = "center",
         font = Helper.titleFont,
         fontsize = Helper.standardFontSize + 4,
     })
 
-    row = tableWidget:addRow(true, {
-        fixed = true,
-        minRowHeight = tabHeight,
-    })
+    row = tableWidget:addRow(true, { fixed = true })
     addTabButton(row, 1, "STATIONS", "stations")
-    addTabButton(row, 2, "DASHBOARD", "dashboard")
-    addTabButton(row, 3, "GLOBAL SETTINGS", "settings")
+    addTabButton(row, 2, "OVERVIEW", "dashboard")
+    addTabButton(row, 3, "FLEET & LOGISTICS", "fleet")
+    addTabButton(row, 4, "DIAGNOSTICS", "diagnostics")
+    addTabButton(row, 5, "CASES", "cases")
+    addTabButton(row, 6, "REPORTS", "reports")
+    addTabButton(row, 7, "GLOBAL SETTINGS", "settings")
 
     local activeColumns = {
         stations = 1,
         dashboard = 2,
-        settings = 3,
+        fleet = 3,
+        diagnostics = 4,
+        cases = 5,
+        reports = 6,
+        settings = 7,
     }
     tableWidget:setSelectedRow(2)
     tableWidget:setSelectedCol(activeColumns[menu.activeTab or menu.page] or 2)
@@ -258,12 +472,518 @@ local function createHeader(frame, parentWidth)
     return headerHeight
 end
 
+local function filteredCases()
+    local filtered = {}
+    local station = selectedStation()
+    local stationName = text(v(station, 1, ""))
+
+    for _, case in ipairs(menu.cases or {}) do
+        local severityMatches = menu.caseSeverity == "all" or
+            string.lower(text(v(case, 2, ""))) == menu.caseSeverity
+        local scopeMatches = menu.caseScope == "global" or
+            text(v(case, 1, "")) == stationName
+        if severityMatches and scopeMatches then
+            table.insert(filtered, case)
+        end
+    end
+
+    return filtered
+end
+
+local function focusCaseStation(case)
+    local stationName = text(v(case, 1, ""))
+    for index, station in ipairs(menu.stations) do
+        if text(v(station, 1, "")) == stationName then
+            menu.selected = index
+            break
+        end
+    end
+end
+
+local function casesCenter(tableWidget)
+    local pageSize = 8
+    local scopeLabel = menu.caseScope == "global" and "ALL STATIONS" or
+        ("SELECTED STATION - " .. text(v(selectedStation(), 1, "NONE")))
+    local severityLabel = menu.caseSeverity == "all" and "ALL" or string.upper(menu.caseSeverity)
+    section(tableWidget, "EOC CASE CENTER")
+    pair(
+        tableWidget,
+        "SCOPE",
+        menu.caseScope == "global" and "ALL PLAYER STATIONS" or text(v(selectedStation(), 1, "SELECTED STATION")),
+        "DISPLAYED",
+        #filteredCases()
+    )
+    local statusRow = tableWidget:addRow(false)
+    statusRow[1]:setColSpan(4):createText(
+        "ACTIVE FILTERS: SCOPE - " .. scopeLabel .. " | SEVERITY - " .. severityLabel
+    )
+
+    local row = tableWidget:addRow(true)
+    addModeButton(row, 1, (menu.caseScope == "global" and "ACTIVE: " or "") .. "ALL STATIONS", menu.caseScope == "global", true, function()
+        menu.caseScope = "global"
+        menu.selectedCase = 1
+        menu.casePage = 1
+        menu.refresh()
+    end)
+    addModeButton(row, 2, (menu.caseScope == "station" and "ACTIVE: " or "") .. "SELECTED STATION", menu.caseScope == "station", selectedStation() ~= nil, function()
+        menu.caseScope = "station"
+        menu.selectedCase = 1
+        menu.casePage = 1
+        menu.refresh()
+    end)
+    addModeButton(row, 3, (menu.caseSeverity == "all" and "ACTIVE: " or "") .. "ALL SEVERITIES", menu.caseSeverity == "all", true, function()
+        menu.caseSeverity = "all"
+        menu.selectedCase = 1
+        menu.casePage = 1
+        menu.refresh()
+    end)
+    addModeButton(row, 4, (menu.caseSeverity == "critical" and "ACTIVE: " or "") .. "CRITICAL", menu.caseSeverity == "critical", true, function()
+        menu.caseSeverity = "critical"
+        menu.selectedCase = 1
+        menu.casePage = 1
+        menu.refresh()
+    end)
+
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(2)
+    addModeButton(row, 1, (menu.caseSeverity == "warning" and "ACTIVE: " or "") .. "WARNING", menu.caseSeverity == "warning", true, function()
+        menu.caseSeverity = "warning"
+        menu.selectedCase = 1
+        menu.casePage = 1
+        menu.refresh()
+    end)
+    row[3]:setColSpan(2)
+    addButton(row, 3, "CLEAR FILTERS", function()
+        menu.caseScope = "global"
+        menu.caseSeverity = "all"
+        menu.selectedCase = 1
+        menu.casePage = 1
+        menu.refresh()
+    end, menu.caseScope ~= "global" or menu.caseSeverity ~= "all")
+
+    local cases = filteredCases()
+    if #cases == 0 then
+        section(tableWidget, "NO MATCHING ACTIVE CASES")
+        pair(tableWidget, "STATUS", "No critical or warning case matches the current filters.", "ACTION", "Continue monitoring.")
+        return
+    end
+
+    local pageCount = math.max(1, math.ceil(#cases / pageSize))
+    menu.casePage = clamp(menu.casePage, 1, pageCount)
+    local first = (menu.casePage - 1) * pageSize + 1
+    local last = math.min(first + pageSize - 1, #cases)
+    if menu.selectedCase < first or menu.selectedCase > last then
+        menu.selectedCase = first
+    end
+    section(tableWidget, "ACTIVE CASES  |  " .. #cases .. "  |  PAGE " .. menu.casePage .. " OF " .. pageCount)
+    local header = tableWidget:addRow(false)
+    header[1]:setColSpan(2):createText("STATION")
+    header[3]:createText("SEVERITY")
+    header[4]:createText("SUBJECT")
+    for index = first, last do
+        local case = cases[index]
+        local caseIndex = index
+        local caseData = case
+        row = tableWidget:addRow(true)
+        row[1]:setColSpan(2)
+        addButton(row, 1, text(v(caseData, 1, "Unknown station")), function()
+            menu.selectedCase = caseIndex
+            focusCaseStation(caseData)
+            menu.refresh()
+        end, true)
+        row[3]:createText(text(v(caseData, 2, "ISSUE")))
+        row[4]:createText(text(v(caseData, 4, "GENERAL OPERATIONS")))
+    end
+
+    if pageCount > 1 then
+        row = tableWidget:addRow(true)
+        row[1]:setColSpan(2)
+        addButton(row, 1, "PREVIOUS PAGE - " .. math.max(1, menu.casePage - 1) .. " OF " .. pageCount, function()
+            menu.casePage = math.max(1, menu.casePage - 1)
+            menu.selectedCase = (menu.casePage - 1) * pageSize + 1
+            menu.refresh()
+        end, menu.casePage > 1)
+        row[3]:setColSpan(2)
+        addButton(row, 3, "NEXT PAGE - " .. math.min(pageCount, menu.casePage + 1) .. " OF " .. pageCount, function()
+            menu.casePage = math.min(pageCount, menu.casePage + 1)
+            menu.selectedCase = (menu.casePage - 1) * pageSize + 1
+            menu.refresh()
+        end, menu.casePage < pageCount)
+    end
+
+    menu.selectedCase = clamp(menu.selectedCase, 1, #cases)
+    local selected = cases[menu.selectedCase]
+    section(tableWidget, "CASE DETAILS: " .. text(v(selected, 1, "Unknown station")))
+    pair(tableWidget, "SEVERITY", v(selected, 2, "ISSUE"), "STATE", v(selected, 5, "OPEN"))
+    pair(tableWidget, "CASE TYPE", v(selected, 3, "STATION ISSUE"), "SUBJECT", v(selected, 4, "GENERAL OPERATIONS"))
+
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("ROOT CAUSE: " .. text(v(selected, 6, "Evidence requires review")), { wordwrap = true })
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("RECOMMENDED ACTION: " .. text(v(selected, 7, "Review the station recommendation")), { wordwrap = true })
+    pair(tableWidget, "EVIDENCE - CURRENT", formatNumber(v(selected, 8, 0)), "TARGET / CAPACITY", formatNumber(v(selected, 9, 0)) .. " / " .. formatNumber(v(selected, 10, 0)))
+
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(2)
+    addButton(row, 1, "OPEN STATION: " .. text(v(selected, 1, "Unknown station")), function()
+        focusCaseStation(selected)
+        menu.page = "stations"
+        menu.activeTab = "stations"
+        menu.refresh()
+    end, true)
+    row[3]:setColSpan(2)
+    addButton(row, 3, "GENERATE REPORT: SELECTED STATION", function()
+        focusCaseStation(selected)
+        captureReportOrigin("cases", "CASES - " .. text(v(selected, 1, "SELECTED STATION")))
+        menu.pendingReport = "SELECTED STATION"
+        raise("report.station", { index = v(selectedStation(), 16, menu.selected) })
+    end, true)
+end
+
+local function fleetCenter(tableWidget)
+    local station = selectedStation()
+    local stationName = text(v(station, 1, "SELECTED STATION"))
+    local pageSize = 7
+    local entries = {}
+
+    local function selectFleetView(view)
+        menu.fleetView = view
+        menu.fleetPage = 1
+        menu.refresh()
+    end
+
+    local function addEntry(entry)
+        table.insert(entries, entry)
+    end
+
+    section(tableWidget, "FLEET & LOGISTICS CENTER")
+    pair(tableWidget, "ASSIGNMENT MODE", menu.shipmode, "TRADE ORDER MODE", menu.mode)
+    pair(tableWidget, "REGISTERED AVAILABLE SHIPS", #menu.registeredShips, "EOC-OWNED TRADE OFFERS", #menu.tradeOffers)
+    pair(tableWidget, "PENDING ASSIGNMENTS", #menu.pendingAssignments, "PLAYER STATIONS", #menu.stations)
+    local fleetScopeLabel = menu.fleetScope == "global" and "EMPIRE - ALL STATIONS" or
+        ("SELECTED STATION - " .. stationName)
+    local fleetViewLabels = {
+        stations = "STATIONS",
+        ships = "REGISTERED AVAILABLE SHIPS",
+        offers = "EOC-OWNED TRADE OFFERS",
+        pending = "PENDING ASSIGNMENTS",
+    }
+    local fleetStatus = tableWidget:addRow(false)
+    fleetStatus[1]:setColSpan(4):createText(
+        "ACTIVE SCOPE: " .. fleetScopeLabel .. " | ACTIVE VIEW: " .. fleetViewLabels[menu.fleetView]
+    )
+
+    local row = tableWidget:addRow(true)
+    row[1]:setColSpan(2)
+    addModeButton(row, 1, (menu.fleetScope == "global" and "ACTIVE: " or "") .. "EMPIRE - ALL STATIONS", menu.fleetScope == "global", true, function()
+        menu.fleetScope = "global"
+        menu.fleetPage = 1
+        menu.refresh()
+    end)
+    row[3]:setColSpan(2)
+    addModeButton(row, 3, (menu.fleetScope == "station" and "ACTIVE: " or "") .. "SELECTED STATION", menu.fleetScope == "station", station ~= nil, function()
+        menu.fleetScope = "station"
+        menu.fleetPage = 1
+        menu.refresh()
+    end)
+
+    row = tableWidget:addRow(true)
+    addModeButton(row, 1, (menu.fleetView == "stations" and "ACTIVE: " or "") .. "STATIONS", menu.fleetView == "stations", true, function()
+        selectFleetView("stations")
+    end)
+    addModeButton(row, 2, (menu.fleetView == "ships" and "ACTIVE: " or "") .. "REGISTERED SHIPS", menu.fleetView == "ships", true, function()
+        selectFleetView("ships")
+    end)
+    addModeButton(row, 3, (menu.fleetView == "offers" and "ACTIVE: " or "") .. "TRADE OFFERS", menu.fleetView == "offers", true, function()
+        selectFleetView("offers")
+    end)
+    addModeButton(row, 4, (menu.fleetView == "pending" and "ACTIVE: " or "") .. "PENDING", menu.fleetView == "pending", true, function()
+        selectFleetView("pending")
+    end)
+
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(4)
+    addButton(row, 1, "CLEAR FILTERS", function()
+        menu.fleetScope = "global"
+        menu.fleetPage = 1
+        menu.refresh()
+    end, menu.fleetScope ~= "global")
+
+    if menu.fleetView == "stations" then
+        for _, profile in ipairs(menu.stations) do
+            if menu.fleetScope == "global" or text(v(profile, 1, "")) == stationName then
+                addEntry({
+                    text(v(profile, 1, "Station")),
+                    "Assigned: " .. text(v(profile, 9, 0)),
+                    "MINERS / TRADERS",
+                    text(v(profile, 10, 0)) .. " / " .. text(v(profile, 11, 0)),
+                })
+            end
+        end
+    elseif menu.fleetView == "ships" then
+        for _, ship in ipairs(menu.registeredShips) do
+            addEntry({
+                v(ship, 1, "Ship"),
+                v(ship, 2, "UNKNOWN PURPOSE"),
+                "STATE / COMMANDER",
+                text(v(ship, 4, false)) .. " / " .. text(v(ship, 5, "AVAILABLE")),
+            })
+        end
+    elseif menu.fleetView == "offers" then
+        for _, offer in ipairs(menu.tradeOffers) do
+            if menu.fleetScope == "global" or text(v(offer, 1, "")) == stationName then
+                addEntry({
+                    v(offer, 1, "Station"),
+                    text(v(offer, 2, "OFFER")) .. " " .. text(v(offer, 3, "Ware")),
+                    "AMOUNT / STATUS",
+                    formatNumber(v(offer, 4, 0)) .. " / " .. (v(offer, 5, false) and "VERIFIED" or "UNVERIFIED"),
+                })
+            end
+        end
+    else
+        for _, pending in ipairs(menu.pendingAssignments) do
+            if menu.fleetScope == "global" or text(v(pending, 2, "")) == stationName then
+                addEntry({
+                    v(pending, 1, "Ship"),
+                    v(pending, 2, "Unknown station"),
+                    v(pending, 3, "LOGISTICS"),
+                    v(pending, 4, "AWAITING APPROVAL"),
+                })
+            end
+        end
+    end
+
+    local viewTitles = {
+        stations = "STATION LOGISTICS",
+        ships = "REGISTERED AVAILABLE SHIPS",
+        offers = "EOC TRADE OFFERS",
+        pending = "PENDING ASSIGNMENTS",
+    }
+    local pageCount = math.max(1, math.ceil(#entries / pageSize))
+    menu.fleetPage = clamp(menu.fleetPage, 1, pageCount)
+    section(tableWidget, viewTitles[menu.fleetView] .. "  |  " .. #entries .. "  |  PAGE " .. menu.fleetPage .. " OF " .. pageCount)
+
+    if #entries == 0 then
+        local emptyMessages = {
+            stations = "No station logistics records match the selected scope.",
+            ships = "No eligible unassigned ships are registered. EOC registers operational M/L/XL trade or mining ships with supported cargo, no commander, and no subordinates.",
+            offers = "No EOC-created or EOC-tracked trade offers match the selected scope. This view does not list every vanilla trade offer.",
+            pending = menu.shipmode == "APPROVAL REQUIRED" and
+                "No assignments await approval. Entries appear when EOC finds a supported need and a compatible registered ship." or
+                "No assignments await approval. Pending normally remains empty unless Ship Assignment Authority is Approval Required.",
+        }
+        pair(tableWidget, "STATUS", emptyMessages[menu.fleetView], "ACTION", "No action required")
+    else
+        local first = (menu.fleetPage - 1) * pageSize + 1
+        local last = math.min(first + pageSize - 1, #entries)
+        for index = first, last do
+            local entry = entries[index]
+            pair(tableWidget, entry[1], entry[2], entry[3], entry[4])
+        end
+    end
+
+    if pageCount > 1 then
+        row = tableWidget:addRow(true)
+        row[1]:setColSpan(2)
+        addButton(row, 1, "PREVIOUS PAGE - " .. math.max(1, menu.fleetPage - 1) .. " OF " .. pageCount, function()
+            menu.fleetPage = math.max(1, menu.fleetPage - 1)
+            menu.refresh()
+        end, menu.fleetPage > 1)
+        row[3]:setColSpan(2)
+        addButton(row, 3, "NEXT PAGE - " .. math.min(pageCount, menu.fleetPage + 1) .. " OF " .. pageCount, function()
+            menu.fleetPage = math.min(pageCount, menu.fleetPage + 1)
+            menu.refresh()
+        end, menu.fleetPage < pageCount)
+    end
+
+    if menu.fleetView == "pending" and #entries > 0 and menu.shipmode == "APPROVAL REQUIRED" then
+        row = tableWidget:addRow(true)
+        row[1]:setColSpan(4)
+        addButton(
+            row,
+            1,
+            actionLabel("shipping.approve", "AUTHORIZE PENDING ASSIGNMENT", "AUTHORIZING ASSIGNMENT"),
+            function()
+                if startAction("shipping.approve") then
+                    raise("shipping.approve", {})
+                end
+            end,
+            not actionState("shipping.approve").running
+        )
+        actionResult(tableWidget, "shipping.approve", "Explicitly authorizes only the displayed, MD-verified pending assignment.")
+    end
+
+    section(tableWidget, "LOGISTICS ACTIONS")
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(2)
+    addButton(row, 1, actionLabel("shipping.scan", "ACTION: SCAN SHIPPING NEEDS", "SCANNING SHIPPING NEEDS"), function()
+        if startAction("shipping.scan") then
+            raise("shipping.scan", {})
+        end
+    end, not actionState("shipping.scan").running)
+    row[3]:setColSpan(2)
+    addButton(row, 3, actionLabel("trade.review", "ACTION: REVIEW EOC TRADE ORDERS", "REVIEWING ORDERS"), function()
+        if startAction("trade.review") then
+            raise("trade.review", {})
+        end
+    end, not actionState("trade.review").running)
+    actionResult(tableWidget, "shipping.scan", "Checks supported station logistics needs and eligible registered ships.")
+    actionResult(tableWidget, "trade.review", "Checks only EOC-owned trade offers and reports any changes.")
+end
+
+local function diagnosticsCenter(tableWidget)
+    local station = selectedStation()
+    local stationName = text(v(station, 1, "NO STATION SELECTED"))
+    local cases = station and stationCases(station) or {}
+
+    section(tableWidget, "EOC DIAGNOSTICS CENTER")
+    pair(tableWidget, "SELECTED STATION", stationName, "ACTIVE CASES", #cases)
+    pair(tableWidget, "STABILIZATION GOAL", menu.stabilizationGoal, "BOUNDED FINDINGS", menu.stabilizationFindings)
+
+    local row = tableWidget:addRow(true)
+    addModeButton(row, 1, (menu.diagnosticView == "recovery" and "ACTIVE: " or "") .. "GUIDED RECOVERY", menu.diagnosticView == "recovery", true, function()
+        menu.diagnosticView = "recovery"
+        menu.refresh()
+    end)
+    addModeButton(row, 2, (menu.diagnosticView == "supplier" and "ACTIVE: " or "") .. "SUPPLIER DIAGNOSTICS", menu.diagnosticView == "supplier", true, function()
+        menu.diagnosticView = "supplier"
+        menu.refresh()
+    end)
+    addModeButton(row, 3, (menu.diagnosticView == "stabilization" and "ACTIVE: " or "") .. "STABILIZATION", menu.diagnosticView == "stabilization", true, function()
+        menu.diagnosticView = "stabilization"
+        menu.refresh()
+    end)
+    addModeButton(row, 4, (menu.diagnosticView == "engineering" and "ACTIVE: " or "") .. "ENGINEERING TOOLS", menu.diagnosticView == "engineering", true, function()
+        menu.diagnosticView = "engineering"
+        menu.refresh()
+    end)
+
+    if menu.diagnosticView == "recovery" then
+        section(tableWidget, "STATION INTELLIGENCE AND GUIDED RECOVERY")
+        if not station then
+            pair(tableWidget, "STATUS", "No player station is selected.", "ACTION", "Select a station on the Stations tab, then return here.")
+            return
+        end
+        pair(tableWidget, "HEALTH", v(station, 3, "MONITORING"), "TREND", v(station, 4, "STABLE"))
+        pair(tableWidget, "ROLE", v(station, 2, "UNDEFINED"), "PRIORITY", v(station, 6, "NOTE"))
+        row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText("CURRENT RECOMMENDATION: " .. text(v(station, 7, "No recommendation is currently available.")), { wordwrap = true })
+        if #cases == 0 then
+            pair(tableWidget, "STATUS", "No critical or warning recovery case is active for this station.", "ACTION", "Continue monitoring and refresh analysis when conditions change.")
+        else
+            for index, case in ipairs(cases) do
+                section(tableWidget, "RECOVERY CASE " .. index .. ": " .. text(v(case, 4, "GENERAL OPERATIONS")))
+                row = tableWidget:addRow(false)
+                row[1]:setColSpan(4):createText("ROOT CAUSE: " .. text(v(case, 6, "Evidence requires review.")), { wordwrap = true })
+                row = tableWidget:addRow(false)
+                row[1]:setColSpan(4):createText("NEXT RECOVERY STEP: " .. text(v(case, 7, "Review the station recommendation and supporting evidence.")), { wordwrap = true })
+                pair(tableWidget, "CURRENT EVIDENCE", formatNumber(v(case, 8, 0)), "TARGET / CAPACITY", formatNumber(v(case, 9, 0)) .. " / " .. formatNumber(v(case, 10, 0)))
+            end
+        end
+        section(tableWidget, "DELIVERY RECOVERY CHECKLIST")
+        row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText(
+            "1. Confirm an active buy offer exists for the required ware and requests more than zero units.\n" ..
+            "2. Confirm the correct storage type is allocated and has free capacity.\n" ..
+            "3. Confirm the buy-offer trade rule allows the intended supplier.\n" ..
+            "4. Confirm manager skill and gate range can reach that supplier.\n" ..
+            "5. Confirm an assigned trader is available and supports the required cargo type.\n" ..
+            "6. Confirm a reachable supplier has stock available at an acceptable price.",
+            { wordwrap = true }
+        )
+    elseif menu.diagnosticView == "supplier" then
+        section(tableWidget, "UPSTREAM SUPPLIER DIAGNOSTICS")
+        row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText(
+            "Use this sequence for the ware identified by the selected station case.\n\n" ..
+            "CHECK 1: Identify the intended supplier and confirm it has an active sell offer for the ware.\n" ..
+            "CHECK 2: Confirm the supplier produces the ware locally and its production modules are operational.\n" ..
+            "CHECK 3: Confirm the supplier has every required production input and none is critically low.\n" ..
+            "CHECK 4: Test a small manual transfer to verify the destination storage and production path.\n\n" ..
+            "Return to Guided Recovery after completing these checks and compare the result with the current case evidence.",
+            { wordwrap = true }
+        )
+    elseif menu.diagnosticView == "stabilization" then
+        section(tableWidget, "STABILIZATION OPERATING GOAL")
+        row = tableWidget:addRow(true)
+        addModeButton(row, 1, "MARKET-SUPPORTED", menu.stabilizationGoal == "MARKET-SUPPORTED STABILIZATION", true, function()
+            if startAction("diagnostics.goal") then
+                menu.stabilizationGoal = "MARKET-SUPPORTED STABILIZATION"
+                raise("diagnostics.goal", { index = v(station, 16, 0), goal = menu.stabilizationGoal })
+            end
+        end)
+        addModeButton(row, 2, "SELF-SUFFICIENT", menu.stabilizationGoal == "SELF-SUFFICIENT STABILIZATION", true, function()
+            if startAction("diagnostics.goal") then
+                menu.stabilizationGoal = "SELF-SUFFICIENT STABILIZATION"
+                raise("diagnostics.goal", { index = v(station, 16, 0), goal = menu.stabilizationGoal })
+            end
+        end)
+        addModeButton(row, 3, "BALANCED / LEAST-COST", menu.stabilizationGoal == "BALANCED / LEAST-COST STABILIZATION", true, function()
+            if startAction("diagnostics.goal") then
+                menu.stabilizationGoal = "BALANCED / LEAST-COST STABILIZATION"
+                raise("diagnostics.goal", { index = v(station, 16, 0), goal = menu.stabilizationGoal })
+            end
+        end)
+        addModeButton(row, 4, "OBSERVE AND ADVISE", menu.stabilizationGoal == "OBSERVE AND ADVISE ONLY", true, function()
+            if startAction("diagnostics.goal") then
+                menu.stabilizationGoal = "OBSERVE AND ADVISE ONLY"
+                raise("diagnostics.goal", { index = v(station, 16, 0), goal = menu.stabilizationGoal })
+            end
+        end)
+        actionResult(tableWidget, "diagnostics.goal", "Select a goal for the selected station, or the default goal when no station is selected. Run analysis afterward to refresh recommendations.")
+        row = tableWidget:addRow(true)
+        row[1]:setColSpan(2)
+        addButton(row, 1, actionLabel("analysis.run", "REFRESH BOUNDED ANALYSIS", "REFRESHING BOUNDED ANALYSIS"), function()
+            if startAction("analysis.run") then
+                menu.analysisRunning = true
+                raise("analysis.run", {})
+            end
+        end, not actionState("analysis.run").running)
+        row[3]:setColSpan(2)
+        addButton(row, 3, "SAVE STABILIZATION STATUS TO LOGBOOK", function()
+            if startAction("diagnostics.status") then
+                raise("diagnostics.status", {})
+            end
+        end, not actionState("diagnostics.status").running)
+        actionResult(tableWidget, "analysis.run", "Refreshes current intelligence without granting additional automation authority.")
+        actionResult(tableWidget, "diagnostics.status", "Saves the bounded stabilization summary and up to five detailed findings to the Logbook.")
+    else
+        section(tableWidget, "ADVANCED ENGINEERING AND PERMISSION PROBES")
+        pair(tableWidget, "MAILBOX STATUS", v(menu.mailboxStatus, 1, "READY"), "PROOF STATUS", menu.proofStatus)
+        row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText("These bounded tools use the existing MD permission mailbox. They do not broaden EOC authority. The Medical Supplies proof creates one temporary player-only buy offer, verifies it, and automatically removes it.", { wordwrap = true })
+        row = tableWidget:addRow(true)
+        addButton(row, 1, "PROBE RESERVED CARGO", function()
+            if startAction("diagnostics.probe") then
+                raise("diagnostics.probe", { verb = "PROBE_RESERVED_CARGO", index = v(station, 16, 0) })
+            end
+        end, not actionState("diagnostics.probe").running)
+        addButton(row, 2, "PROBE MODIFY TRADE RULE", function()
+            if startAction("diagnostics.probe") then
+                raise("diagnostics.probe", { verb = "PROBE_MODIFY_TRADE_RULE", index = v(station, 16, 0) })
+            end
+        end, not actionState("diagnostics.probe").running)
+        addButton(row, 3, "PROBE ASSIGN SHIP", function()
+            if startAction("diagnostics.probe") then
+                raise("diagnostics.probe", { verb = "PROBE_ASSIGN_SHIP", index = v(station, 16, 0) })
+            end
+        end, not actionState("diagnostics.probe").running)
+        addButton(row, 4, "MEDICAL SUPPLIES BUY-OFFER PROOF", function()
+            if startAction("diagnostics.proof") then
+                raise("diagnostics.proof", {})
+            end
+        end, not actionState("diagnostics.proof").running)
+        actionResult(tableWidget, "diagnostics.probe", text(v(menu.mailboxStatus, 2, "No engineering probe has been submitted.")))
+        actionResult(tableWidget, "diagnostics.proof", "Runs only the pre-approved one-unit Medical Supplies proof when its verified target exists.")
+    end
+end
+
 local function dashboard(tableWidget)
-    section(tableWidget, "EXECUTIVE INTELLIGENCE DASHBOARD")
+    section(tableWidget, "EXECUTIVE INTELLIGENCE OVERVIEW")
     pair(
         tableWidget,
         "STATUS",
-        menu.analysisRunning and "ANALYSIS RUNNING..." or (menu.analysisStatus or "READY"),
+        menu.analysisRunning and "ANALYSIS RUNNING" or (menu.analysisStatus or "READY"),
         "LAST UPDATED",
         menu.lastUpdated or "NOT RUN THIS SESSION"
     )
@@ -273,6 +993,16 @@ local function dashboard(tableWidget)
     pair(tableWidget, "Growth", v(menu.summary, 7, 0), "Ship Utilization", v(menu.summary, 10, 0))
     pair(tableWidget, "Stations", v(menu.summary, 8, #menu.stations), "Productive", v(menu.summary, 9, 0))
     pair(tableWidget, "Active Cases", v(menu.summary, 11, 0), "Require Attention", v(menu.summary, 12, 0))
+
+    local actionRow = tableWidget:addRow(true)
+    actionRow[1]:setColSpan(4)
+    addButton(
+        actionRow,
+        1,
+        "VIEW STATIONS REQUIRING ACTION",
+        openCasesCenter,
+        #(menu.cases or {}) > 0
+    )
 
     section(tableWidget, "WHAT CHANGED?")
     pair(tableWidget, "New Issues", v(menu.summary, 13, 0), "Resolved", v(menu.summary, 14, 0))
@@ -293,11 +1023,11 @@ local function dashboard(tableWidget)
     addButton(
         row,
         1,
-        menu.analysisRunning and "ANALYSIS RUNNING..." or "ACTION: ANALYZE NOW",
+        menu.analysisRunning and "ANALYSIS RUNNING" or "ACTION: ANALYZE NOW",
         function()
             if not menu.analysisRunning then
                 menu.analysisRunning = true
-                menu.analysisStatus = "ANALYSIS RUNNING..."
+                menu.analysisStatus = "ANALYSIS RUNNING"
                 menu.refresh()
                 raise("analysis.run", {})
             end
@@ -305,11 +1035,13 @@ local function dashboard(tableWidget)
         not menu.analysisRunning
     )
     row[3]:setColSpan(2)
-    addButton(row, 3, menu.reportStatus or "REPORT: EMPIRE EXECUTIVE", function()
+    addButton(row, 3, menu.reportStatus or "GENERATE REPORT: EMPIRE EXECUTIVE", function()
+        captureReportOrigin("dashboard", "OVERVIEW")
+        menu.pendingReport = "EMPIRE EXECUTIVE"
         raise("report.empire", {})
     end, true)
 
-    row = tableWidget:addRow(false, { minRowHeight = Helper.scaleY(190) })
+    row = tableWidget:addRow(false)
     row[1]:setColSpan(2):createText(menu.analysisOutput, {
         wordwrap = true,
         x = Helper.borderSize,
@@ -399,9 +1131,77 @@ local function addRoleControls(tableWidget, station)
 
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
-    addButton(row, 1, "AUTO-ASSIGN UNDEFINED ROLES", function()
-        raise("station.auto", {})
-    end, true)
+    addButton(
+        row,
+        1,
+        actionLabel("station.auto", "ACTION: ASSIGN UNDEFINED STATION ROLES", "ASSIGNING STATION ROLES"),
+        function()
+            if startAction("station.auto") then
+                raise("station.auto", {})
+            end
+        end,
+        not actionState("station.auto").running
+    )
+    actionResult(
+        tableWidget,
+        "station.auto",
+        "Assigns roles only to player stations that are currently undefined."
+    )
+end
+
+local function addStationIssues(tableWidget, station)
+    local cases = stationCases(station)
+    section(tableWidget, "ACTIVE ISSUES  |  " .. #cases)
+
+    if #cases == 0 then
+        pair(
+            tableWidget,
+            "STATUS",
+            "No critical or warning case currently requires player action.",
+            "NEXT STEP",
+            "Continue monitoring."
+        )
+        return
+    end
+
+    for index, case in ipairs(cases) do
+        section(
+            tableWidget,
+            text(v(case, 2, "ISSUE")) .. " " .. index .. " — " .. text(v(case, 4, "GENERAL OPERATIONS"))
+        )
+        pair(
+            tableWidget,
+            "CASE TYPE",
+            v(case, 3, "STATION ISSUE"),
+            "STATE",
+            v(case, 5, "OPEN")
+        )
+
+        local row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText(
+            "ROOT CAUSE: " .. text(v(case, 6, "Evidence requires review")),
+            { wordwrap = true }
+        )
+
+        row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText(
+            "RECOMMENDED ACTION: " .. text(v(case, 7, "Review the station recommendation")),
+            { wordwrap = true }
+        )
+
+        local amount = tonumber(v(case, 8, 0)) or 0
+        local target = tonumber(v(case, 9, 0)) or 0
+        local maximum = tonumber(v(case, 10, 0)) or 0
+        if amount ~= 0 or target ~= 0 or maximum ~= 0 then
+            pair(
+                tableWidget,
+                "EVIDENCE — CURRENT",
+                amount,
+                "TARGET / CAPACITY",
+                tostring(target) .. " / " .. tostring(maximum)
+            )
+        end
+    end
 end
 
 local function addOperationsControls(tableWidget)
@@ -469,16 +1269,38 @@ local function addOperationsControls(tableWidget)
 
     section(tableWidget, "OPERATION ACTIONS")
     row = tableWidget:addRow(true)
-    addButton(row, 1, "REVIEW ORDERS", function()
-        raise("trade.review", {})
-    end, true)
-    addButton(row, 2, "SCAN SHIPPING NOW", function()
-        raise("shipping.scan", {})
-    end, true)
+    addButton(row, 1, actionLabel("trade.review", "ACTION: REVIEW EOC TRADE ORDERS", "REVIEWING ORDERS"), function()
+        if startAction("trade.review") then
+            raise("trade.review", {})
+        end
+    end, not actionState("trade.review").running)
+    addButton(row, 2, actionLabel("shipping.scan", "ACTION: SCAN SHIPPING NEEDS", "SCANNING SHIPPING NEEDS"), function()
+        if startAction("shipping.scan") then
+            raise("shipping.scan", {})
+        end
+    end, not actionState("shipping.scan").running)
     row[3]:setColSpan(2)
-    addButton(row, 3, "ACTION: ANALYZE NOW", function()
-        raise("analysis.run", {})
-    end, true)
+    addButton(row, 3, actionLabel("analysis.run", "ACTION: RUN EMPIRE ANALYSIS", "ANALYSIS RUNNING"), function()
+        if startAction("analysis.run") then
+            menu.analysisRunning = true
+            raise("analysis.run", {})
+        end
+    end, not actionState("analysis.run").running)
+    actionResult(
+        tableWidget,
+        "trade.review",
+        "Checks EOC-owned trade offers; Managed mode may create, verify, or remove them."
+    )
+    actionResult(
+        tableWidget,
+        "shipping.scan",
+        "Checks logistics needs and registered ships; Auto mode may assign a compatible ship."
+    )
+    actionResult(
+        tableWidget,
+        "analysis.run",
+        "Refreshes EOC intelligence and recommendations; it does not authorize new operations."
+    )
 end
 
 local function addReportsControls(tableWidget)
@@ -490,28 +1312,96 @@ local function addReportsControls(tableWidget)
 
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addButton(row, 1, "REPORT: SELECTED STATION", function()
-        raise("report.station", { index = menu.selected })
+    addButton(row, 1, "GENERATE REPORT: SELECTED STATION", function()
+        captureReportOrigin("stations", "STATIONS - " .. text(v(selectedStation(), 1, "SELECTED STATION")))
+        menu.pendingReport = "SELECTED STATION"
+        raise("report.station", { index = v(selectedStation(), 16, menu.selected) })
     end, #menu.stations > 0)
     row[3]:setColSpan(2)
-    addButton(row, 3, "REPORT: OPERATIONAL REMEDIATION", function()
+    addButton(row, 3, "GENERATE REPORT: OPERATIONAL REMEDIATION", function()
+        captureReportOrigin("stations", "STATIONS - " .. text(v(selectedStation(), 1, "SELECTED STATION")))
+        menu.pendingReport = "OPERATIONAL REMEDIATION"
         raise("report.remediation", {})
     end, true)
 
     row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
-    addButton(row, 1, "REPORT: TRADE ORDER STATUS", function()
+    addButton(row, 1, "GENERATE REPORT: TRADE ORDER STATUS", function()
+        captureReportOrigin("stations", "STATIONS - " .. text(v(selectedStation(), 1, "SELECTED STATION")))
+        menu.pendingReport = "TRADE ORDER STATUS"
         raise("report.trade", {})
     end, true)
 
     section(tableWidget, "REPORT DELIVERY")
     pair(
         tableWidget,
-        "Location",
-        "Player Information > Logbook > Tips",
-        "Termination",
-        "Final page shows END OF REPORT"
+        "READ NOW",
+        "Completed reports open automatically in the REPORTS tab.",
+        "ARCHIVE COPY",
+        "Also saved to Player Information > Logbook > Tips."
     )
+end
+
+local function reportsCenter(tableWidget)
+    section(tableWidget, "EOC REPORT CENTER")
+    pair(
+        tableWidget,
+        "INFO",
+        "Newest completed report is selected automatically.",
+        "ARCHIVE",
+        "Permanent copies remain in Logbook > Tips."
+    )
+
+    if menu.reportOrigin then
+        local row = tableWidget:addRow(true)
+        row[1]:setColSpan(4)
+        addButton(row, 1, "RETURN TO " .. text(menu.reportOrigin.label), function()
+            local origin = menu.reportOrigin
+            menu.selected = origin.selected or menu.selected
+            menu.selectedCase = origin.selectedCase or menu.selectedCase
+            menu.caseScope = origin.caseScope or menu.caseScope
+            menu.caseSeverity = origin.caseSeverity or menu.caseSeverity
+            menu.casePage = origin.casePage or menu.casePage
+            menu.fleetScope = origin.fleetScope or menu.fleetScope
+            menu.fleetView = origin.fleetView or menu.fleetView
+            menu.fleetPage = origin.fleetPage or menu.fleetPage
+            menu.reportOrigin = nil
+            menu.page = origin.page
+            menu.activeTab = origin.page
+            menu.refresh()
+        end, true)
+    end
+
+    if #menu.reports == 0 then
+        local row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText(
+            "NO REPORTS GENERATED THIS SESSION\n\nGenerate a report from the Stations or Overview tab. " ..
+            "EOC will open the completed report here automatically.",
+            { wordwrap = true }
+        )
+        return
+    end
+
+    section(tableWidget, "RECENT REPORTS  |  " .. #menu.reports .. " OF 20")
+    for index, report in ipairs(menu.reports) do
+        local reportIndex = index
+        local row = tableWidget:addRow(true)
+        row[1]:setColSpan(3)
+        addButton(row, 1, text(v(report, 1, "EOC REPORT")), function()
+            menu.selectedReport = reportIndex
+            menu.refresh()
+        end, true)
+        row[4]:createText(text(v(report, 3, "THIS SESSION")), { halign = "right" })
+    end
+
+    local selected = menu.reports[menu.selectedReport] or menu.reports[1]
+    section(tableWidget, text(v(selected, 1, "EOC REPORT")))
+    local row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText(text(v(selected, 2, "No report text was returned.")), {
+        wordwrap = true,
+        x = Helper.borderSize,
+        y = Helper.borderSize,
+    })
 end
 
 local function stationWorkspace(tableWidget)
@@ -539,6 +1429,15 @@ local function stationWorkspace(tableWidget)
         { wordwrap = true }
     )
 
+    section(tableWidget, "STATUS GUIDE")
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText(
+        "MONITORING: stable; EOC is watching.  TRANSIENT: recent condition awaiting confirmation.  " ..
+        "RECURRING: repeated issue; review recommended.  CHRONIC: persistent serious issue; action recommended.  " ..
+        "RELAPSED: a previously improved issue returned.  CRITICAL: immediate review recommended.",
+        { wordwrap = true }
+    )
+
     addRoleControls(tableWidget, station)
     addOperationsControls(tableWidget)
     addReportsControls(tableWidget)
@@ -549,6 +1448,13 @@ local function globalSettings(tableWidget)
     pair(tableWidget, "Trade Order Control", menu.mode, "Ship Assignment Authority", menu.shipmode)
 
     section(tableWidget, "TRADE ORDER CONTROL")
+    pair(
+        tableWidget,
+        "INFO",
+        "Advisor gives instructions only.",
+        "MANAGED",
+        "May create evidence-supported EOC trade offers."
+    )
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
     addModeButton(row, 1, "ADVISOR MODE", menu.mode == "ADVISOR", true, function()
@@ -564,6 +1470,13 @@ local function globalSettings(tableWidget)
     end)
 
     section(tableWidget, "SHIP ASSIGNMENT AUTHORITY")
+    pair(
+        tableWidget,
+        "INFO",
+        "Approval Required waits for player confirmation.",
+        "AUTO",
+        "May assign only eligible registered ships."
+    )
     row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
     addModeButton(
@@ -604,9 +1517,22 @@ local function globalSettings(tableWidget)
     section(tableWidget, "STATION AUTOMATION ACTIONS")
     row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
-    addButton(row, 1, "RUN UNDEFINED STATION ROLE ASSIGNMENT", function()
-        raise("station.auto", {})
-    end, true)
+    addButton(
+        row,
+        1,
+        actionLabel("station.auto", "ACTION: ASSIGN UNDEFINED STATION ROLES", "ASSIGNING STATION ROLES"),
+        function()
+            if startAction("station.auto") then
+                raise("station.auto", {})
+            end
+        end,
+        not actionState("station.auto").running
+    )
+    actionResult(
+        tableWidget,
+        "station.auto",
+        "One-time check: assigns roles only to player stations that are currently undefined."
+    )
 end
 
 function menu.create()
@@ -678,6 +1604,14 @@ function menu.create()
 
         if menu.page == "dashboard" then
             dashboard(tableWidget)
+        elseif menu.page == "cases" then
+            casesCenter(tableWidget)
+        elseif menu.page == "reports" then
+            reportsCenter(tableWidget)
+        elseif menu.page == "fleet" then
+            fleetCenter(tableWidget)
+        elseif menu.page == "diagnostics" then
+            diagnosticsCenter(tableWidget)
         else
             globalSettings(tableWidget)
         end

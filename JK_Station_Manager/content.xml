@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <content id="jk_station_manager"
          name="JK Empire Operations"
-         description="EOC 1.4 GA. Lua Operations Console."
+         description="EOC 1.6 GA. Complete UI Navigation and Guided Diagnostics."
          author="RazorEQX"
-         version="140"
-         date="2026-08-07"
+         version="160"
+         date="2026-08-08"
          save="0">
   <text language="44"
         name="JK Empire Operations"
-        description="EOC 1.4 GA. Adds the Lua Operations Console with station, dashboard, and global settings navigation." />
+        description="EOC 1.6 GA. Adds complete UI navigation, guided diagnostics, filter clearing, and report return paths." />
 </content>

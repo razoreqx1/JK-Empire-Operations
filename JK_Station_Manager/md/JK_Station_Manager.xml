@@ -1973,7 +1973,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <add_player_choice_sub text="'CRITICAL CASES — %1'.[global.$JKEOC_CriticalCases.count]" position="top_left" section="JKSM_CriticalListStart" />
           <add_player_choice_sub text="'WARNING CASES — %1'.[global.$JKEOC_WarningCases.count]" position="left" section="JKSM_WarningListStart" />
           <add_player_choice_sub text="'STATIONS REQUIRING ACTION — %1'.[global.$JKEOC_ActionStations.count]" position="bottom_left" section="JKSM_ActionStationsStart" />
-          <add_player_choice_sub text="'OPEN EOC OPERATIONS CONSOLE'" position="top_right" section="JKEOC_Settings_Open" />
+          <add_player_choice_sub text="'OPEN EOC MANAGEMENT WINDOW'" position="top_right" section="JKEOC_Settings_Open" />
           <add_player_choice_sub text="'OPEN EXECUTIVE ADVISOR'" position="right" section="JKEOC_B67_Hub" />
           <add_player_choice_return text="'CLOSE EOC'" position="bottom_right" />
         </do_else>

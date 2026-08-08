@@ -216,6 +216,14 @@
     <cue name="JKEOC_B64_WriteStatus" instantiate="true" namespace="this">
       <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B64_WriteStatus" /></conditions>
       <actions>
+        <signal_cue_instantly cue="JKEOC_B91_WriteStatus" />
+        <add_player_choice_sub text="'STATUS SAVED - RETURN'" position="bottom_right" section="JKEOC_B64_Console" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B91_WriteStatus" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
         <set_value name="$detailcount" exact="0" />
         <set_value name="$summary" exact="'Goal: %1\nStations sampled: %2\nBounded findings: %3 / 64\nNew ship completion candidates: %4\nShip registry: %5 / 128; overflow not tracked: %6\nMailbox: %7\n\nEOC has not changed station prices, offers, storage, trade rules, blacklists, ships or build plans. Unsupported controls remain recommendation-only.'.[global.$JKEOC_B64DefaultGoal, global.$JKEOC_B64LastStations, global.$JKEOC_B64Findings.count, global.$JKEOC_B64NewShips, global.$JKEOC_B64ShipRegistry.count, global.$JKEOC_B64ShipRegistryOverflow, global.$JKEOC_B64Mailbox.$status]" />
         <write_to_logbook category="general" title="'EOC Station Stabilization Summary'" text="$summary" />
@@ -228,7 +236,6 @@
         </do_for_each>
         <write_to_logbook category="tips" title="'EOC stabilization status saved'" text="'Open the EOC Logbook and search for Station Stabilization.'" />
         <show_notification text="'ACTION: Stabilization report generated. NOTE: Report saved to the Logbook.'" timeout="8s" />
-        <add_player_choice_sub text="'STATUS SAVED - RETURN'" position="bottom_right" section="JKEOC_B64_Console" />
       </actions>
     </cue>
 
@@ -268,6 +275,14 @@
     <cue name="JKEOC_B71_StartBuyProof" instantiate="true" namespace="this">
       <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B71_StartBuyProof" /></conditions>
       <actions>
+        <signal_cue_instantly cue="JKEOC_B71_ExecuteBuyProof" />
+        <add_player_choice_sub text="'PROOF STARTED - RETURN'" position="bottom_right" section="JKEOC_B64_MailboxMenu" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B71_ExecuteBuyProof" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
         <do_if value="global.$JKEOC_B71ProofTarget? and global.$JKEOC_B71ProofTarget.$station.exists and (not global.$JKEOC_B71ProofOffer? or not global.$JKEOC_B71ProofOffer.exists)">
           <set_value name="global.$JKEOC_B71ProofStation" exact="global.$JKEOC_B71ProofTarget.$station" /><set_value name="global.$JKEOC_B71ProofStatus" exact="'CREATING'" />
           <create_trade_offer name="global.$JKEOC_B71ProofOffer" object="global.$JKEOC_B71ProofStation" buyer="global.$JKEOC_B71ProofStation" ware="ware.medicalsupplies" amount="1" price="ware.medicalsupplies.minprice" playeronly="true" />
@@ -275,7 +290,6 @@
           <show_notification text="'ENGINEERING PROOF: Temporary Medical Supplies buy offer created. Automatic verification and rollback are running.'" timeout="10s" />
         </do_if>
         <do_else><set_value name="global.$JKEOC_B71ProofStatus" exact="'BLOCKED - INVALID TARGET OR PROOF ALREADY ACTIVE'" /><debug_text text="'[JKEOC][B71][MAILBOX_CREATE] result=BLOCKED'" filter="general" /></do_else>
-        <add_player_choice_sub text="'PROOF STARTED - RETURN'" position="bottom_right" section="JKEOC_B64_MailboxMenu" />
       </actions>
     </cue>
 
