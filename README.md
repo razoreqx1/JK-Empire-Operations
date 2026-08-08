@@ -72,16 +72,16 @@ EOC does not buy ships, blueprints, variants, or equipment. It does not intentio
 
 ## User manual
 
-The illustrated 15-page manual covers installation, every primary menu, station roles, analysis, reports, remediation, managed trade orders, shipping-control modes, ship assignment, verification, and troubleshooting.
+The illustrated 17-page manual covers installation, both EOC interfaces, every Management Window tab, station roles, analysis, Cases, Reports, Diagnostics, remediation, managed trade orders, shipping-control modes, ship assignment, verification, and troubleshooting.
 
-**[Download the illustrated EOC New User Guide (PDF)](docs/EOC_1.0_GA_New_User_Guide.pdf)**
+**[Download the illustrated EOC 1.6 GA New User Guide (PDF)](docs/EOC_1.6_GA_New_User_Guide.pdf)**
 
 The guide documents the core EOC workflow. New 1.6 capabilities are summarized in the current release notes.
 
 ## Repository layout
 
 - `JK_Station_Manager/` - clean runtime extension files required by X4.
-- `docs/EOC_1.0_GA_New_User_Guide.pdf` - illustrated user manual.
+- `docs/EOC_1.6_GA_New_User_Guide.pdf` - illustrated current user manual.
 - `docs/RELEASE_NOTES_1.6_GA.md` - current GA release summary and known boundaries.
 - `docs/images/` - public documentation artwork.
 
