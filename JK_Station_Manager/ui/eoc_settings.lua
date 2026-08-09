@@ -116,6 +116,71 @@ local function actionValueReceived(_, value)
     menu.pendingAction.value = value
 end
 
+local function shippingRefreshBegin()
+    menu.shippingRefresh = {
+        registered = {},
+        pending = {},
+        registeredRow = {},
+        pendingRow = {},
+        mode = menu.shipmode,
+    }
+end
+
+local function shippingRefreshState()
+    if not menu.shippingRefresh then
+        shippingRefreshBegin()
+    end
+    return menu.shippingRefresh
+end
+
+local function shippingRegisteredName(_, value) shippingRefreshState().registeredRow[1] = tostring(value or "Unknown ship") end
+local function shippingRegisteredPurpose(_, value) shippingRefreshState().registeredRow[2] = tostring(value or "unknown") end
+local function shippingRegisteredClass(_, value) shippingRefreshState().registeredRow[3] = tostring(value or "unknown") end
+local function shippingRegisteredOperational(_, value) shippingRefreshState().registeredRow[4] = value and true or false end
+local function shippingRegisteredStatus(_, value) shippingRefreshState().registeredRow[5] = tostring(value or "AVAILABLE") end
+local function shippingRegisteredAssignment(_, value) shippingRefreshState().registeredRow[6] = tostring(value or "UNASSIGNED") end
+
+local function shippingRegisteredCommit()
+    local refresh = shippingRefreshState()
+    table.insert(refresh.registered, refresh.registeredRow)
+    refresh.registeredRow = {}
+end
+
+local function shippingPendingShip(_, value) shippingRefreshState().pendingRow[1] = tostring(value or "Unknown ship") end
+local function shippingPendingStation(_, value) shippingRefreshState().pendingRow[2] = tostring(value or "Unknown station") end
+local function shippingPendingCategory(_, value) shippingRefreshState().pendingRow[3] = tostring(value or "LOGISTICS ASSIGNMENT") end
+local function shippingPendingStatus(_, value) shippingRefreshState().pendingRow[4] = tostring(value or "AWAITING APPROVAL") end
+
+local function shippingPendingCommit()
+    local refresh = shippingRefreshState()
+    table.insert(refresh.pending, refresh.pendingRow)
+    refresh.pendingRow = {}
+end
+
+local function shippingModeReceived(_, value)
+    shippingRefreshState().mode = tostring(value or menu.shipmode)
+end
+
+local function shippingRefreshComplete()
+    local refresh = shippingRefreshState()
+    menu.registeredShips = refresh.registered
+    menu.pendingAssignments = refresh.pending
+    menu.shipmode = refresh.mode
+    menu.shippingRefresh = nil
+    menu.fleetPage = 1
+    if menu.frame then
+        menu.refresh()
+    end
+end
+
+local function settingsConfirmed(_, value)
+    menu.settingsChangeRunning = false
+    menu.settingsStatus = "STATUS: " .. tostring(value or "Setting updated.")
+    if menu.frame then
+        menu.refresh()
+    end
+end
+
 local function actionComplete()
     local payload = menu.pendingAction or { name = "unknown" }
     local action = payload.name
@@ -140,10 +205,29 @@ local function actionLabel(action, readyLabel, runningLabel)
     return readyLabel
 end
 
+local actionNextSteps = {
+    ["shipping.register"] = "Review Registered Ships, then run Scan Shipping Needs.",
+    ["shipping.scan"] = "Review Pending in Approval Required mode, or Registered Ships in Auto-Assign mode.",
+    ["shipping.approve"] = "Review Pending to confirm the completed row was removed.",
+    ["trade.review"] = "Review Fleet & Logistics > Trade Offers.",
+    ["station.auto"] = "Review Stations for any role that remains UNDEFINED.",
+    ["station.role"] = "Review the selected station, then open Diagnostics or Cases if attention is still required.",
+    ["diagnostics.goal"] = "Run Refresh Bounded Analysis to update recommendations.",
+    ["analysis.run"] = "Open Cases or View Stations Requiring Action.",
+    ["diagnostics.status"] = "Open the player Logbook > Tips to read the saved status.",
+    ["diagnostics.probe"] = "Read the mailbox result below; no additional authority was granted.",
+    ["diagnostics.proof"] = "Review the result and debug log for verification and automatic rollback.",
+}
+
 local function actionResult(tableWidget, action, purpose)
     local state = actionState(action)
     local row = tableWidget:addRow(false)
-    row[1]:setColSpan(4):createText(state.result or purpose, { wordwrap = true })
+    local message = state.result and ("STATUS: " .. state.result) or purpose
+    row[1]:setColSpan(4):createText(message, { wordwrap = true })
+    if state.result and actionNextSteps[action] then
+        row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText("NEXT STEP: " .. actionNextSteps[action], { wordwrap = true })
+    end
 end
 
 local function clamp(value, low, high)
@@ -216,6 +300,7 @@ local function reportTimeReceived(_, value)
 end
 
 local function reportSaved()
+    menu.reportRunning = false
     menu.reportStatus = "REPORT SAVED TO TIPS"
     menu.reportStatusUntil = getElapsedTime() + 4
 
@@ -260,7 +345,7 @@ local function init()
     if Helper and Helper.registerMenu then
         Helper.registerMenu(menu)
     else
-    DebugError("[JKEOC][B91][LUA_ERROR] Helper.registerMenu unavailable")
+    DebugError("[JKEOC][GA17][LUA_ERROR] Helper.registerMenu unavailable")
     end
 
     AddUITriggeredEvent(menu.name, "INIT", nil)
@@ -277,6 +362,22 @@ local function init()
     RegisterEvent(menu.name .. ".action.result", actionResultReceived)
     RegisterEvent(menu.name .. ".action.time", actionTimeReceived)
     RegisterEvent(menu.name .. ".action.value", actionValueReceived)
+    RegisterEvent(menu.name .. ".shipping.refresh.begin", shippingRefreshBegin)
+    RegisterEvent(menu.name .. ".shipping.registered.name", shippingRegisteredName)
+    RegisterEvent(menu.name .. ".shipping.registered.purpose", shippingRegisteredPurpose)
+    RegisterEvent(menu.name .. ".shipping.registered.class", shippingRegisteredClass)
+    RegisterEvent(menu.name .. ".shipping.registered.operational", shippingRegisteredOperational)
+    RegisterEvent(menu.name .. ".shipping.registered.status", shippingRegisteredStatus)
+    RegisterEvent(menu.name .. ".shipping.registered.assignment", shippingRegisteredAssignment)
+    RegisterEvent(menu.name .. ".shipping.registered.commit", shippingRegisteredCommit)
+    RegisterEvent(menu.name .. ".shipping.pending.ship", shippingPendingShip)
+    RegisterEvent(menu.name .. ".shipping.pending.station", shippingPendingStation)
+    RegisterEvent(menu.name .. ".shipping.pending.category", shippingPendingCategory)
+    RegisterEvent(menu.name .. ".shipping.pending.status", shippingPendingStatus)
+    RegisterEvent(menu.name .. ".shipping.pending.commit", shippingPendingCommit)
+    RegisterEvent(menu.name .. ".shipping.mode", shippingModeReceived)
+    RegisterEvent(menu.name .. ".shipping.refresh.complete", shippingRefreshComplete)
+    RegisterEvent(menu.name .. ".settings.confirmed", settingsConfirmed)
 end
 
 function menu.onShowMenu()
@@ -313,9 +414,26 @@ function menu.onShowMenu()
     raise("opened", { mode = menu.mode })
 end
 
+local function acknowledgeClick(label)
+    menu.lastClickedLabel = label
+    menu.clickStatus = "INPUT RECEIVED: " .. label
+    menu.clickStatusUntil = getElapsedTime() + 1.25
+end
+
 local function addButton(row, column, label, handler, active)
-    row[column]:createButton({ active = active ~= false }):setText(label)
-    row[column].handlers.onClick = handler
+    local properties = { active = active ~= false }
+    if string.find(label, "GENERATE REPORT", 1, true) == 1 and menu.reportRunning then
+        properties.active = false
+    end
+    if menu.lastClickedLabel == label and menu.clickStatusUntil and getElapsedTime() < menu.clickStatusUntil then
+        properties.bgColor = selectedModeBackground
+    end
+    row[column]:createButton(properties):setText(label)
+    row[column].handlers.onClick = function()
+        acknowledgeClick(label)
+        menu.refresh()
+        handler()
+    end
 end
 
 local function addModeButton(row, column, label, selected, enabled, handler)
@@ -334,7 +452,11 @@ local function addModeButton(row, column, label, selected, enabled, handler)
         active = isEnabled,
         bgColor = background,
     }):setText(label)
-    row[column].handlers.onClick = handler
+    row[column].handlers.onClick = function()
+        acknowledgeClick(label)
+        menu.refresh()
+        handler()
+    end
 end
 
 local function addTabButton(row, column, label, page)
@@ -346,6 +468,7 @@ local function addTabButton(row, column, label, page)
 
     row[column]:createButton(properties):setText(label)
     row[column].handlers.onClick = function()
+        menu.navigationOrigin = nil
         menu.reportOrigin = nil
         menu.page = page
         menu.activeTab = page
@@ -394,7 +517,47 @@ local function stationCases(station)
     return matches
 end
 
+local function captureNavigation(label)
+    menu.navigationOrigin = {
+        page = menu.page,
+        activeTab = menu.activeTab,
+        label = label,
+        selected = menu.selected,
+        selectedCase = menu.selectedCase,
+        caseScope = menu.caseScope,
+        caseSeverity = menu.caseSeverity,
+        casePage = menu.casePage,
+        fleetScope = menu.fleetScope,
+        fleetView = menu.fleetView,
+        fleetPage = menu.fleetPage,
+        diagnosticView = menu.diagnosticView,
+    }
+end
+
+local function restoreNavigation()
+    local origin = menu.navigationOrigin
+    if not origin then
+        return
+    end
+    menu.selected = origin.selected or menu.selected
+    menu.selectedCase = origin.selectedCase or menu.selectedCase
+    menu.caseScope = origin.caseScope or menu.caseScope
+    menu.caseSeverity = origin.caseSeverity or menu.caseSeverity
+    menu.casePage = origin.casePage or menu.casePage
+    menu.fleetScope = origin.fleetScope or menu.fleetScope
+    menu.fleetView = origin.fleetView or menu.fleetView
+    menu.fleetPage = origin.fleetPage or menu.fleetPage
+    menu.diagnosticView = origin.diagnosticView or menu.diagnosticView
+    menu.page = origin.page
+    menu.activeTab = origin.activeTab or origin.page
+    menu.navigationOrigin = nil
+    menu.refresh()
+end
+
 local function openCasesCenter()
+    if menu.page ~= "cases" then
+        captureNavigation(menu.page == "dashboard" and "OVERVIEW" or string.upper(menu.page or "PREVIOUS SCREEN"))
+    end
     menu.caseScope = "global"
     menu.caseSeverity = "all"
     menu.selectedCase = 1
@@ -405,6 +568,8 @@ local function openCasesCenter()
 end
 
 local function captureReportOrigin(page, label)
+    menu.reportRunning = true
+    menu.reportStatus = "GENERATING REPORT..."
     menu.reportOrigin = {
         page = page,
         label = label,
@@ -417,6 +582,7 @@ local function captureReportOrigin(page, label)
         fleetView = menu.fleetView,
         fleetPage = menu.fleetPage,
     }
+    menu.refresh()
 end
 
 local function createHeader(frame, parentWidth)
@@ -627,6 +793,7 @@ local function casesCenter(tableWidget)
     row[1]:setColSpan(2)
     addButton(row, 1, "OPEN STATION: " .. text(v(selected, 1, "Unknown station")), function()
         focusCaseStation(selected)
+        captureNavigation("CASES")
         menu.page = "stations"
         menu.activeTab = "stations"
         menu.refresh()
@@ -726,7 +893,7 @@ local function fleetCenter(tableWidget)
                 v(ship, 1, "Ship"),
                 v(ship, 2, "UNKNOWN PURPOSE"),
                 "STATE / COMMANDER",
-                text(v(ship, 4, false)) .. " / " .. text(v(ship, 5, "AVAILABLE")),
+                (v(ship, 4, false) and "OPERATIONAL" or "NOT OPERATIONAL") .. " / " .. text(v(ship, 5, "AVAILABLE")),
             })
         end
     elseif menu.fleetView == "offers" then
@@ -766,13 +933,15 @@ local function fleetCenter(tableWidget)
     if #entries == 0 then
         local emptyMessages = {
             stations = "No station logistics records match the selected scope.",
-            ships = "No eligible unassigned ships are registered. EOC registers operational M/L/XL trade or mining ships with supported cargo, no commander, and no subordinates.",
+            ships = "No eligible ships are registered. Use Register Suitable Unassigned Ships below. EOC accepts operational M/L/XL trade or mining ships with supported cargo, no commander, and no subordinates.",
             offers = "No EOC-created or EOC-tracked trade offers match the selected scope. This view does not list every vanilla trade offer.",
             pending = menu.shipmode == "APPROVAL REQUIRED" and
                 "No assignments await approval. Entries appear when EOC finds a supported need and a compatible registered ship." or
                 "No assignments await approval. Pending normally remains empty unless Ship Assignment Authority is Approval Required.",
         }
-        pair(tableWidget, "STATUS", emptyMessages[menu.fleetView], "ACTION", "No action required")
+        local statusRow = tableWidget:addRow(false)
+        statusRow[1]:createText("STATUS")
+        statusRow[2]:setColSpan(3):createText(emptyMessages[menu.fleetView], { wordwrap = true })
     else
         local first = (menu.fleetPage - 1) * pageSize + 1
         local last = math.min(first + pageSize - 1, #entries)
@@ -810,10 +979,22 @@ local function fleetCenter(tableWidget)
             end,
             not actionState("shipping.approve").running
         )
+    end
+
+    if menu.fleetView == "pending" then
         actionResult(tableWidget, "shipping.approve", "Explicitly authorizes only the displayed, MD-verified pending assignment.")
     end
 
     section(tableWidget, "LOGISTICS ACTIONS")
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(4)
+    addButton(row, 1, actionLabel("shipping.register", "ACTION: REGISTER SUITABLE UNASSIGNED SHIPS", "REGISTERING SUITABLE SHIPS"), function()
+        if startAction("shipping.register") then
+            raise("shipping.register", {})
+        end
+    end, not actionState("shipping.register").running)
+    actionResult(tableWidget, "shipping.register", "Registers eligible unassigned trade and mining ships. The Executive Advisor pinwheel remains available as an alternative.")
+
     row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
     addButton(row, 1, actionLabel("shipping.scan", "ACTION: SCAN SHIPPING NEEDS", "SCANNING SHIPPING NEEDS"), function()
@@ -862,6 +1043,14 @@ local function diagnosticsCenter(tableWidget)
         section(tableWidget, "STATION INTELLIGENCE AND GUIDED RECOVERY")
         if not station then
             pair(tableWidget, "STATUS", "No player station is selected.", "ACTION", "Select a station on the Stations tab, then return here.")
+            local routeRow = tableWidget:addRow(true)
+            routeRow[1]:setColSpan(4)
+            addButton(routeRow, 1, "GO TO STATIONS - RETURN TO DIAGNOSTICS", function()
+                captureNavigation("DIAGNOSTICS")
+                menu.page = "stations"
+                menu.activeTab = "stations"
+                menu.refresh()
+            end, true)
             return
         end
         pair(tableWidget, "HEALTH", v(station, 3, "MONITORING"), "TREND", v(station, 4, "STABLE"))
@@ -1118,6 +1307,9 @@ local function addRoleControls(tableWidget, station)
             local role = roles[roleIndex + column - 1]
             if role then
                 addButton(row, column, role, function()
+                    if not startAction("station.role") then
+                        return
+                    end
                     raise("station.role", {
                         index = v(station, 16, menu.selected),
                         role = role,
@@ -1128,6 +1320,8 @@ local function addRoleControls(tableWidget, station)
             end
         end
     end
+
+    actionResult(tableWidget, "station.role", "Choose a role to apply it to the selected station.")
 
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
@@ -1205,6 +1399,10 @@ local function addStationIssues(tableWidget, station)
 end
 
 local function addOperationsControls(tableWidget)
+    if menu.settingsStatus then
+        local statusRow = tableWidget:addRow(false)
+        statusRow[1]:setColSpan(4):createText(menu.settingsStatus, { wordwrap = true })
+    end
     section(tableWidget, "OPERATIONS")
     pair(tableWidget, "Trade Order Mode", menu.mode, "EOC-owned Offers", menu.offers)
     pair(
@@ -1217,13 +1415,17 @@ local function addOperationsControls(tableWidget)
 
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addModeButton(row, 1, "TRADE MODE: ADVISOR", menu.mode == "ADVISOR", true, function()
+    addModeButton(row, 1, "TRADE MODE: ADVISOR", menu.mode == "ADVISOR", not menu.settingsChangeRunning, function()
+        menu.settingsChangeRunning = true
+        menu.settingsStatus = "STATUS: APPLYING ADVISOR MODE..."
         raise("trade.advisor", {})
         menu.mode = "ADVISOR"
         menu.refresh()
     end)
     row[3]:setColSpan(2)
-    addModeButton(row, 3, "TRADE MODE: MANAGED", menu.mode == "MANAGED", true, function()
+    addModeButton(row, 3, "TRADE MODE: MANAGED", menu.mode == "MANAGED", not menu.settingsChangeRunning, function()
+        menu.settingsChangeRunning = true
+        menu.settingsStatus = "STATUS: APPLYING MANAGED TRADE..."
         raise("trade.managed", {})
         menu.mode = "MANAGED"
         menu.refresh()
@@ -1237,8 +1439,10 @@ local function addOperationsControls(tableWidget)
         1,
         menu.shipmode == "DISABLED" and "SHIP ASSIGNMENT: DISABLED" or "SHIP ASSIGNMENT: ENABLED",
         menu.shipmode ~= "DISABLED",
-        true,
+        not menu.settingsChangeRunning,
         function()
+            menu.settingsChangeRunning = true
+            menu.settingsStatus = "STATUS: APPLYING SHIP ASSIGNMENT TOGGLE..."
             if menu.shipmode == "DISABLED" then
                 menu.shipmode = menu.previousShipmode or "APPROVAL REQUIRED"
             else
@@ -1253,14 +1457,18 @@ local function addOperationsControls(tableWidget)
     local assignmentEnabled = menu.shipmode ~= "DISABLED"
     row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addModeButton(row, 1, "APPROVAL REQUIRED", menu.shipmode == "APPROVAL REQUIRED", assignmentEnabled, function()
+    addModeButton(row, 1, "APPROVAL REQUIRED", menu.shipmode == "APPROVAL REQUIRED", assignmentEnabled and not menu.settingsChangeRunning, function()
+        menu.settingsChangeRunning = true
+        menu.settingsStatus = "STATUS: APPLYING APPROVAL REQUIRED..."
         raise("shipping.approval", {})
         menu.shipmode = "APPROVAL REQUIRED"
         menu.previousShipmode = menu.shipmode
         menu.refresh()
     end)
     row[3]:setColSpan(2)
-    addModeButton(row, 3, "AUTO-ASSIGN REGISTERED", menu.shipmode == "AUTO-ASSIGN REGISTERED", assignmentEnabled, function()
+    addModeButton(row, 3, "AUTO-ASSIGN REGISTERED", menu.shipmode == "AUTO-ASSIGN REGISTERED", assignmentEnabled and not menu.settingsChangeRunning, function()
+        menu.settingsChangeRunning = true
+        menu.settingsStatus = "STATUS: APPLYING AUTO-ASSIGN REGISTERED..."
         raise("shipping.auto", {})
         menu.shipmode = "AUTO-ASSIGN REGISTERED"
         menu.previousShipmode = menu.shipmode
@@ -1446,6 +1654,10 @@ end
 local function globalSettings(tableWidget)
     section(tableWidget, "GLOBAL EOC SETTINGS")
     pair(tableWidget, "Trade Order Control", menu.mode, "Ship Assignment Authority", menu.shipmode)
+    if menu.settingsStatus then
+        local statusRow = tableWidget:addRow(false)
+        statusRow[1]:setColSpan(4):createText(menu.settingsStatus, { wordwrap = true })
+    end
 
     section(tableWidget, "TRADE ORDER CONTROL")
     pair(
@@ -1457,13 +1669,17 @@ local function globalSettings(tableWidget)
     )
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addModeButton(row, 1, "ADVISOR MODE", menu.mode == "ADVISOR", true, function()
+    addModeButton(row, 1, "ADVISOR MODE", menu.mode == "ADVISOR", not menu.settingsChangeRunning, function()
+        menu.settingsChangeRunning = true
+        menu.settingsStatus = "STATUS: APPLYING ADVISOR MODE..."
         raise("trade.advisor", {})
         menu.mode = "ADVISOR"
         menu.refresh()
     end)
     row[3]:setColSpan(2)
-    addModeButton(row, 3, "MANAGED TRADE", menu.mode == "MANAGED", true, function()
+    addModeButton(row, 3, "MANAGED TRADE", menu.mode == "MANAGED", not menu.settingsChangeRunning, function()
+        menu.settingsChangeRunning = true
+        menu.settingsStatus = "STATUS: APPLYING MANAGED TRADE..."
         raise("trade.managed", {})
         menu.mode = "MANAGED"
         menu.refresh()
@@ -1484,8 +1700,10 @@ local function globalSettings(tableWidget)
         1,
         menu.shipmode == "DISABLED" and "SHIP ASSIGNMENT: DISABLED" or "SHIP ASSIGNMENT: ENABLED",
         menu.shipmode ~= "DISABLED",
-        true,
+        not menu.settingsChangeRunning,
         function()
+            menu.settingsChangeRunning = true
+            menu.settingsStatus = "STATUS: APPLYING SHIP ASSIGNMENT TOGGLE..."
             if menu.shipmode == "DISABLED" then
                 menu.shipmode = menu.previousShipmode or "APPROVAL REQUIRED"
             else
@@ -1500,14 +1718,18 @@ local function globalSettings(tableWidget)
     local assignmentEnabled = menu.shipmode ~= "DISABLED"
     row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addModeButton(row, 1, "APPROVAL REQUIRED", menu.shipmode == "APPROVAL REQUIRED", assignmentEnabled, function()
+    addModeButton(row, 1, "APPROVAL REQUIRED", menu.shipmode == "APPROVAL REQUIRED", assignmentEnabled and not menu.settingsChangeRunning, function()
+        menu.settingsChangeRunning = true
+        menu.settingsStatus = "STATUS: APPLYING APPROVAL REQUIRED..."
         raise("shipping.approval", {})
         menu.shipmode = "APPROVAL REQUIRED"
         menu.previousShipmode = menu.shipmode
         menu.refresh()
     end)
     row[3]:setColSpan(2)
-    addModeButton(row, 3, "AUTO-ASSIGN REGISTERED", menu.shipmode == "AUTO-ASSIGN REGISTERED", assignmentEnabled, function()
+    addModeButton(row, 3, "AUTO-ASSIGN REGISTERED", menu.shipmode == "AUTO-ASSIGN REGISTERED", assignmentEnabled and not menu.settingsChangeRunning, function()
+        menu.settingsChangeRunning = true
+        menu.settingsStatus = "STATUS: APPLYING AUTO-ASSIGN REGISTERED..."
         raise("shipping.auto", {})
         menu.shipmode = "AUTO-ASSIGN REGISTERED"
         menu.previousShipmode = menu.shipmode
@@ -1588,6 +1810,15 @@ function menu.create()
         })
         configureFourColumns(tableWidget, rightWidth)
         tableWidget.properties.maxVisibleHeight = contentHeight
+        if menu.clickStatus and menu.clickStatusUntil and getElapsedTime() < menu.clickStatusUntil then
+            local feedbackRow = tableWidget:addRow(false)
+            feedbackRow[1]:setColSpan(4):createText(menu.clickStatus, { wordwrap = true })
+        end
+        if menu.navigationOrigin and menu.page ~= menu.navigationOrigin.page then
+            local returnRow = tableWidget:addRow(true)
+            returnRow[1]:setColSpan(4)
+            addButton(returnRow, 1, "RETURN TO " .. text(menu.navigationOrigin.label), restoreNavigation, true)
+        end
         stationWorkspace(tableWidget)
     else
         local contentWidth = width - 2 * Helper.borderSize
@@ -1601,6 +1832,15 @@ function menu.create()
         })
         configureFourColumns(tableWidget, contentWidth)
         tableWidget.properties.maxVisibleHeight = contentHeight
+        if menu.clickStatus and menu.clickStatusUntil and getElapsedTime() < menu.clickStatusUntil then
+            local feedbackRow = tableWidget:addRow(false)
+            feedbackRow[1]:setColSpan(4):createText(menu.clickStatus, { wordwrap = true })
+        end
+        if menu.navigationOrigin and menu.page ~= menu.navigationOrigin.page then
+            local returnRow = tableWidget:addRow(true)
+            returnRow[1]:setColSpan(4)
+            addButton(returnRow, 1, "RETURN TO " .. text(menu.navigationOrigin.label), restoreNavigation, true)
+        end
 
         if menu.page == "dashboard" then
             dashboard(tableWidget)
@@ -1639,6 +1879,15 @@ function menu.onUpdate()
         menu.refresh()
         return
     end
+
+    if menu.clickStatusUntil and now >= menu.clickStatusUntil then
+        menu.clickStatusUntil = nil
+        menu.clickStatus = nil
+        menu.lastClickedLabel = nil
+        menu.refresh()
+        return
+    end
+
 
     if menu.reportStatusUntil and now >= menu.reportStatusUntil then
         menu.reportStatusUntil = nil

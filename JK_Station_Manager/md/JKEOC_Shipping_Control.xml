@@ -13,6 +13,14 @@
   <cue name="JKEOC_B76_Register" instantiate="true" namespace="this">
     <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B76_Register" /></conditions>
     <actions>
+      <signal_cue_instantly cue="JKEOC_B92_RegisterShipsCore" />
+      <add_player_choice_sub text="'RETURN'" position="bottom_right" section="JKEOC_B76_Menu" />
+    </actions>
+  </cue>
+
+  <cue name="JKEOC_B92_RegisterShipsCore" instantiate="true" namespace="this">
+    <conditions><event_cue_signalled /></conditions>
+    <actions>
       <find_ship name="$ships" multiple="true" recursive="true" space="player.galaxy" owner="faction.player" hascommander="false" unit="false" class="[class.ship_m, class.ship_l, class.ship_xl]" />
       <set_value name="$discovered" exact="$ships.count" />
       <set_value name="$added" exact="0" />
@@ -45,11 +53,13 @@
         <do_elseif value="not $logisticspurpose"><set_value name="$wrongpurpose" exact="$wrongpurpose + 1" /></do_elseif>
         <do_else><set_value name="$unsupported" exact="$unsupported + 1" /></do_else>
       </do_for_each>
+      <set_value name="global.$JKEOC_B92RegistrationAdded" exact="$added" />
+      <set_value name="global.$JKEOC_B92RegistrationDiscovered" exact="$discovered" />
+      <set_value name="global.$JKEOC_B92RegistrationUnsupported" exact="$unsupported" />
       <debug_text text="'[JKEOC][B83E][REGISTRATION_SCAN] native_free_discovered=%1 added=%2 registered_total=%3 already=%4 fleetleaders=%5 nonoperational=%6'.[$discovered, $added, global.$JKEOC_B76EligibleShips.count, $alreadyregistered, $fleetleader, $nonoperational]" filter="general" />
       <debug_text text="'[JKEOC][B83E][REGISTRATION_REJECT] nonlogistics=%1 unsupported_cargo=%2'.[$wrongpurpose, $unsupported]" filter="general" />
       <show_notification text="'ACTION: %1 suitable unassigned ship(s) registered from %2 discovered player ships. %3 unsupported candidate(s) left untouched.'.[$added, $discovered, $unsupported]" timeout="12s" />
       <signal_cue_instantly cue="JKEOC_B78_MatchRegistered" />
-      <add_player_choice_sub text="'RETURN'" position="bottom_right" section="JKEOC_B76_Menu" />
     </actions>
   </cue>
 

@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <mdscript name="JKEOC_Executive_Advisor" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <cues>
+    <cue name="JKEOC_GA17_StartupNotice" instantiate="true" namespace="this">
+      <conditions><event_game_loaded /></conditions>
+      <actions>
+        <show_notification text="'EOC INITIALIZING — please wait approximately 10 seconds before opening EOC.'" timeout="10s" />
+        <debug_text text="'[JKEOC][GA17][INITIALIZING] wait=10s lifecycle=preserved'" filter="general" />
+      </actions>
+    </cue>
     <!-- Persistent, observation-only executive station knowledge. -->
     <cue name="JKEOC_B67_Initialize" instantiate="true" namespace="this">
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-      <show_notification text="'EOC v6.0.0 | Build 91 | UI Parity and Navigation Test'" timeout="12s" />
-      <debug_text text="'[JKEOC][B91][STARTUP] version=6.0.0 build=91 compatibility=x4_8_and_9 notification=shown'" filter="general" />
+      <show_notification text="'EOC 1.7 GA | Executive Operations Center Ready'" timeout="12s" />
+      <debug_text text="'[JKEOC][GA17][STARTUP] version=1.7 ga=1 compatibility=x4_8_and_9 notification=shown'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>
