@@ -9,7 +9,7 @@ ffi.cdef[[
 
 local C = ffi.C
 local integration = {
-    callbackID = "jk_eoc_ga18_personal_office",
+    callbackID = "jk_eoc_b112_personal_office",
     menu = nil,
 }
 
@@ -56,7 +56,7 @@ local function init()
             integration.callbackID
         )
     else
-        DebugError("[JKEOC][GA18][LUA_ERROR] Personal Office callback unavailable")
+        DebugError("[JKEOC][GA19][LUA_ERROR] Personal Office callback unavailable")
     end
 end
 

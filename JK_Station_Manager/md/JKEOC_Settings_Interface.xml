@@ -13,6 +13,7 @@
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B83Inbox?"><set_value name="global.$JKEOC_B83Inbox" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_LuaReports?"><set_value name="global.$JKEOC_LuaReports" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_PlayerCases?"><set_value name="global.$JKEOC_PlayerCases" exact="[]" /></do_if>
         <remove_value name="global.$JKEOC_LuaAnalysisRunning" />
         <set_value name="$summary" exact="[if global.$JKEOC_B83Health? then global.$JKEOC_B83Health else 0, if global.$JKEOC_B83Trend? then global.$JKEOC_B83Trend else 'STABLE', if global.$JKEOC_B83Economy? then global.$JKEOC_B83Economy else 0, if global.$JKEOC_B83Logistics? then global.$JKEOC_B83Logistics else 0, if global.$JKEOC_B83Workforce? then global.$JKEOC_B83Workforce else 0, if global.$JKEOC_B83Defense? then global.$JKEOC_B83Defense else 0, if global.$JKEOC_B83Growth? then global.$JKEOC_B83Growth else 0, if global.$JKEOC_B83Stations? then global.$JKEOC_B83Stations else 0, if global.$JKEOC_B83Productive? then global.$JKEOC_B83Productive else 0, if global.$JKEOC_B83ShipUtilization? then global.$JKEOC_B83ShipUtilization else 0, if global.$JKEOC_B83ActiveCases? then global.$JKEOC_B83ActiveCases else 0, if global.$JKEOC_B83Attention? then global.$JKEOC_B83Attention else 0, if global.$JKEOC_B83New? then global.$JKEOC_B83New else 0, if global.$JKEOC_B83Resolved? then global.$JKEOC_B83Resolved else 0, if global.$JKEOC_B83Worsening? then global.$JKEOC_B83Worsening else 0, if global.$JKEOC_B83Improving? then global.$JKEOC_B83Improving else 0]" />
         <set_value name="$stations" exact="[]" />
@@ -28,14 +29,17 @@
         <set_value name="$cases" exact="[]" />
         <do_if value="global.$JKEOC_CriticalCases?">
           <do_for_each name="$case" in="global.$JKEOC_CriticalCases">
-            <append_to_list name="$cases" exact="[if $case.$stationname? then $case.$stationname else 'Unknown station', 'CRITICAL', if $case.$type? then $case.$type else 'STATION ISSUE', if $case.$ware? then $case.$ware else 'General operations', if $case.$status? then $case.$status else 'OPEN', if $case.$rootcause? then $case.$rootcause else 'Evidence requires review', if $case.$corrective? then $case.$corrective else 'Review the station recommendation and supporting evidence', if $case.$amount? then $case.$amount else 0, if $case.$target? then $case.$target else 0, if $case.$maximum? then $case.$maximum else 0]" />
+            <append_to_list name="$cases" exact="[if $case.$stationname? then $case.$stationname else 'Unknown station', 'CRITICAL', if $case.$type? then $case.$type else 'STATION ISSUE', if $case.$ware? then $case.$ware else 'General operations', if $case.$status? then $case.$status else 'OPEN', if $case.$rootcause? then $case.$rootcause else 'Evidence requires review', if $case.$corrective? then $case.$corrective else 'Review the station recommendation and supporting evidence', if $case.$amount? then $case.$amount else 0, if $case.$target? then $case.$target else 0, if $case.$maximum? then $case.$maximum else 0, if $case.$storagetype? then $case.$storagetype else 'UNKNOWN', if $case.$storagecapacity? then $case.$storagecapacity else 0, if $case.$storagefree? then $case.$storagefree else 0, if $case.$produces? then $case.$produces else 0, if $case.$productionmodulecount? then $case.$productionmodulecount else 0, if $case.$supplywarename? then $case.$supplywarename else if $case.$ware? then $case.$ware else 'Unknown ware', if $case.$suppliercount? then $case.$suppliercount else 0, if $case.$ownsuppliercount? then $case.$ownsuppliercount else 0, if $case.$npcsuppliercount? then $case.$npcsuppliercount else 0, if $case.$npcminunitprice? then ($case.$npcminunitprice / 1Cr)i else 0, if $case.$npcmaxunitprice? then ($case.$npcmaxunitprice / 1Cr)i else 0, if $case.$tradershipcount? then $case.$tradershipcount else 0, if $case.$compatibletradercount? then $case.$compatibletradercount else 0, if $case.$inputcount? then $case.$inputcount else 0, if $case.$inputnames? then $case.$inputnames else '', if $case.$missinginputcount? then $case.$missinginputcount else 0, if $case.$missinginputnames? then $case.$missinginputnames else '', if $case.$productionpaused? then $case.$productionpaused else false, if $case.$immediateneed? then $case.$immediateneed else 0, if $case.$targetshortfall? then $case.$targetshortfall else 0, if $case.$stationmoney? then ($case.$stationmoney / 1Cr)i else 0, if $case.$plannedstoragematches? then $case.$plannedstoragematches else 0, if $case.$plannedproductionmatches? then $case.$plannedproductionmatches else 0]" />
           </do_for_each>
         </do_if>
         <do_if value="global.$JKEOC_WarningCases?">
           <do_for_each name="$case" in="global.$JKEOC_WarningCases">
-            <append_to_list name="$cases" exact="[if $case.$stationname? then $case.$stationname else 'Unknown station', 'WARNING', if $case.$type? then $case.$type else 'STATION ISSUE', if $case.$ware? then $case.$ware else 'General operations', if $case.$status? then $case.$status else 'OPEN', if $case.$rootcause? then $case.$rootcause else 'Evidence requires review', if $case.$corrective? then $case.$corrective else 'Review the station recommendation and supporting evidence', if $case.$amount? then $case.$amount else 0, if $case.$target? then $case.$target else 0, if $case.$maximum? then $case.$maximum else 0]" />
+            <append_to_list name="$cases" exact="[if $case.$stationname? then $case.$stationname else 'Unknown station', 'WARNING', if $case.$type? then $case.$type else 'STATION ISSUE', if $case.$ware? then $case.$ware else 'General operations', if $case.$status? then $case.$status else 'OPEN', if $case.$rootcause? then $case.$rootcause else 'Evidence requires review', if $case.$corrective? then $case.$corrective else 'Review the station recommendation and supporting evidence', if $case.$amount? then $case.$amount else 0, if $case.$target? then $case.$target else 0, if $case.$maximum? then $case.$maximum else 0, if $case.$storagetype? then $case.$storagetype else 'UNKNOWN', if $case.$storagecapacity? then $case.$storagecapacity else 0, if $case.$storagefree? then $case.$storagefree else 0, if $case.$produces? then $case.$produces else 0, if $case.$productionmodulecount? then $case.$productionmodulecount else 0, if $case.$supplywarename? then $case.$supplywarename else if $case.$ware? then $case.$ware else 'Unknown ware', if $case.$suppliercount? then $case.$suppliercount else 0, if $case.$ownsuppliercount? then $case.$ownsuppliercount else 0, if $case.$npcsuppliercount? then $case.$npcsuppliercount else 0, if $case.$npcminunitprice? then ($case.$npcminunitprice / 1Cr)i else 0, if $case.$npcmaxunitprice? then ($case.$npcmaxunitprice / 1Cr)i else 0, if $case.$tradershipcount? then $case.$tradershipcount else 0, if $case.$compatibletradercount? then $case.$compatibletradercount else 0, if $case.$inputcount? then $case.$inputcount else 0, if $case.$inputnames? then $case.$inputnames else '', if $case.$missinginputcount? then $case.$missinginputcount else 0, if $case.$missinginputnames? then $case.$missinginputnames else '', if $case.$productionpaused? then $case.$productionpaused else false, if $case.$immediateneed? then $case.$immediateneed else 0, if $case.$targetshortfall? then $case.$targetshortfall else 0, if $case.$stationmoney? then ($case.$stationmoney / 1Cr)i else 0, if $case.$plannedstoragematches? then $case.$plannedstoragematches else 0, if $case.$plannedproductionmatches? then $case.$plannedproductionmatches else 0]" />
           </do_for_each>
         </do_if>
+        <do_for_each name="$case" in="global.$JKEOC_PlayerCases">
+          <append_to_list name="$cases" exact="[if $case.$stationname? then $case.$stationname else 'Unknown station', 'PLAYER', 'PLAYER-REPORTED', if $case.$subject? then $case.$subject else 'Player-requested investigation', if $case.$status? then $case.$status else 'OPEN - PLAYER REQUESTED', if $case.$rootcause? then $case.$rootcause else 'The player requested EOC investigation.', if $case.$corrective? then $case.$corrective else 'Review evidence and define a verification step.', if $case.$issues? then $case.$issues else 0, 0, 0, 'PLAYER']" />
+        </do_for_each>
         <set_value name="$registeredships" exact="[]" />
         <do_if value="global.$JKEOC_B76EligibleShips?">
           <do_for_each name="$ship" in="global.$JKEOC_B76EligibleShips">
@@ -56,7 +60,7 @@
           <append_to_list name="$pending" exact="[global.$JKEOC_B76BuildStorageShip.name, if global.$JKEOC_B76BuildStorageNeed? and global.$JKEOC_B76BuildStorageNeed.$stationname? then global.$JKEOC_B76BuildStorageNeed.$stationname else 'Build storage', 'BUILD STORAGE ASSIGNMENT', 'AWAITING APPROVAL']" />
         </do_elseif>
         <set_value name="$params" exact="[0, 0, global.$JKEOC_B73TradeMode, global.$JKEOC_B73Offers.count, global.$JKEOC_B76AssignmentMode, $summary, $stations, $inbox, global.$JKEOC_B76PreviousAssignmentMode, global.$JKEOC_LuaReports, $cases, $registeredships, $tradeoffers, $pending, if global.$JKEOC_B64DefaultGoal? then global.$JKEOC_B64DefaultGoal else 'OBSERVE AND ADVISE ONLY', if global.$JKEOC_B64Findings? then global.$JKEOC_B64Findings.count else 0, [if global.$JKEOC_B64Mailbox? and global.$JKEOC_B64Mailbox.$status? then global.$JKEOC_B64Mailbox.$status else 'READY', if global.$JKEOC_B64Mailbox? and global.$JKEOC_B64Mailbox.$result? then global.$JKEOC_B64Mailbox.$result else 'No engineering probe has been submitted.'], if global.$JKEOC_B71ProofStatus? then global.$JKEOC_B71ProofStatus else 'READY']" />
-        <debug_text text="'[JKEOC][GA17][LUA_LAUNCH] stations=%1 inbox=%2 cases=%3 registered=%4 offers=%5 pending=%6'.[$stations.count, $inbox.count, $cases.count, $registeredships.count, $tradeoffers.count, $pending.count]" filter="general" />
+        <debug_text text="'[JKEOC][GA19][LUA_LAUNCH] stations=%1 inbox=%2 cases=%3 registered=%4 offers=%5 pending=%6'.[$stations.count, $inbox.count, $cases.count, $registeredships.count, $tradeoffers.count, $pending.count]" filter="general" />
         <open_menu menu="JKEOC_SettingsMenu" param="$params" param2="null" />
       </actions>
     </cue>
@@ -64,7 +68,7 @@
     <cue name="JKEOC_Settings_Receive" instantiate="true" namespace="this">
       <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" /></conditions>
       <actions>
-      <do_if value="event.param2 == 'INIT'"><raise_lua_event name="'JKEOC_SettingsMenu.INIT'" /><debug_text text="'[JKEOC][GA17][LUA_READY]'" filter="general" /></do_if>
+      <do_if value="event.param2 == 'INIT'"><raise_lua_event name="'JKEOC_SettingsMenu.INIT'" /><debug_text text="'[JKEOC][GA19][LUA_READY]'" filter="general" /></do_if>
         <do_elseif value="event.param2 == 'opened'"><signal_cue_instantly cue="JKEOC_Settings_ClearBackgroundConversation" /></do_elseif>
         <do_elseif value="event.param2 == 'trade.managed'"><signal_cue_instantly cue="md.JKEOC_Trade_Order_Manager.JKEOC_B73_ApplyManaged" /><set_value name="global.$JKEOC_B96SettingsResult" exact="'Trade Order Control changed to Managed Trade.'" /><signal_cue_instantly cue="JKEOC_Settings_ModeChangeComplete" /></do_elseif>
         <do_elseif value="event.param2 == 'trade.advisor'"><signal_cue_instantly cue="md.JKEOC_Trade_Order_Manager.JKEOC_B73_ApplyAdvisor" /><set_value name="global.$JKEOC_B96SettingsResult" exact="'Trade Order Control changed to Advisor Mode.'" /><signal_cue_instantly cue="JKEOC_Settings_ModeChangeComplete" /></do_elseif>
@@ -88,7 +92,7 @@
           </do_else>
           <set_value name="global.$JKEOC_B96SettingsResult" exact="'Ship Assignment is now %1.'.[global.$JKEOC_B76AssignmentMode]" />
           <signal_cue_instantly cue="JKEOC_Settings_ModeChangeComplete" />
-          <debug_text text="'[JKEOC][GA17][SHIP_TOGGLE] mode=%1 previous=%2'.[global.$JKEOC_B76AssignmentMode, global.$JKEOC_B76PreviousAssignmentMode]" filter="general" />
+          <debug_text text="'[JKEOC][GA19][SHIP_TOGGLE] mode=%1 previous=%2'.[global.$JKEOC_B76AssignmentMode, global.$JKEOC_B76PreviousAssignmentMode]" filter="general" />
         </do_elseif>
         <do_elseif value="event.param2 == 'shipping.register'">
           <set_value name="$availablebefore" exact="0" />
@@ -104,7 +108,7 @@
           <set_value name="global.$JKEOC_B96RegistrationAutoAssigned" exact="if global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' then [$availablebefore + global.$JKEOC_B92RegistrationAdded - global.$JKEOC_B92AvailableRegisteredCount, 0].max else 0" />
           <set_value name="global.$JKEOC_B96RegistrationResult" exact="'COMPLETE - scanned %1; added %2; auto-assigned %3; available %4; unsupported %5.'.[global.$JKEOC_B92RegistrationDiscovered, global.$JKEOC_B92RegistrationAdded, global.$JKEOC_B96RegistrationAutoAssigned, global.$JKEOC_B92AvailableRegisteredCount, global.$JKEOC_B92RegistrationUnsupported]" />
           <signal_cue_instantly cue="JKEOC_Settings_RegistrationComplete" />
-          <debug_text text="'[JKEOC][GA17][LUA_ACTION] action=SHIP_REGISTRATION added=%1 autoassigned=%2 available=%3'.[global.$JKEOC_B92RegistrationAdded, global.$JKEOC_B96RegistrationAutoAssigned, global.$JKEOC_B92AvailableRegisteredCount]" filter="general" />
+          <debug_text text="'[JKEOC][GA19][LUA_ACTION] action=SHIP_REGISTRATION added=%1 autoassigned=%2 available=%3'.[global.$JKEOC_B92RegistrationAdded, global.$JKEOC_B96RegistrationAutoAssigned, global.$JKEOC_B92AvailableRegisteredCount]" filter="general" />
         </do_elseif>
         <do_elseif value="event.param2 == 'shipping.scan'">
           <remove_value name="global.$JKEOC_B76BuildStorageNeed" />
@@ -135,6 +139,28 @@
             <raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
           </do_else>
         </do_elseif>
+        <do_elseif value="event.param2 == 'case.create' and event.param3.$index? and event.param3.$index gt 0 and event.param3.$index le global.$JKEOC_B67Profiles.count">
+          <set_value name="$profile" exact="global.$JKEOC_B67Profiles.{event.param3.$index}" />
+          <set_value name="$result" exact="'Player case was not created because the selected station is no longer valid.'" />
+          <do_if value="$profile.$station? and $profile.$station.exists and $profile.$station.owner == faction.player">
+            <set_value name="$duplicate" exact="false" />
+            <do_for_each name="$existing" in="global.$JKEOC_PlayerCases"><do_if value="$existing.$station? and $existing.$station == $profile.$station"><set_value name="$duplicate" exact="true" /></do_if></do_for_each>
+            <do_if value="not $duplicate"><append_to_list name="global.$JKEOC_PlayerCases" exact="table[$station=$profile.$station, $stationname=$profile.$station.name, $subject=if event.param3.$subject? then event.param3.$subject else 'Player-requested station review', $status='OPEN - PLAYER REQUESTED', $rootcause='The player requested EOC investigation; severity is not yet confirmed.', $corrective='Review existing evidence, use Diagnostics for the smallest supported test, then rerun analysis for verification.', $issues=if event.param3.$issues? then event.param3.$issues else 0, $created=player.age]" /></do_if>
+            <set_value name="$result" exact="if $duplicate then 'A player-requested case already exists for %1.'.[$profile.$station.name] else 'Player-requested case created for %1. EOC keeps it distinct from evidence-confirmed critical and warning cases.'.[$profile.$station.name]" />
+          </do_if>
+          <raise_lua_event name="'JKEOC_SettingsMenu.action.name'" param="'case.create'" /><raise_lua_event name="'JKEOC_SettingsMenu.action.result'" param="$result" /><raise_lua_event name="'JKEOC_SettingsMenu.action.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
+          <show_notification text="$result" timeout="7s" />
+          <debug_text text="'[JKEOC][GA19][PLAYER_CASE_CREATE] result=%1 retained=%2'.[$result, global.$JKEOC_PlayerCases.count]" filter="general" />
+        </do_elseif>
+        <do_elseif value="event.param2 == 'case.close' and event.param3.$index? and event.param3.$index gt 0 and event.param3.$index le global.$JKEOC_B67Profiles.count">
+          <set_value name="$profile" exact="global.$JKEOC_B67Profiles.{event.param3.$index}" />
+          <set_value name="$closed" exact="0" />
+          <do_for_each name="$existing" in="global.$JKEOC_PlayerCases"><do_if value="$profile.$station? and $existing.$station? and $existing.$station == $profile.$station"><remove_from_list name="global.$JKEOC_PlayerCases" exact="$existing" /><set_value name="$closed" exact="$closed + 1" /></do_if></do_for_each>
+          <set_value name="$result" exact="if $closed gt 0 then 'Player-requested case closed. EOC-confirmed evidence remains active when applicable.' else 'No matching player-requested case remained to close.'" />
+          <raise_lua_event name="'JKEOC_SettingsMenu.action.name'" param="'case.close'" /><raise_lua_event name="'JKEOC_SettingsMenu.action.result'" param="$result" /><raise_lua_event name="'JKEOC_SettingsMenu.action.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
+          <show_notification text="$result" timeout="7s" />
+          <debug_text text="'[JKEOC][GA19][PLAYER_CASE_CLOSE] result=%1 retained=%2'.[$result, global.$JKEOC_PlayerCases.count]" filter="general" />
+        </do_elseif>
         <do_elseif value="event.param2 == 'station.auto'">
           <set_value name="global.$JKEOC_LuaUndefinedBefore" exact="0" />
           <do_for_each name="$profile" in="global.$JKEOC_B67Profiles">
@@ -156,7 +182,7 @@
             <show_notification text="$result" timeout="7s" />
           </do_if>
           <raise_lua_event name="'JKEOC_SettingsMenu.action.name'" param="'station.role'" /><raise_lua_event name="'JKEOC_SettingsMenu.action.result'" param="$result" /><raise_lua_event name="'JKEOC_SettingsMenu.action.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
-          <debug_text text="'[JKEOC][GA17][LUA_ACTION] action=STATION_ROLE result=%1'.[$result]" filter="general" />
+          <debug_text text="'[JKEOC][GA19][LUA_ACTION] action=STATION_ROLE result=%1'.[$result]" filter="general" />
         </do_elseif>
         <do_elseif value="event.param2 == 'diagnostics.goal' and event.param3.$goal?">
           <set_value name="global.$JKEOC_B64PendingGoal" exact="event.param3.$goal" />
@@ -197,8 +223,12 @@
           <raise_lua_event name="'JKEOC_SettingsMenu.action.name'" param="'diagnostics.proof'" /><raise_lua_event name="'JKEOC_SettingsMenu.action.result'" param="$result" /><raise_lua_event name="'JKEOC_SettingsMenu.action.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
         </do_elseif>
         <do_elseif value="event.param2 == 'analysis.run' and not global.$JKEOC_LuaAnalysisRunning?">
-        <set_value name="global.$JKEOC_LuaAnalysisRunning" exact="true" /><show_notification text="'ACTION: Executive analysis started.'" timeout="4s" /><debug_text text="'[JKEOC][GA17][LUA_ANALYSIS] state=RUNNING'" filter="general" />
-          <signal_cue_instantly cue="md.JKEOC_Executive_Advisor.JKEOC_B67_Analyze" /><signal_cue_instantly cue="md.JKEOC_Operational_Intelligence.JKEOC_SPOS_RunCycle" /><signal_cue_instantly cue="md.JKEOC_Operational_Remediation.JKEOC_B70_Analyze" /><signal_cue_instantly cue="md.JKEOC_Executive_Intelligence.JKEOC_B83_Calculate" /><signal_cue_instantly cue="JKEOC_Settings_AnalysisComplete" />
+        <set_value name="global.$JKEOC_LuaAnalysisRunning" exact="true" /><show_notification text="'ACTION: Executive analysis started.'" timeout="4s" /><debug_text text="'[JKEOC][GA19][LUA_ANALYSIS] state=RUNNING'" filter="general" />
+          <do_if value="event.param3.$verify?">
+            <set_value name="global.$JKEOC_VerifyStation" exact="event.param3.$station" /><set_value name="global.$JKEOC_VerifySubject" exact="event.param3.$subject" /><set_value name="global.$JKEOC_VerifySeverity" exact="event.param3.$severity" /><set_value name="global.$JKEOC_VerifyAmount" exact="event.param3.$amount" />
+          </do_if>
+          <do_else><remove_value name="global.$JKEOC_VerifyStation" /></do_else>
+          <signal_cue_instantly cue="md.JK_Station_Manager.JKSM_RunIntelligenceScan" /><signal_cue_instantly cue="md.JKEOC_Executive_Advisor.JKEOC_B67_Analyze" /><signal_cue_instantly cue="md.JKEOC_Operational_Intelligence.JKEOC_SPOS_RunCycle" /><signal_cue_instantly cue="md.JKEOC_Operational_Remediation.JKEOC_B70_Analyze" /><signal_cue_instantly cue="md.JKEOC_Executive_Intelligence.JKEOC_B83_Calculate" /><signal_cue_instantly cue="JKEOC_Settings_AnalysisComplete" />
         </do_elseif>
         <do_elseif value="event.param2 == 'report.empire'"><signal_cue_instantly cue="JKEOC_Settings_ReportEmpire" /></do_elseif>
         <do_elseif value="event.param2 == 'report.station'"><set_value name="global.$JKEOC_LuaReportIndex" exact="event.param3.$index" /><signal_cue_instantly cue="JKEOC_Settings_ReportStation" /></do_elseif>
@@ -259,7 +289,7 @@
         <set_value name="global.$JKEOC_B92AvailableRegisteredCount" exact="$registeredcount" />
         <raise_lua_event name="'JKEOC_SettingsMenu.shipping.mode'" param="global.$JKEOC_B76AssignmentMode" />
         <raise_lua_event name="'JKEOC_SettingsMenu.shipping.refresh.complete'" param="$registeredcount" />
-        <debug_text text="'[JKEOC][GA17][LUA_SHIPPING_REFRESH] protocol=SCALAR_ROWS registered=%1 pending=%2 mode=%3'.[$registeredcount, $pendingcount, global.$JKEOC_B76AssignmentMode]" filter="general" />
+        <debug_text text="'[JKEOC][GA19][LUA_SHIPPING_REFRESH] protocol=SCALAR_ROWS registered=%1 pending=%2 mode=%3'.[$registeredcount, $pendingcount, global.$JKEOC_B76AssignmentMode]" filter="general" />
       </actions>
     </cue>
 
@@ -269,7 +299,7 @@
       <actions>
         <raise_lua_event name="'JKEOC_SettingsMenu.settings.confirmed'" param="if global.$JKEOC_B96SettingsResult? then global.$JKEOC_B96SettingsResult else 'Setting updated.'" />
         <show_notification text="if global.$JKEOC_B96SettingsResult? then global.$JKEOC_B96SettingsResult else 'Setting updated.'" timeout="5s" />
-        <debug_text text="'[JKEOC][GA17][SETTINGS_CONFIRMED] %1'.[if global.$JKEOC_B96SettingsResult? then global.$JKEOC_B96SettingsResult else 'Setting updated.']" filter="general" />
+        <debug_text text="'[JKEOC][GA19][SETTINGS_CONFIRMED] %1'.[if global.$JKEOC_B96SettingsResult? then global.$JKEOC_B96SettingsResult else 'Setting updated.']" filter="general" />
       </actions>
     </cue>
     <cue name="JKEOC_Settings_AnalysisComplete" instantiate="true" namespace="this">
@@ -279,7 +309,20 @@
         <set_value name="$analysisprimary" exact="'EXECUTIVE ANALYSIS COMPLETE\n\nEmpire Health: %1 / 100 | Trend: %2\nEconomy: %3 | Logistics: %4\nWorkforce: %5 | Defense: %6\nGrowth: %7 | Ship Utilization: %8'.[$summary.{1}, $summary.{2}, $summary.{3}, $summary.{4}, $summary.{5}, $summary.{6}, $summary.{7}, $summary.{10}]" />
         <set_value name="$analysisdetail" exact="'\nStations: %1 | Productive: %2\nActive Cases: %3 | Require Attention: %4\nNew: %5 | Resolved: %6 | Worsening: %7 | Improving: %8'.[$summary.{8}, $summary.{9}, $summary.{11}, $summary.{12}, $summary.{13}, $summary.{14}, $summary.{15}, $summary.{16}]" />
         <set_value name="$analysistext" exact="'%1%2'.[$analysisprimary, $analysisdetail]" />
-        <remove_value name="global.$JKEOC_LuaAnalysisRunning" /><raise_lua_event name="'JKEOC_SettingsMenu.analysis.output'" param="$analysistext" /><raise_lua_event name="'JKEOC_SettingsMenu.analysis.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.analysis.complete'" /><show_notification text="'ACTION: Executive analysis complete.'" timeout="5s" /><debug_text text="'[JKEOC][GA17][LUA_ANALYSIS] state=COMPLETE health=%1 inbox=%2'.[global.$JKEOC_B83Health, $inbox.count]" filter="general" />
+        <do_if value="global.$JKEOC_VerifyStation?">
+          <set_value name="$verifyfound" exact="false" />
+          <do_for_each name="$case" in="global.$JKEOC_CriticalCases"><do_if value="not $verifyfound and $case.$stationname == global.$JKEOC_VerifyStation and $case.$ware == global.$JKEOC_VerifySubject"><set_value name="$verifycase" exact="$case" /><set_value name="$verifyseverity" exact="'CRITICAL'" /><set_value name="$verifyfound" exact="true" /></do_if></do_for_each>
+          <do_for_each name="$case" in="global.$JKEOC_WarningCases"><do_if value="not $verifyfound and $case.$stationname == global.$JKEOC_VerifyStation and $case.$ware == global.$JKEOC_VerifySubject"><set_value name="$verifycase" exact="$case" /><set_value name="$verifyseverity" exact="'WARNING'" /><set_value name="$verifyfound" exact="true" /></do_if></do_for_each>
+          <do_if value="$verifyfound">
+            <set_value name="$verifyclass" exact="if global.$JKEOC_VerifySeverity == 'CRITICAL' and $verifyseverity == 'WARNING' then 'IMPROVING' else if global.$JKEOC_VerifySeverity == 'WARNING' and $verifyseverity == 'CRITICAL' then 'WORSENING' else if $verifycase.$amount gt global.$JKEOC_VerifyAmount then 'IMPROVING' else if $verifycase.$amount lt global.$JKEOC_VerifyAmount then 'WORSENING' else 'UNCHANGED'" />
+            <set_value name="$verifyresult" exact="'%1 — fresh scan found %2 at %3 units (previously %4); state %5.'.[$verifyclass, $verifyseverity, $verifycase.$amount, global.$JKEOC_VerifyAmount, $verifycase.$status]" />
+          </do_if>
+          <do_else><set_value name="$verifyclass" exact="'RESOLVED'" /><set_value name="$verifyresult" exact="'RESOLVED — the fresh station scan no longer found this case.'" /></do_else>
+          <raise_lua_event name="'JKEOC_SettingsMenu.verification.class'" param="$verifyclass" /><raise_lua_event name="'JKEOC_SettingsMenu.verification.result'" param="$verifyresult" />
+          <debug_text text="'[JKEOC][GA19][CASE_VERIFY] station=%1 subject=%2 result=%3 found=%4'.[global.$JKEOC_VerifyStation, global.$JKEOC_VerifySubject, $verifyclass, $verifyfound]" filter="general" />
+          <remove_value name="global.$JKEOC_VerifyStation" />
+        </do_if>
+        <remove_value name="global.$JKEOC_LuaAnalysisRunning" /><raise_lua_event name="'JKEOC_SettingsMenu.analysis.output'" param="$analysistext" /><raise_lua_event name="'JKEOC_SettingsMenu.analysis.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.analysis.complete'" /><show_notification text="'ACTION: Executive analysis complete.'" timeout="5s" /><debug_text text="'[JKEOC][GA19][LUA_ANALYSIS] state=COMPLETE health=%1 inbox=%2'.[global.$JKEOC_B83Health, $inbox.count]" filter="general" />
       </actions>
     </cue>
 
@@ -291,7 +334,7 @@
         <set_value name="$after" exact="global.$JKEOC_B73Offers.count" />
         <set_value name="$result" exact="if global.$JKEOC_B73TradeMode == 'ADVISOR' then 'Review complete. Advisor mode makes no trade-order changes.' else if $after gt $before then 'Review complete. %1 EOC trade offer(s) created; %2 now tracked.'.[$after - $before, $after] else if $after lt $before then 'Review complete. %1 stale EOC trade offer(s) removed; %2 retained.'.[$before - $after, $after] else 'Review complete. %1 EOC trade offer(s) verified; no changes required.'.[$after]" />
         <raise_lua_event name="'JKEOC_SettingsMenu.action.name'" param="'trade.review'" /><raise_lua_event name="'JKEOC_SettingsMenu.action.result'" param="$result" /><raise_lua_event name="'JKEOC_SettingsMenu.action.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.action.value'" param="$after" /><raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
-        <debug_text text="'[JKEOC][GA17][LUA_ACTION] action=TRADE_REVIEW before=%1 after=%2 mode=%3'.[$before, $after, global.$JKEOC_B73TradeMode]" filter="general" />
+        <debug_text text="'[JKEOC][GA19][LUA_ACTION] action=TRADE_REVIEW before=%1 after=%2 mode=%3'.[$before, $after, global.$JKEOC_B73TradeMode]" filter="general" />
       </actions>
     </cue>
 
@@ -301,7 +344,7 @@
       <actions>
         <set_value name="$result" exact="if global.$JKEOC_B76AssignmentMode == 'DISABLED' then 'Scan complete. Ship assignment is disabled; no ship was assigned.' else if global.$JKEOC_B76BuildStorageNeed? and global.$JKEOC_B76BuildStorageShip? then if global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' then 'Scan complete. A compatible registered ship was assigned or submitted for verification.' else 'Scan complete. A compatible build-storage ship is awaiting approval.' else if global.$JKEOC_B74PendingShip? and global.$JKEOC_B74PendingShip.exists then if global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' then 'Scan complete. A compatible registered ship was matched for automatic assignment.' else 'Scan complete. A compatible registered ship is awaiting approval.' else 'Scan complete. No supported shipping need with an eligible registered ship was found.'" />
         <raise_lua_event name="'JKEOC_SettingsMenu.action.name'" param="'shipping.scan'" /><raise_lua_event name="'JKEOC_SettingsMenu.action.result'" param="$result" /><raise_lua_event name="'JKEOC_SettingsMenu.action.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
-        <debug_text text="'[JKEOC][GA17][LUA_ACTION] action=SHIPPING_SCAN mode=%1 buildneed=%2 buildship=%3 pending=%4'.[global.$JKEOC_B76AssignmentMode, global.$JKEOC_B76BuildStorageNeed?, global.$JKEOC_B76BuildStorageShip?, global.$JKEOC_B74PendingShip?]" filter="general" />
+        <debug_text text="'[JKEOC][GA19][LUA_ACTION] action=SHIPPING_SCAN mode=%1 buildneed=%2 buildship=%3 pending=%4'.[global.$JKEOC_B76AssignmentMode, global.$JKEOC_B76BuildStorageNeed?, global.$JKEOC_B76BuildStorageShip?, global.$JKEOC_B74PendingShip?]" filter="general" />
       </actions>
     </cue>
 
@@ -317,7 +360,7 @@
         <raise_lua_event name="'JKEOC_SettingsMenu.action.result'" param="$result" />
         <raise_lua_event name="'JKEOC_SettingsMenu.action.time'" param="player.age" />
         <raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
-        <debug_text text="'[JKEOC][GA17][LUA_ACTION] action=ASSIGNMENT_APPROVAL kind=%1 result=%2'.[$kind, $result]" filter="general" />
+        <debug_text text="'[JKEOC][GA19][LUA_ACTION] action=ASSIGNMENT_APPROVAL kind=%1 result=%2'.[$kind, $result]" filter="general" />
         <remove_value name="global.$JKEOC_LuaPendingAssignmentKind" />
         <remove_value name="global.$JKEOC_LuaAuthorizedShipName" />
         <remove_value name="global.$JKEOC_LuaAuthorizedStationName" />
@@ -342,7 +385,7 @@
         <set_value name="$assigned" exact="if $before gt $remaining then $before - $remaining else 0" />
         <set_value name="$result" exact="if $before == 0 then 'Check complete. No undefined player-station roles were found.' else if $assigned gt 0 then 'Assignment complete. %1 station role(s) assigned; %2 remain undefined.'.[$assigned, $remaining] else 'Check complete. No undefined station roles could be safely assigned; %1 remain.'.[$remaining]" />
         <raise_lua_event name="'JKEOC_SettingsMenu.action.name'" param="'station.auto'" /><raise_lua_event name="'JKEOC_SettingsMenu.action.result'" param="$result" /><raise_lua_event name="'JKEOC_SettingsMenu.action.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
-        <debug_text text="'[JKEOC][GA17][LUA_ACTION] action=ROLE_ASSIGN before=%1 assigned=%2 remaining=%3'.[$before, $assigned, $remaining]" filter="general" />
+        <debug_text text="'[JKEOC][GA19][LUA_ACTION] action=ROLE_ASSIGN before=%1 assigned=%2 remaining=%3'.[$before, $assigned, $remaining]" filter="general" />
       </actions>
     </cue>
 
@@ -355,7 +398,7 @@
         <signal_cue_instantly cue="JKEOC_Settings_RecordReport" param="['EMPIRE EXECUTIVE', $reporttext]" />
         <show_notification text="'REPORT: Empire Executive Report saved to Tips.'" timeout="7s" />
         <raise_lua_event name="'JKEOC_SettingsMenu.report.title'" param="'EMPIRE EXECUTIVE'" /><raise_lua_event name="'JKEOC_SettingsMenu.report.text'" param="$reporttext" /><raise_lua_event name="'JKEOC_SettingsMenu.report.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.report.saved'" />
-        <debug_text text="'[JKEOC][GA17][LUA_REPORT] type=EMPIRE status=SAVED_TO_TIPS'" filter="general" />
+        <debug_text text="'[JKEOC][GA19][LUA_REPORT] type=EMPIRE status=SAVED_TO_TIPS'" filter="general" />
       </actions>
     </cue>
     <cue name="JKEOC_Settings_ReportStation" instantiate="true" namespace="this">
@@ -406,10 +449,10 @@
         <do_while value="global.$JKEOC_LuaReports.count gt 20">
           <remove_from_list name="global.$JKEOC_LuaReports" exact="global.$JKEOC_LuaReports.{1}" />
         </do_while>
-        <debug_text text="'[JKEOC][GA17][REPORT_FEED] title=%1 retained=%2'.[event.param.{1}, global.$JKEOC_LuaReports.count]" filter="general" />
+        <debug_text text="'[JKEOC][GA19][REPORT_FEED] title=%1 retained=%2'.[event.param.{1}, global.$JKEOC_LuaReports.count]" filter="general" />
       </actions>
     </cue>
     <cue name="JKEOC_Settings_ReturnToEOC" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="1s" /><actions><start_conversation actor="player.computer" conversation="JKSM_EmpireOperations" type="unqueued" /></actions></cue>
-    <cue name="JKEOC_Settings_ClearBackgroundConversation" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="1s" /><actions><cancel_conversation actor="player.computer" /><debug_text text="'[JKEOC][GA17][BACKGROUND_CLOSED]'" filter="general" /></actions></cue>
+    <cue name="JKEOC_Settings_ClearBackgroundConversation" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="1s" /><actions><cancel_conversation actor="player.computer" /><debug_text text="'[JKEOC][GA19][BACKGROUND_CLOSED]'" filter="general" /></actions></cue>
   </cues>
 </mdscript>
