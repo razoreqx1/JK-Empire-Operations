@@ -6,7 +6,7 @@ EOC is an intelligent empire-management advisor for **X4: Foundations**. It obse
 
 ## Current release
 
-**Version 1.7 GA**
+**Version 1.8 GA**
 
 **Supported game versions:** X4: Foundations 8.0 and 9.0
 
@@ -14,7 +14,7 @@ EOC is an intelligent empire-management advisor for **X4: Foundations**. It obse
 
 **Steam Workshop:** [EOC - Executive Operations Center](https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957)
 
-> After loading a save, wait approximately **10 seconds** for EOC to initialize before opening it with **Control + H**. EOC displays an initialization notice immediately and a completion summary when it is ready.
+> After loading a save, wait approximately **10 seconds** for EOC to initialize. Open EOC anywhere with **Control + H**, or from **Dock Interactions** while seated in the Personal Office.
 
 ## What EOC does
 
@@ -31,6 +31,8 @@ EOC is an intelligent empire-management advisor for **X4: Foundations**. It obse
 - Shows action status, completion feedback, and a clear **NEXT STEP** after operational actions.
 - Keeps a completed assignment message visible after the final Pending row is removed.
 - Prevents rapid action-button repetition while an operation is processing.
+- Adds **OPEN EXECUTIVE OPERATIONS CENTER** to Dock Interactions while seated in the Personal Office.
+- Provides a read-only Empire KPI Center with ranked station attention, trends, and operational measures.
 
 ## Player control and safety
 
@@ -47,22 +49,24 @@ EOC does not buy ships, blueprints, variants, or equipment. It does not intentio
 ### Steam Workshop
 
 1. Subscribe on the [Steam Workshop page](https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957).
-2. Allow Steam to download the item.
-3. Start X4 and confirm EOC is enabled under Extensions.
-4. Load a save and wait approximately **10 seconds** for EOC initialization to complete.
-5. Press **Control + H** to open EOC.
+2. Subscribe to the required [UI Extensions and HUD](https://steamcommunity.com/sharedfiles/filedetails/?id=3477279743) dependency if Steam does not add it automatically.
+3. Allow Steam to download both items.
+4. Start X4 and confirm both extensions are enabled.
+5. Load a save and wait approximately **10 seconds** for EOC initialization to complete.
+6. Press **Control + H** anywhere, or use **Dock Interactions** while seated in the Personal Office.
 
 ### Manual installation
 
 1. Download or clone this repository.
 2. Copy `JK_Station_Manager` into the X4 `extensions` directory.
 3. Ensure `content.xml` is directly inside `extensions/JK_Station_Manager`.
-4. Restart X4, enable the extension, load a save, and wait approximately **10 seconds** before opening EOC.
+4. Install and enable [UI Extensions and HUD](https://steamcommunity.com/sharedfiles/filedetails/?id=3477279743).
+5. Restart X4, enable both extensions, load a save, and wait approximately **10 seconds** before opening EOC.
 
 ## First-time setup
 
 1. Load the game and wait for the EOC initialization cycle to finish.
-2. Press **Control + H** and open the EOC Management Window.
+2. Press **Control + H** and open the EOC Management Window. While seated in the Personal Office, you may instead use **Dock Interactions** and select **OPEN EXECUTIVE OPERATIONS CENTER**.
 3. Open **Stations** and review station roles.
 4. Use **Global Settings** to choose Advisor or Managed Trade and the desired ship-assignment authority.
 5. In **Fleet & Logistics**, register suitable unassigned ships and review the status and next-step guidance.
@@ -71,15 +75,15 @@ EOC does not buy ships, blueprints, variants, or equipment. It does not intentio
 
 ## Documentation
 
-- **[EOC 1.7 GA User Guide](docs/EOC_1.7_GA_USER_GUIDE.md)** - current startup, controls, workflows, feedback, navigation, and troubleshooting.
-- **[EOC 1.7 GA Release Notes](docs/RELEASE_NOTES_1.7_GA.md)** - changes introduced in this release.
+- **[EOC 1.8 GA User Guide](docs/EOC_1.8_GA_USER_GUIDE.md)** - current startup, controls, workflows, feedback, navigation, and troubleshooting.
+- **[EOC 1.8 GA Release Notes](docs/RELEASE_NOTES_1.8_GA.md)** - changes introduced in this release.
 - **[Illustrated EOC 1.6 GA New User Guide](docs/EOC_1.6_GA_New_User_Guide.pdf)** - illustrated reference for the core EOC interface and concepts.
 
 ## Repository layout
 
 - `JK_Station_Manager/` - clean runtime extension files required by X4.
-- `docs/EOC_1.7_GA_USER_GUIDE.md` - current player guide.
-- `docs/RELEASE_NOTES_1.7_GA.md` - current GA release summary.
+- `docs/EOC_1.8_GA_USER_GUIDE.md` - current player guide.
+- `docs/RELEASE_NOTES_1.8_GA.md` - current GA release summary.
 - `docs/EOC_1.6_GA_New_User_Guide.pdf` - illustrated core-interface reference.
 - `docs/images/` - public documentation artwork.
 

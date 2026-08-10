@@ -590,14 +590,14 @@ local function createHeader(frame, parentWidth)
     local tabHeight = Helper.scaleY(38)
     local headerHeight = titleHeight + tabHeight
     local usableWidth = parentWidth - 2 * Helper.borderSize
-    local tableWidget = frame:addTable(7, {
+    local tableWidget = frame:addTable(8, {
         tabOrder = 1,
         x = Helper.borderSize,
         y = Helper.borderSize,
         width = usableWidth,
         borderEnabled = true,
     })
-    local columnWidth = math.floor(usableWidth / 7)
+    local columnWidth = math.floor(usableWidth / 8)
 
     tableWidget:setColWidth(1, columnWidth, false)
     tableWidget:setColWidth(2, columnWidth, false)
@@ -605,9 +605,10 @@ local function createHeader(frame, parentWidth)
     tableWidget:setColWidth(4, columnWidth, false)
     tableWidget:setColWidth(5, columnWidth, false)
     tableWidget:setColWidth(6, columnWidth, false)
+    tableWidget:setColWidth(7, columnWidth, false)
 
     local row = tableWidget:addRow(false, { fixed = true })
-    row[1]:setColSpan(7):createText(menu.title, {
+    row[1]:setColSpan(8):createText(menu.title, {
         halign = "center",
         font = Helper.titleFont,
         fontsize = Helper.standardFontSize + 4,
@@ -616,20 +617,22 @@ local function createHeader(frame, parentWidth)
     row = tableWidget:addRow(true, { fixed = true })
     addTabButton(row, 1, "STATIONS", "stations")
     addTabButton(row, 2, "OVERVIEW", "dashboard")
-    addTabButton(row, 3, "FLEET & LOGISTICS", "fleet")
-    addTabButton(row, 4, "DIAGNOSTICS", "diagnostics")
-    addTabButton(row, 5, "CASES", "cases")
-    addTabButton(row, 6, "REPORTS", "reports")
-    addTabButton(row, 7, "GLOBAL SETTINGS", "settings")
+    addTabButton(row, 3, "KPI CENTER", "kpi")
+    addTabButton(row, 4, "FLEET & LOGISTICS", "fleet")
+    addTabButton(row, 5, "DIAGNOSTICS", "diagnostics")
+    addTabButton(row, 6, "CASES", "cases")
+    addTabButton(row, 7, "REPORTS", "reports")
+    addTabButton(row, 8, "GLOBAL SETTINGS", "settings")
 
     local activeColumns = {
         stations = 1,
         dashboard = 2,
-        fleet = 3,
-        diagnostics = 4,
-        cases = 5,
-        reports = 6,
-        settings = 7,
+        kpi = 3,
+        fleet = 4,
+        diagnostics = 5,
+        cases = 6,
+        reports = 7,
+        settings = 8,
     }
     tableWidget:setSelectedRow(2)
     tableWidget:setSelectedCol(activeColumns[menu.activeTab or menu.page] or 2)
@@ -1167,6 +1170,188 @@ local function diagnosticsCenter(tableWidget)
     end
 end
 
+local function kpiStateLabel(score)
+    if score >= 100 then
+        return "CRITICAL"
+    elseif score >= 65 then
+        return "WARNING"
+    elseif score >= 30 then
+        return "WATCH"
+    end
+    return "HEALTHY"
+end
+
+local function buildKpiRows()
+    local rows = {}
+    local healthWeights = {
+        CRITICAL = 100,
+        CHRONIC = 80,
+        RELAPSED = 70,
+        RECURRING = 55,
+        TRANSIENT = 30,
+        MONITORING = 0,
+    }
+    local priorityWeights = { CRITICAL = 35, WARNING = 20, NOTE = 5 }
+    local trendWeights = { WORSENING = 20, IMPROVING = -10, STABLE = 0 }
+
+    for index, station in ipairs(menu.stations or {}) do
+        local name = text(v(station, 1, "Unknown station"))
+        local health = string.upper(text(v(station, 3, "MONITORING")))
+        local trend = string.upper(text(v(station, 4, "STABLE")))
+        local priority = string.upper(text(v(station, 6, "NOTE")))
+        local issues = tonumber(v(station, 8, 0)) or 0
+        local criticalCases = 0
+        local warningCases = 0
+        for _, case in ipairs(menu.cases or {}) do
+            if text(v(case, 1, "")) == name then
+                local severity = string.upper(text(v(case, 2, "")))
+                if severity == "CRITICAL" then
+                    criticalCases = criticalCases + 1
+                elseif severity == "WARNING" then
+                    warningCases = warningCases + 1
+                end
+            end
+        end
+
+        local score = (healthWeights[health] or 15) + (priorityWeights[priority] or 0) +
+            (trendWeights[trend] or 0) + issues * 8 + criticalCases * 30 + warningCases * 15
+        score = math.max(0, math.floor(score))
+        local reasons = {}
+        if criticalCases > 0 then table.insert(reasons, criticalCases .. " critical case(s)") end
+        if warningCases > 0 then table.insert(reasons, warningCases .. " warning case(s)") end
+        if health ~= "MONITORING" then table.insert(reasons, "health " .. health) end
+        if trend == "WORSENING" then table.insert(reasons, "worsening trend") end
+        if issues > 0 then table.insert(reasons, issues .. " active issue(s)") end
+        if #reasons == 0 then table.insert(reasons, "no confirmed operational pressure") end
+
+        table.insert(rows, {
+            index = index,
+            station = station,
+            name = name,
+            role = text(v(station, 2, "UNDEFINED")),
+            health = health,
+            trend = trend,
+            priority = priority,
+            issues = issues,
+            critical = criticalCases,
+            warning = warningCases,
+            score = score,
+            state = kpiStateLabel(score),
+            why = table.concat(reasons, "; "),
+            recommendation = text(v(station, 7, "Continue monitoring.")),
+        })
+    end
+
+    table.sort(rows, function(a, b)
+        if a.score == b.score then return a.name < b.name end
+        return a.score > b.score
+    end)
+    return rows
+end
+
+local function kpiCenter(tableWidget)
+    local rows = buildKpiRows()
+    local counts = { CRITICAL = 0, WARNING = 0, WATCH = 0, HEALTHY = 0 }
+    for _, item in ipairs(rows) do counts[item.state] = counts[item.state] + 1 end
+
+    section(tableWidget, "EMPIRE KPI CENTER")
+    pair(tableWidget, "EMPIRE HEALTH", v(menu.summary, 1, 0), "DIRECTION", v(menu.summary, 2, "STABLE"))
+    pair(tableWidget, "PLAYER STATIONS", #rows, "REQUIRE ATTENTION", counts.CRITICAL + counts.WARNING)
+    pair(tableWidget, "CRITICAL", counts.CRITICAL, "WARNING", counts.WARNING)
+    pair(tableWidget, "WATCH", counts.WATCH, "HEALTHY", counts.HEALTHY)
+
+    local pulse = tableWidget:addRow(false)
+    pulse[1]:setColSpan(4):createText(
+        "EMPIRE PULSE: " .. counts.CRITICAL .. " critical | " .. counts.WARNING .. " warning | " ..
+        counts.WATCH .. " watch | " .. counts.HEALTHY .. " healthy. Highest attention score appears first.",
+        { wordwrap = true }
+    )
+
+    section(tableWidget, "EXECUTIVE ATTENTION QUEUE")
+    if #rows == 0 then
+        pair(tableWidget, "STATUS", "No player stations are currently available.", "NEXT STEP", "Wait for the EOC property scan.")
+        return
+    end
+
+    local header = tableWidget:addRow(false)
+    header[1]:createText("RANK / STATE")
+    header[2]:createText("STATION")
+    header[3]:createText("HEALTH / TREND")
+    header[4]:createText("SCORE / ISSUES")
+
+    for rank = 1, math.min(#rows, 10) do
+        local item = rows[rank]
+        local selectedItem = item
+        local row = tableWidget:addRow(true)
+        row[1]:createText(rank .. ". " .. item.state)
+        addButton(row, 2, item.name, function()
+            menu.kpiSelected = selectedItem.index
+            menu.refresh()
+        end, true)
+        row[3]:createText(item.health .. " / " .. item.trend)
+        row[4]:createText(item.score .. " / " .. item.issues)
+    end
+
+    local selectedIndex = menu.kpiSelected or rows[1].index
+    local selected = rows[1]
+    for _, item in ipairs(rows) do
+        if item.index == selectedIndex then selected = item break end
+    end
+    menu.kpiSelected = selected.index
+
+    section(tableWidget, "FOCUS: " .. selected.name)
+    pair(tableWidget, "ATTENTION STATE", selected.state, "ATTENTION SCORE", selected.score)
+    pair(tableWidget, "ROLE", selected.role, "PRIORITY", selected.priority)
+    pair(tableWidget, "CRITICAL CASES", selected.critical, "WARNING CASES", selected.warning)
+
+    local whyRow = tableWidget:addRow(false)
+    whyRow[1]:setColSpan(4):createText("WHY THIS RANKS HERE: " .. selected.why, { wordwrap = true })
+    local actionRow = tableWidget:addRow(false)
+    actionRow[1]:setColSpan(4):createText("RECOMMENDED NEXT ACTION: " .. selected.recommendation, { wordwrap = true })
+
+    local row = tableWidget:addRow(true)
+    addButton(row, 1, "OPEN STATION", function()
+        menu.selected = selected.index
+        captureNavigation("KPI CENTER")
+        menu.page = "stations"
+        menu.activeTab = "stations"
+        menu.refresh()
+    end, true)
+    addButton(row, 2, "OPEN STATION CASES", function()
+        menu.selected = selected.index
+        captureNavigation("KPI CENTER")
+        menu.caseScope = "station"
+        menu.caseSeverity = "all"
+        menu.selectedCase = 1
+        menu.casePage = 1
+        menu.page = "cases"
+        menu.activeTab = "cases"
+        menu.refresh()
+    end, selected.issues > 0 or selected.critical > 0 or selected.warning > 0)
+    addButton(row, 3, "OPEN DIAGNOSTICS", function()
+        menu.selected = selected.index
+        captureNavigation("KPI CENTER")
+        menu.diagnosticView = "recovery"
+        menu.page = "diagnostics"
+        menu.activeTab = "diagnostics"
+        menu.refresh()
+    end, true)
+    addButton(row, 4, "RUN EMPIRE ANALYSIS", function()
+        if not menu.analysisRunning then
+            menu.analysisRunning = true
+            menu.analysisStatus = "ANALYSIS RUNNING"
+            menu.refresh()
+            raise("analysis.run", {})
+        end
+    end, not menu.analysisRunning)
+
+    local guide = tableWidget:addRow(false)
+    guide[1]:setColSpan(4):createText(
+        "SCORING GUIDE: confirmed cases, persistent health states, worsening trends, priority, and issue count raise attention. " ..
+        "Scores rank focus; they do not authorize or perform any operation.",
+        { wordwrap = true }
+    )
+end
 local function dashboard(tableWidget)
     section(tableWidget, "EXECUTIVE INTELLIGENCE OVERVIEW")
     pair(
@@ -1844,6 +2029,8 @@ function menu.create()
 
         if menu.page == "dashboard" then
             dashboard(tableWidget)
+        elseif menu.page == "kpi" then
+            kpiCenter(tableWidget)
         elseif menu.page == "cases" then
             casesCenter(tableWidget)
         elseif menu.page == "reports" then

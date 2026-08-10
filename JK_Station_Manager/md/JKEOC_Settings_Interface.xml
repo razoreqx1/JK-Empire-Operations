@@ -2,7 +2,7 @@
 <mdscript name="JKEOC_Settings_Interface" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <cues>
     <cue name="JKEOC_Settings_Open" instantiate="true" namespace="this">
-      <conditions><event_conversation_next_section actor="player.computer" section="JKEOC_Settings_Open" /></conditions>
+      <conditions><check_any><event_conversation_next_section actor="player.computer" section="JKEOC_Settings_Open" /><event_ui_triggered screen="'JKEOC_PersonalOfficeAccess'" /></check_any></conditions>
       <actions>
         <do_if value="not global.$JKEOC_B73TradeMode?"><set_value name="global.$JKEOC_B73TradeMode" exact="'ADVISOR'" /></do_if>
         <do_if value="not global.$JKEOC_B73Offers?"><set_value name="global.$JKEOC_B73Offers" exact="[]" /></do_if>
