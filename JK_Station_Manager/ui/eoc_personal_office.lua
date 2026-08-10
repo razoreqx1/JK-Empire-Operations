@@ -56,7 +56,7 @@ local function init()
             integration.callbackID
         )
     else
-        DebugError("[JKEOC][GA19][LUA_ERROR] Personal Office callback unavailable")
+        DebugError("[JKEOC][GA20][LUA_ERROR] Personal Office callback unavailable")
     end
 end
 

@@ -5,7 +5,7 @@
       <conditions><event_game_loaded /></conditions>
       <actions>
         <show_notification text="'EOC INITIALIZING — please wait approximately 10 seconds before opening EOC.'" timeout="10s" />
-        <debug_text text="'[JKEOC][GA19][INITIALIZING] wait=10s lifecycle=preserved'" filter="general" />
+        <debug_text text="'[JKEOC][GA20][INITIALIZING] wait=10s lifecycle=preserved'" filter="general" />
       </actions>
     </cue>
     <!-- Persistent, observation-only executive station knowledge. -->
@@ -13,8 +13,8 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-      <show_notification text="'EOC 1.9 GA | Executive Operations Center Ready'" timeout="12s" />
-      <debug_text text="'[JKEOC][GA19][STARTUP] version=1.9 build=119 ga=1 compatibility=x4_8_and_9 notification=shown'" filter="general" />
+      <show_notification text="'EOC 2.0 GA | Executive Operations Center Ready'" timeout="12s" />
+      <debug_text text="'[JKEOC][GA20][STARTUP] version=2.0 build=122 ga=1 compatibility=x4_8_and_9 notification=shown'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>

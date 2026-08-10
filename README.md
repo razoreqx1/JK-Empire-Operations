@@ -6,7 +6,7 @@ EOC is an intelligent empire-management advisor for **X4: Foundations**. It obse
 
 ## Current release
 
-**Version 1.9 GA**
+**Version 2.0 GA**
 
 **Supported game versions:** X4: Foundations 8.0 and 9.0
 
@@ -35,6 +35,10 @@ EOC is an intelligent empire-management advisor for **X4: Foundations**. It obse
 - Verifies recovery with a fresh rescan and reports RESOLVED, IMPROVING, UNCHANGED, or WORSENING.
 - Keeps the selected station visibly black until another station is selected.
 - Holds asynchronous and one-shot controls blacked out until EOC returns a terminal result.
+- Leads Overview, KPI, Fleet, Stations, Cases, Reports, and Settings with a plain-language conclusion and one next action.
+- Keeps supporting evidence available without forcing players through dense technical detail.
+- Treats import-only production checks as not applicable and avoids unsupported construction recommendations.
+- Labels evidence as an EOC scan snapshot and refreshes it through verification.
 
 ## Player control and safety
 
@@ -75,15 +79,15 @@ EOC does not buy ships, blueprints, variants, or equipment. It does not intentio
 
 ## Documentation
 
-- **[EOC 1.9 GA User Guide](docs/EOC_1.9_GA_USER_GUIDE.md)** - current startup, controls, workflows, feedback, navigation, and troubleshooting.
-- **[EOC 1.9 GA Release Notes](docs/RELEASE_NOTES_1.9_GA.md)** - changes introduced in this release.
+- **[EOC 2.0 GA User Guide](docs/EOC_2.0_GA_USER_GUIDE.md)** - current startup, controls, workflows, feedback, navigation, and troubleshooting.
+- **[EOC 2.0 GA Release Notes](docs/RELEASE_NOTES_2.0_GA.md)** - changes introduced in this release.
 - **[Illustrated EOC 1.6 GA New User Guide](docs/EOC_1.6_GA_New_User_Guide.pdf)** - illustrated reference for the core EOC interface and concepts.
 
 ## Repository layout
 
 - `JK_Station_Manager/` - clean runtime extension files required by X4.
-- `docs/EOC_1.9_GA_USER_GUIDE.md` - current player guide.
-- `docs/RELEASE_NOTES_1.9_GA.md` - current GA release summary.
+- `docs/EOC_2.0_GA_USER_GUIDE.md` - current player guide.
+- `docs/RELEASE_NOTES_2.0_GA.md` - current GA release summary.
 - `docs/EOC_1.6_GA_New_User_Guide.pdf` - illustrated core-interface reference.
 - `docs/images/` - public documentation artwork.
 
