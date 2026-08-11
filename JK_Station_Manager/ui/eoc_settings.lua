@@ -1,5 +1,37 @@
 ---@diagnostic disable: undefined-global, undefined-field
 
+local ffi = require("ffi")
+local C = ffi.C
+
+ffi.cdef[[
+    typedef struct {
+        BuildTaskID id;
+        UniverseID buildingcontainer;
+        UniverseID component;
+        const char* macro;
+        const char* factionid;
+        UniverseID buildercomponent;
+        int64_t price;
+        bool ismissingresources;
+        uint32_t queueposition;
+    } BuildTaskInfo;
+    typedef struct {
+        BlacklistTypeID* blacklists;
+        uint32_t numblacklists;
+        FightRuleTypeID* fightrules;
+        uint32_t numfightrules;
+        const char* paintmodwareid;
+    } AddBuildTask6Container;
+    BuildTaskID AddBuildTask6(UniverseID containerid, UniverseID defensibleid, const char* macroname, UILoadout2 uiloadout, int64_t price, CrewTransferInfo2 crewtransfer, bool immediate, const char* customname, AddBuildTask6Container* additionalinfo);
+    bool CanGenerateValidLoadout(UniverseID containerid, const char* macroname);
+    void GenerateShipLoadout2(UILoadout2* result, UniverseID containerid, UniverseID shipid, const char* macroname, float level);
+    void GenerateShipLoadoutCounts2(UILoadoutCounts2* result, UniverseID containerid, UniverseID shipid, const char* macroname, float level);
+    uint32_t GetNumPlayerShipBuildTasks(bool isinprogress, bool includeupgrade);
+    uint32_t GetPlayerShipBuildTasks(BuildTaskInfo* result, uint32_t resultlen, bool isinprogress, bool includeupgrade);
+    uint32_t GetNumBuildTasks(UniverseID containerid, UniverseID buildmoduleid, bool isinprogress, bool includeupgrade);
+    UniverseID GetPlayerID(void);
+]]
+
 local menu = {
     name = "JKEOC_SettingsMenu",
     title = "EOC - EXECUTIVE OPERATIONS CENTER",
@@ -78,6 +110,203 @@ local function formatNumber(value)
     return formatted
 end
 
+local function existingShipOrder(station, cargo)
+    for _, record in ipairs(menu.shipOrderRecords or {}) do
+        if text(v(record, 1, "")) == station and text(v(record, 2, "")) == cargo then
+            return record
+        end
+    end
+    return nil
+end
+
+local function queueEOCShipOrder(wharfId, macro, customName)
+    local ok, success, result, queued, building, rawtask = pcall(function()
+        if not wharfId or tostring(wharfId) == "" or not macro or macro == "" then
+            return false, "Missing wharf or ship blueprint."
+        end
+        local wharf = ConvertStringTo64Bit(tostring(wharfId))
+        if wharf == 0 then
+            return false, "The recommended player wharf is no longer available."
+        end
+        if not GetComponentData(wharf, "isplayerowned") then
+            return false, "The recommended wharf is no longer player-owned."
+        end
+        if not C.CanGenerateValidLoadout(wharf, macro) then
+            return false, "X4 could not generate a valid owned-blueprint loadout at this wharf."
+        end
+        local plan = Helper.getLoadoutHelper2(C.GenerateShipLoadout2, C.GenerateShipLoadoutCounts2, "UILoadout2", wharf, 0, macro, 0.5)
+        if not plan then
+            return false, "X4 returned no valid ship loadout."
+        end
+        local additionalinfo = ffi.new("AddBuildTask6Container")
+        local crewtransfer = ffi.new("CrewTransferInfo2")
+        local callok, taskid = pcall(C.AddBuildTask6, wharf, 0, macro, plan, 0, crewtransfer, false, customName or "", additionalinfo)
+        Helper.ffiClearNewHelper()
+        if not callok then
+            error(taskid)
+        end
+        -- Native player-wharf behavior: zero vendor payment, normal resource consumption, and captain/crew definitions preserved directly from the generated UILoadout2; the empty transfer means no separately hired or transferred crew.
+        if taskid == 0 then
+            return false, "X4 rejected the build task. Check wharf resources and build capacity."
+        end
+        local queued = tonumber(C.GetNumBuildTasks(wharf, 0, false, false)) or 0
+        local building = tonumber(C.GetNumBuildTasks(wharf, 0, true, false)) or 0
+        return true, tostring(taskid), queued, building, taskid
+    end)
+    if not ok then
+        return false, "Internal X4 order call failed: " .. tostring(success)
+    end
+    return success, result, queued, building, rawtask
+end
+
+local FLEET_TEMPLATE_BB = "$JKEOC_FleetBuildTemplates"
+local FLEET_MAX_SHIPS = 100
+local FLEET_MAX_PER_ENTRY = 50
+
+local function copySerializable(value)
+    if type(value) ~= "table" then return value end
+    local result = {}
+    for key, item in pairs(value) do
+        if type(key) == "number" or type(key) == "string" then
+            local kind = type(item)
+            if kind == "number" or kind == "string" or kind == "boolean" or kind == "table" then result[key] = copySerializable(item) end
+        end
+    end
+    return result
+end
+
+local function fleetTemplateStore()
+    local store
+    pcall(function() store = GetNPCBlackboard(ConvertStringTo64Bit(tostring(C.GetPlayerID())), FLEET_TEMPLATE_BB) end)
+    if type(store) ~= "table" then store = menu.fleetTemplateCache or {} end
+    menu.fleetTemplateCache = store
+    return store
+end
+
+local function saveFleetTemplateStore(store)
+    menu.fleetTemplateCache = store
+    pcall(function() SetNPCBlackboard(ConvertStringTo64Bit(tostring(C.GetPlayerID())), FLEET_TEMPLATE_BB, store) end)
+end
+
+local function fleetShipCount(template)
+    local count = 0
+    for _, entry in ipairs((template and template.entries) or {}) do count = count + math.max(0, tonumber(entry.amount) or 0) end
+    return count
+end
+
+local function findFleetTemplate(name)
+    for index, template in ipairs(fleetTemplateStore()) do
+        if template.name == name then return template, index end
+    end
+    return nil
+end
+
+local function storeFleetTemplate(draft, originalName)
+    local name = tostring((draft and draft.name) or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local total = fleetShipCount(draft)
+    if name == "" then return false, "Enter a fleet template name." end
+    if total < 1 then return false, "Add at least one ship before saving." end
+    if total > FLEET_MAX_SHIPS then return false, "A fleet template is limited to " .. FLEET_MAX_SHIPS .. " ships." end
+    local store = fleetTemplateStore()
+    for index = #store, 1, -1 do
+        if store[index].name == name or (originalName and store[index].name == originalName) then table.remove(store, index) end
+    end
+    store[#store + 1] = { name = name, entries = copySerializable(draft.entries) }
+    table.sort(store, function(a, b) return tostring(a.name) < tostring(b.name) end)
+    saveFleetTemplateStore(store)
+    return true, name
+end
+
+local function deleteFleetTemplate(name)
+    local store = fleetTemplateStore()
+    for index = #store, 1, -1 do if store[index].name == name then table.remove(store, index) end end
+    saveFleetTemplateStore(store)
+end
+
+local function allFleetYards()
+    local yards, seen = {}, {}
+    for _, route in ipairs(menu.shipWharfRoutes or {}) do
+        local id = tostring(v(route, 10, ""))
+        if id ~= "" then
+            local yard = seen[id]
+            if not yard then
+                yard = { id=id, name=text(v(route,2,"Unknown shipyard")), sector=text(v(route,3,"Unknown sector")), queued=tonumber(v(route,6,0)) or 0, building=tonumber(v(route,7,0)) or 0, macros={} }
+                seen[id] = yard
+                yards[#yards + 1] = yard
+            end
+            yard.macros[tostring(v(route, 9, ""))] = true
+        end
+    end
+    return yards
+end
+
+local function computeFleetBuildPlan(template, distribute)
+    local plan = { name=template.name, distribute=distribute, jobs={}, skipped={}, total=0, yards=0 }
+    local yards = allFleetYards()
+    if not distribute then
+        local candidates = {}
+        for _, yard in ipairs(yards) do
+            local valid = true
+            for _, entry in ipairs(template.entries or {}) do if not yard.macros[tostring(entry.macro)] then valid=false break end end
+            if valid then candidates[#candidates + 1] = yard end
+        end
+        table.sort(candidates, function(a,b) return (a.queued+a.building) < (b.queued+b.building) end)
+        local yard = candidates[1]
+        if not yard then plan.error="No single player shipyard can build every hull in this template. Choose distributed construction."; return plan end
+        for _, entry in ipairs(template.entries or {}) do
+            local amount=math.max(1,math.min(FLEET_MAX_PER_ENTRY,tonumber(entry.amount) or 1))
+            plan.jobs[#plan.jobs+1]={yard=yard,entry=entry,amount=amount}
+            plan.total=plan.total+amount
+        end
+        plan.yards=1
+        return plan
+    end
+    local used, assignedLoad = {}, {}
+    for _, entry in ipairs(template.entries or {}) do
+        local candidates={}
+        for _, yard in ipairs(yards) do if yard.macros[tostring(entry.macro)] then candidates[#candidates+1]=yard end end
+        if #candidates==0 then
+            plan.skipped[#plan.skipped+1]=entry.name
+        else
+            local amount=math.max(1,math.min(FLEET_MAX_PER_ENTRY,tonumber(entry.amount) or 1))
+            local buckets={}
+            for _=1,amount do
+                table.sort(candidates,function(a,b)
+                    local al=(assignedLoad[a.id] or 0)+a.queued+a.building
+                    local bl=(assignedLoad[b.id] or 0)+b.queued+b.building
+                    if al==bl then return a.name<b.name end
+                    return al<bl
+                end)
+                local yard=candidates[1]
+                assignedLoad[yard.id]=(assignedLoad[yard.id] or 0)+1
+                used[yard.id]=true
+                local key=yard.id.."|"..tostring(entry.macro)
+                if not buckets[key] then buckets[key]={yard=yard,entry=entry,amount=0};plan.jobs[#plan.jobs+1]=buckets[key] end
+                buckets[key].amount=buckets[key].amount+1
+                plan.total=plan.total+1
+            end
+        end
+    end
+    for _ in pairs(used) do plan.yards=plan.yards+1 end
+    if plan.total==0 then plan.error="No compatible player shipyard can build any ship in this template." end
+    return plan
+end
+
+local function executeFleetBuildPlan(plan)
+    if not plan or plan.submitted then return false,"This preview has already been submitted." end
+    plan.submitted=true
+    local accepted,failed=0,{}
+    for _,job in ipairs(plan.jobs or {}) do
+        for _=1,job.amount do
+            local success,result=queueEOCShipOrder(job.yard.id,job.entry.macro,"")
+            if success then accepted=accepted+1 else failed[#failed+1]=job.entry.name.." at "..job.yard.name..": "..tostring(result) end
+        end
+    end
+    plan.accepted=accepted
+    plan.failed=failed
+    if accepted==plan.total then return true,"X4 accepted all "..accepted.." fleet build task(s). Player shipyards now control resources and construction." end
+    return false,"X4 accepted "..accepted.." of "..plan.total.." task(s). "..#failed.." failed; no failed task was retried."
+end
 local function actionState(action)
     menu.actions[action] = menu.actions[action] or {
         running = false,
@@ -434,7 +663,7 @@ local function init()
     if Helper and Helper.registerMenu then
         Helper.registerMenu(menu)
     else
-    DebugError("[JKEOC][GA20][LUA_ERROR] Helper.registerMenu unavailable")
+    DebugError("[JKEOC][B144][LUA_ERROR] Helper.registerMenu unavailable")
     end
 
     AddUITriggeredEvent(menu.name, "INIT", nil)
@@ -489,6 +718,11 @@ function menu.onShowMenu()
     menu.stabilizationFindings = tonumber(v(menu.param, 16, 0)) or 0
     menu.mailboxStatus = v(menu.param, 17, { "READY", "No engineering probe has been submitted." })
     menu.proofStatus = v(menu.param, 18, "READY")
+    menu.shipBlueprints = v(menu.param, 19, {})
+    menu.shipWharfRoutes = v(menu.param, 20, {})
+    menu.shipOrderRecords = v(menu.param, 21, {})
+    menu.shipOrderState = menu.shipOrderState or {}
+    menu.pendingShipQueueRefresh = nil
     menu.probesRun = {}
     menu.lastProbeVerb = nil
     menu.pendingVerificationKey = nil
@@ -1125,6 +1359,105 @@ local function casesCenter(tableWidget)
     end
 end
 
+
+local function fleetBuildManager(tableWidget)
+    menu.fleetManager=menu.fleetManager or {mode="list",size="ALL",catalogPage=1,catalogSearch="",distribute=false}
+    local state=menu.fleetManager
+    local row
+    section(tableWidget,"FLEET BUILD MANAGER — EOC 2.2 GA")
+    row=tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("Create named fleet-production templates entirely inside EOC. Orders use owned blueprints, X4-generated compatible loadouts, normal resources, and separate Preview and Confirm actions.",{wordwrap=true})
+    if state.mode=="list" then
+        local templates=fleetTemplateStore()
+        row=tableWidget:addRow(true);row[1]:setColSpan(4)
+        addButton(row,1,"CREATE NEW FLEET TEMPLATE",function()
+            state.mode="edit";state.originalName=nil;state.draft={name="New Fleet "..tostring(#templates+1),entries={}};state.result=nil;state.plan=nil;menu.refresh()
+        end,true)
+        section(tableWidget,"SAVED FLEET TEMPLATES  |  "..#templates)
+        if #templates==0 then row=tableWidget:addRow(false);row[1]:setColSpan(4):createText("No EOC fleet templates are saved in this game.")
+        else
+            for _,template in ipairs(templates) do
+                row=tableWidget:addRow(true);row[1]:setColSpan(2):createText(template.name,{wordwrap=true});row[3]:createText(fleetShipCount(template).." SHIP(S)")
+                addButton(row,4,"OPEN",function()state.selected=template.name;state.mode="detail";state.plan=nil;state.result=nil;state.deleteConfirm=false;menu.refresh()end,true)
+            end
+        end
+        return
+    end
+    if state.mode=="edit" then
+        local draft=state.draft or {name="New Fleet",entries={}};state.draft=draft
+        section(tableWidget,state.originalName and "EDIT FLEET TEMPLATE" or "NEW FLEET TEMPLATE")
+        row=tableWidget:addRow(true);row[1]:createText("NAME")
+        row[2]:setColSpan(3):createEditBox({height=Helper.standardButtonHeight}):setText(draft.name or "")
+        row[2].handlers.onEditBoxDeactivated=function(_,entered)draft.name=tostring(entered or "")end
+        section(tableWidget,"FLEET CONTENTS  |  "..fleetShipCount(draft).." OF "..FLEET_MAX_SHIPS.." SHIPS")
+        if #(draft.entries or {})==0 then row=tableWidget:addRow(false);row[1]:setColSpan(4):createText("No ships added. Use the owned-blueprint catalog below.")
+        else
+            for index,entry in ipairs(draft.entries) do
+                row=tableWidget:addRow(true);row[1]:setColSpan(2):createText(entry.name.." ("..entry.size..")")
+                addButton(row,3,"ADD 1 — NOW "..entry.amount,function()entry.amount=math.min(FLEET_MAX_PER_ENTRY,(entry.amount or 1)+1);state.result=nil;menu.refresh()end,fleetShipCount(draft)<FLEET_MAX_SHIPS)
+                addButton(row,4,"REMOVE 1",function()entry.amount=math.max(0,(entry.amount or 1)-1);if entry.amount==0 then table.remove(draft.entries,index) end;state.result=nil;menu.refresh()end,true)
+            end
+        end
+        section(tableWidget,"ADD OWNED BLUEPRINT")
+        row=tableWidget:addRow(true);row[1]:createText("SEARCH SHIP NAME")
+        row[2]:setColSpan(2):createEditBox({height=Helper.standardButtonHeight}):setText(state.catalogSearch or "")
+        row[2].handlers.onEditBoxDeactivated=function(_,entered)state.catalogSearch=tostring(entered or "");state.catalogPage=1;menu.refresh()end
+        addButton(row,4,"CLEAR SEARCH",function()state.catalogSearch="";state.catalogPage=1;menu.refresh()end,(state.catalogSearch or "")~="")
+        row=tableWidget:addRow(true)
+        for column,size in ipairs({"ALL","S","M","L"}) do addModeButton(row,column,(state.size==size and "ACTIVE: " or "")..size,state.size==size,true,function()state.size=size;state.catalogPage=1;menu.refresh()end) end
+        local catalog={}
+        local search=string.lower(tostring(state.catalogSearch or ""))
+        for _,blueprint in ipairs(menu.shipBlueprints or {}) do
+            local size=text(v(blueprint,2,"UNKNOWN")):upper()
+            local display=string.lower(text(v(blueprint,1,"")))
+            local macro=string.lower(text(v(blueprint,3,"")))
+            if (state.size=="ALL" or state.size==size) and (search=="" or string.find(display,search,1,true) or string.find(macro,search,1,true)) then catalog[#catalog+1]=blueprint end
+        end
+        table.sort(catalog,function(a,b)return text(v(a,1,""))<text(v(b,1,""))end)
+        if #catalog==0 then row=tableWidget:addRow(false);row[1]:setColSpan(4):createText("NO OWNED SHIP BLUEPRINTS MATCH: "..tostring(state.catalogSearch or ""),{wordwrap=true}) end
+        local perPage=6;local pages=math.max(1,math.ceil(#catalog/perPage));state.catalogPage=clamp(state.catalogPage or 1,1,pages);local first=(state.catalogPage-1)*perPage+1
+        for index=first,math.min(#catalog,first+perPage-1) do
+            local blueprint=catalog[index];row=tableWidget:addRow(true);row[1]:setColSpan(3):createText(text(v(blueprint,1,"Owned ship")).." ("..text(v(blueprint,2,"?"))..")",{wordwrap=true})
+            addButton(row,4,"ADD ONE",function()
+                local macro=text(v(blueprint,3,""));local found
+                for _,existing in ipairs(draft.entries) do if existing.macro==macro then found=existing break end end
+                if found then found.amount=math.min(FLEET_MAX_PER_ENTRY,found.amount+1) else draft.entries[#draft.entries+1]={name=text(v(blueprint,1,"Owned ship")),size=text(v(blueprint,2,"?")),macro=macro,amount=1} end
+                state.result=nil;menu.refresh()
+            end,fleetShipCount(draft)<FLEET_MAX_SHIPS)
+        end
+        if pages>1 then
+            row=tableWidget:addRow(true);row[1]:setColSpan(2);addButton(row,1,"PREVIOUS BLUEPRINT PAGE",function()state.catalogPage=math.max(1,state.catalogPage-1);menu.refresh()end,state.catalogPage>1)
+            row[3]:setColSpan(2);addButton(row,3,"NEXT BLUEPRINT PAGE  "..state.catalogPage.." / "..pages,function()state.catalogPage=math.min(pages,state.catalogPage+1);menu.refresh()end,state.catalogPage<pages)
+        end
+        row=tableWidget:addRow(true);row[1]:setColSpan(2)
+        addButton(row,1,"SAVE FLEET TEMPLATE",function()local success,result=storeFleetTemplate(draft,state.originalName);state.result=result;if success then state.selected=result;state.mode="detail";state.draft=nil;state.originalName=nil end;menu.refresh()end,fleetShipCount(draft)>0)
+        row[3]:setColSpan(2);addButton(row,3,"CANCEL — RETURN TO TEMPLATES",function()state.mode="list";state.draft=nil;state.originalName=nil;state.result=nil;menu.refresh()end,true)
+        if state.result then row=tableWidget:addRow(false);row[1]:setColSpan(4):createText("STATUS: "..state.result,{wordwrap=true}) end
+        return
+    end
+    local template=findFleetTemplate(state.selected)
+    if not template then state.mode="list";state.selected=nil;state.plan=nil;menu.refresh();return end
+    section(tableWidget,"FLEET TEMPLATE — "..template.name)
+    for _,entry in ipairs(template.entries or {}) do pair(tableWidget,entry.name,entry.size,"QUANTITY",entry.amount) end
+    row=tableWidget:addRow(true);row[1]:setColSpan(2);addButton(row,1,"EDIT TEMPLATE",function()state.mode="edit";state.originalName=template.name;state.draft=copySerializable(template);state.plan=nil;state.result=nil;menu.refresh()end,true)
+    row[3]:setColSpan(2);addButton(row,3,state.deleteConfirm and "CONFIRM DELETE TEMPLATE" or "DELETE TEMPLATE",function()if state.deleteConfirm then deleteFleetTemplate(template.name);state.mode="list";state.selected=nil;state.deleteConfirm=false;state.plan=nil;state.result=nil else state.deleteConfirm=true end;menu.refresh()end,true)
+    section(tableWidget,"BUILD CONTROL")
+    row=tableWidget:addRow(true);row[1]:setColSpan(2);addModeButton(row,1,(state.distribute and "" or "ACTIVE: ").."ONE COMPATIBLE SHIPYARD",not state.distribute,true,function()state.distribute=false;state.plan=nil;state.result=nil;menu.refresh()end)
+    row[3]:setColSpan(2);addModeButton(row,3,(state.distribute and "ACTIVE: " or "").."SPREAD ACROSS COMPATIBLE SHIPYARDS",state.distribute,true,function()state.distribute=true;state.plan=nil;state.result=nil;menu.refresh()end)
+    row=tableWidget:addRow(true);row[1]:setColSpan(4);addButton(row,1,"PREVIEW FLEET BUILD — "..fleetShipCount(template).." SHIPS",function()state.plan=computeFleetBuildPlan(template,state.distribute==true);state.result=state.plan.error;menu.refresh()end,true)
+    local plan=state.plan
+    if plan then
+        section(tableWidget,"FLEET BUILD PREVIEW")
+        row=tableWidget:addRow(false);row[1]:setColSpan(4):createText("PLAN: "..plan.total.." ship(s) across "..plan.yards.." player shipyard(s). Preview does not place orders.",{wordwrap=true})
+        for _,job in ipairs(plan.jobs or {}) do pair(tableWidget,job.yard.name,job.yard.sector,job.entry.name,job.amount) end
+        if #(plan.skipped or {})>0 then row=tableWidget:addRow(false);row[1]:setColSpan(4):createText("SKIPPED — NO COMPATIBLE PLAYER YARD: "..table.concat(plan.skipped,", "),{wordwrap=true}) end
+        row=tableWidget:addRow(true);row[1]:setColSpan(4);addButton(row,1,plan.submitted and "FLEET ORDER SUBMITTED — LOCKED" or "CONFIRM: BUILD THIS FLEET",function()
+            local success,result=executeFleetBuildPlan(plan);state.result=result;raise(success and "fleetbuild.queued" or "fleetbuild.partial",{name=template.name,accepted=plan.accepted or 0,requested=plan.total or 0});menu.refresh()
+        end,not plan.error and plan.total>0 and not plan.submitted)
+    end
+    if state.result then row=tableWidget:addRow(false);row[1]:setColSpan(4):createText("STATUS: "..state.result,{wordwrap=true}) end
+    row=tableWidget:addRow(true);row[1]:setColSpan(4);addButton(row,1,"RETURN TO SAVED FLEET TEMPLATES",function()state.mode="list";state.plan=nil;state.result=nil;state.deleteConfirm=false;menu.refresh()end,true)
+end
 local function fleetCenter(tableWidget)
     local station = selectedStation()
     local stationName = text(v(station, 1, "SELECTED STATION"))
@@ -1160,6 +1493,8 @@ local function fleetCenter(tableWidget)
         ships = "REGISTERED AVAILABLE SHIPS",
         offers = "EOC-OWNED TRADE OFFERS",
         pending = "PENDING ASSIGNMENTS",
+        recommendations = "SHIP RECOMMENDATIONS",
+        fleetbuild = "FLEET MANAGEMENT",
     }
     local fleetStatus = tableWidget:addRow(false)
     fleetStatus[1]:setColSpan(4):createText(
@@ -1195,12 +1530,27 @@ local function fleetCenter(tableWidget)
     end)
 
     row = tableWidget:addRow(true)
+    row[1]:setColSpan(2)
+    addModeButton(row, 1, (menu.fleetView == "recommendations" and "ACTIVE: " or "") .. "DOES A STATION NEED A SHIP?", menu.fleetView == "recommendations", true, function()
+        selectFleetView("recommendations")
+    end)
+    row[3]:setColSpan(2)
+    addModeButton(row, 3, (menu.fleetView == "fleetbuild" and "ACTIVE: " or "") .. "FLEET MANAGEMENT", menu.fleetView == "fleetbuild", true, function()
+        selectFleetView("fleetbuild")
+    end)
+
+    row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
     addButton(row, 1, "CLEAR FILTERS", function()
         menu.fleetScope = "global"
         menu.fleetPage = 1
         menu.refresh()
     end, menu.fleetScope ~= "global")
+
+    if menu.fleetView == "fleetbuild" then
+        fleetBuildManager(tableWidget)
+        return
+    end
 
     if menu.fleetView == "stations" then
         for _, profile in ipairs(menu.stations) do
@@ -1233,6 +1583,67 @@ local function fleetCenter(tableWidget)
                 })
             end
         end
+    elseif menu.fleetView == "recommendations" then
+        local function blueprintMatchesCargo(blueprint, cargo, size)
+            local blueprintSize = text(v(blueprint, 2, "")):upper()
+            local macroId = text(v(blueprint, 3, "")):lower()
+            local roleMatch = (cargo == "CONTAINER" and macroId:find("_trans_", 1, true)) or
+                (cargo == "SOLID" and macroId:find("_miner_solid_", 1, true)) or
+                (cargo == "LIQUID" and macroId:find("_miner_liquid_", 1, true))
+            return roleMatch and blueprintSize == size
+        end
+        local function findBestWharf(caseStation, macroId)
+            local best, bestScore
+            for _, route in ipairs(menu.shipWharfRoutes) do
+                if text(v(route, 4, "")) == caseStation and text(v(route, 9, "")) == macroId then
+                    local distance = tonumber(v(route, 5, -1)) or -1
+                    local queued = tonumber(v(route, 6, 0)) or 0
+                    local inprogress = tonumber(v(route, 7, 0)) or 0
+                    local distanceScore = distance >= 0 and distance or 9999
+                    local score = distanceScore * 10000 + queued + inprogress
+                    if not bestScore or score < bestScore then best, bestScore = route, score end
+                end
+            end
+            return best, bestScore
+        end
+        local function findBestLogisticsOption(caseStation, cargo, size)
+            local firstOwned, bestBlueprint, bestWharf, bestScore
+            for _, blueprint in ipairs(menu.shipBlueprints) do
+                if blueprintMatchesCargo(blueprint, cargo, size) then
+                    firstOwned = firstOwned or blueprint
+                    local wharf, score = findBestWharf(caseStation, text(v(blueprint, 3, "")))
+                    if wharf and (not bestScore or score < bestScore) then
+                        bestBlueprint, bestWharf, bestScore = blueprint, wharf, score
+                    end
+                end
+            end
+            return bestBlueprint or firstOwned, bestWharf
+        end
+        local seen = {}
+        for _, case in ipairs(menu.cases) do
+            local caseStation = text(v(case, 1, "Unknown station"))
+            local cargo = text(v(case, 12, "UNKNOWN")):upper()
+            local compatible = tonumber(v(case, 24, 0)) or 0
+            local current = tonumber(v(case, 8, 0)) or 0
+            local target = tonumber(v(case, 9, 0)) or 0
+            local supportedCargo = cargo == "CONTAINER" or cargo == "SOLID" or cargo == "LIQUID"
+            local key = caseStation .. "|" .. cargo
+            if not seen[key] and supportedCargo and compatible == 0 and target > current and
+                (menu.fleetScope == "global" or caseStation == stationName) then
+                seen[key] = true
+                local mediumBlueprint, mediumWharf = findBestLogisticsOption(caseStation, cargo, "M")
+                local largeBlueprint, largeWharf = findBestLogisticsOption(caseStation, cargo, "L")
+                addEntry({
+                    caseStation,
+                    text(v(case, 4, "Logistics shortage")),
+                    cargo,
+                    mediumBlueprint or false,
+                    mediumWharf or false,
+                    largeBlueprint or false,
+                    largeWharf or false,
+                })
+            end
+        end
     else
         for _, pending in ipairs(menu.pendingAssignments) do
             if menu.fleetScope == "global" or text(v(pending, 2, "")) == stationName then
@@ -1251,6 +1662,8 @@ local function fleetCenter(tableWidget)
         ships = "REGISTERED AVAILABLE SHIPS",
         offers = "EOC TRADE OFFERS",
         pending = "PENDING ASSIGNMENTS",
+        recommendations = "SHIP RECOMMENDATIONS",
+        fleetbuild = "FLEET MANAGEMENT",
     }
     local pageCount = math.max(1, math.ceil(#entries / pageSize))
     menu.fleetPage = clamp(menu.fleetPage, 1, pageCount)
@@ -1264,6 +1677,7 @@ local function fleetCenter(tableWidget)
             pending = menu.shipmode == "APPROVAL REQUIRED" and
                 "No assignments await approval. Entries appear when EOC finds a supported need and a compatible registered ship." or
                 "No assignments await approval. Pending normally remains empty unless Ship Assignment Authority is Approval Required.",
+            recommendations = "No verified case currently shows both a real logistics shortfall and zero compatible ships. EOC will not recommend purchasing a ship without that evidence.",
         }
         local statusRow = tableWidget:addRow(false)
         statusRow[1]:createText("STATUS")
@@ -1273,7 +1687,158 @@ local function fleetCenter(tableWidget)
         local last = math.min(first + pageSize - 1, #entries)
         for index = first, last do
             local entry = entries[index]
-            pair(tableWidget, entry[1], entry[2], entry[3], entry[4])
+            if menu.fleetView == "recommendations" then
+                local caseStation = text(entry[1])
+                local cargo = text(entry[3])
+                local mediumBlueprint = type(entry[4]) == "table" and entry[4] or nil
+                local mediumWharf = type(entry[5]) == "table" and entry[5] or nil
+                local largeBlueprint = type(entry[6]) == "table" and entry[6] or nil
+                local largeWharf = type(entry[7]) == "table" and entry[7] or nil
+                local mediumAvailable = mediumBlueprint ~= nil and mediumWharf ~= nil
+                local largeAvailable = largeBlueprint ~= nil and largeWharf ~= nil
+                local orderKey = caseStation .. "|" .. cargo
+                local persisted = existingShipOrder(caseStation, cargo)
+                local orderState = menu.shipOrderState[orderKey] or {}
+                menu.shipOrderState[orderKey] = orderState
+
+                if persisted and not orderState.selectedSize then
+                    local persistedMacro = text(v(persisted, 3, ""))
+                    if mediumBlueprint and text(v(mediumBlueprint, 3, "")) == persistedMacro then
+                        orderState.selectedSize = "M"
+                    elseif largeBlueprint and text(v(largeBlueprint, 3, "")) == persistedMacro then
+                        orderState.selectedSize = "L"
+                    end
+                elseif not orderState.selectedSize and mediumAvailable ~= largeAvailable then
+                    orderState.selectedSize = mediumAvailable and "M" or "L"
+                end
+
+                local selectedSize = orderState.selectedSize
+                local selectedBlueprint = selectedSize == "M" and mediumBlueprint or selectedSize == "L" and largeBlueprint or nil
+                local selectedWharf = selectedSize == "M" and mediumWharf or selectedSize == "L" and largeWharf or nil
+                local selectedAvailable = selectedBlueprint ~= nil and selectedWharf ~= nil
+                local selectedShip = selectedBlueprint and text(v(selectedBlueprint, 1, "Owned logistics hull")) or ""
+                local selectedMacro = selectedBlueprint and text(v(selectedBlueprint, 3, "")) or ""
+
+                local headline = tableWidget:addRow(false)
+                if persisted or orderState.task then
+                    headline[1]:setColSpan(4):createText("EOC ORDER COMPLETE — EXACTLY 1 SHIP WAS SUBMITTED", { wordwrap = true, fontsize = Helper.headerRow1FontSize or Helper.standardFontSize })
+                elseif mediumAvailable and largeAvailable and not selectedSize then
+                    headline[1]:setColSpan(4):createText("EOC FOUND BOTH MEDIUM AND LARGE OPTIONS", { wordwrap = true, fontsize = Helper.headerRow1FontSize or Helper.standardFontSize })
+                elseif selectedAvailable then
+                    headline[1]:setColSpan(4):createText("EOC RECOMMENDS BUYING EXACTLY 1 " .. (selectedSize == "M" and "MEDIUM" or "LARGE") .. " SHIP: " .. selectedShip, { wordwrap = true, fontsize = Helper.headerRow1FontSize or Helper.standardFontSize })
+                elseif mediumBlueprint or largeBlueprint then
+                    headline[1]:setColSpan(4):createText("EOC CANNOT OFFER A BUILDABLE MEDIUM OR LARGE SHIP", { wordwrap = true, fontsize = Helper.headerRow1FontSize or Helper.standardFontSize })
+                else
+                    headline[1]:setColSpan(4):createText("EOC CANNOT RECOMMEND A SHIP: NO MATCHING OWNED MEDIUM OR LARGE BLUEPRINT", { wordwrap = true, fontsize = Helper.headerRow1FontSize or Helper.standardFontSize })
+                end
+
+                local status = tableWidget:addRow(false)
+                status[1]:setColSpan(4):createText("RECOMMENDATION TARGET: Station: " .. caseStation .. "; need: " .. text(entry[2]) .. "; required cargo: " .. cargo .. ". Current order state is shown below.", { wordwrap = true })
+
+                if mediumAvailable and largeAvailable and not persisted and not orderState.task then
+                    local question = tableWidget:addRow(false)
+                    question[1]:setColSpan(4):createText("SHIP SIZE: Do you want a Medium or Large ship to support this task?", { wordwrap = true })
+                    local choices = tableWidget:addRow(true)
+                    choices[1]:setColSpan(2)
+                    addButton(choices, 1, (selectedSize == "M" and "SELECTED: " or "CHOOSE: ") .. "MEDIUM — " .. text(v(mediumBlueprint, 1, "Medium ship")), function()
+                        orderState.selectedSize = "M"
+                        orderState.preview = false
+                        orderState.error = nil
+                        menu.refresh()
+                    end, true)
+                    choices[3]:setColSpan(2)
+                    addButton(choices, 3, (selectedSize == "L" and "SELECTED: " or "CHOOSE: ") .. "LARGE — " .. text(v(largeBlueprint, 1, "Large ship")), function()
+                        orderState.selectedSize = "L"
+                        orderState.preview = false
+                        orderState.error = nil
+                        menu.refresh()
+                    end, true)
+                    selectedSize = orderState.selectedSize
+                    selectedBlueprint = selectedSize == "M" and mediumBlueprint or selectedSize == "L" and largeBlueprint or nil
+                    selectedWharf = selectedSize == "M" and mediumWharf or selectedSize == "L" and largeWharf or nil
+                    selectedAvailable = selectedBlueprint ~= nil and selectedWharf ~= nil
+                    selectedShip = selectedBlueprint and text(v(selectedBlueprint, 1, "Owned logistics hull")) or ""
+                    selectedMacro = selectedBlueprint and text(v(selectedBlueprint, 3, "")) or ""
+                elseif selectedAvailable and not persisted and not orderState.task then
+                    local onlyOption = tableWidget:addRow(false)
+                    onlyOption[1]:setColSpan(4):createText("SHIP SIZE: Only " .. (selectedSize == "M" and "Medium" or "Large") .. " is currently available from a matching owned blueprint and compatible player shipyard, so EOC is offering that size.", { wordwrap = true })
+                end
+
+                if persisted and not selectedAvailable then
+                    local submitted = tableWidget:addRow(true)
+                    submitted[1]:setColSpan(4)
+                    addButton(submitted, 1, "ORDER SUBMITTED — EXACTLY 1 SHIP", function() end, false)
+                    local persistedStatus = tableWidget:addRow(false)
+                    persistedStatus[1]:setColSpan(4):createText("ORDER STATUS: SUBMITTED — X4 ACCEPTED TASK " .. text(v(persisted, 6, "recorded")) .. ". EOC has locked this station-and-cargo need against every hull size. No further EOC action is required.", { wordwrap = true })
+                elseif selectedAvailable then
+                    local blueprintStatus = tableWidget:addRow(false)
+                    blueprintStatus[1]:setColSpan(4):createText("BLUEPRINT: FOUND — " .. selectedShip .. " (" .. selectedSize .. ").", { wordwrap = true })
+                    local distance = tonumber(v(selectedWharf, 5, -1)) or -1
+                    local distanceText = distance >= 0 and (formatNumber(distance) .. " gate(s)") or "route unavailable"
+                    local wharfStatus = tableWidget:addRow(false)
+                    wharfStatus[1]:setColSpan(4):createText("EOC BUILD LOCATION: " .. text(v(selectedWharf, 2, "Unknown wharf")) .. " — " .. text(v(selectedWharf, 3, "Unknown sector")) .. ". DISTANCE: " .. distanceText .. ". CURRENT LOAD: " .. formatNumber(v(selectedWharf, 6, 0)) .. " queued, " .. formatNumber(v(selectedWharf, 7, 0)) .. " building; " .. formatNumber(v(selectedWharf, 8, 0)) .. " build module(s).", { wordwrap = true })
+
+                    local review = tableWidget:addRow(true)
+                    review[1]:setColSpan(4)
+                    if persisted or orderState.task then
+                        addButton(review, 1, "ORDER SUBMITTED — EXACTLY 1 SHIP", function() end, false)
+                    elseif orderState.preview then
+                        addButton(review, 1, "CONFIRM: QUEUE EXACTLY 1 " .. selectedShip, function()
+                            local success, result = queueEOCShipOrder(v(selectedWharf, 10, ""), selectedMacro, "")
+                            if success then
+                                orderState.task = result
+                                orderState.preview = false
+                                orderState.queueStatus = "SUBMITTED"
+                                local now = getElapsedTime()
+                                table.insert(menu.shipOrderRecords, { caseStation, cargo, selectedMacro, text(v(selectedWharf, 2, "Unknown wharf")), selectedShip, result, now })
+                                raise("shipping.purchase.queued", { station = caseStation, cargo = cargo, macro = selectedMacro, wharf = text(v(selectedWharf, 2, "Unknown wharf")), ship = selectedShip, size = selectedSize, task = result })
+                            else
+                                orderState.preview = false
+                                orderState.error = result
+                                raise("shipping.purchase.failed", { reason = result })
+                            end
+                            menu.refresh()
+                        end, true)
+                    else
+                        addButton(review, 1, "PREVIEW EOC ORDER: EXACTLY 1 " .. selectedShip, function()
+                            orderState.preview = true
+                            orderState.error = nil
+                            menu.refresh()
+                        end, true)
+                    end
+
+                    local explanation = tableWidget:addRow(false)
+                    local orderMessage
+                    if orderState.task and orderState.queueStatus == "SUBMITTED" then
+                        orderMessage = "ORDER STATUS: SUBMITTED — X4 ACCEPTED TASK " .. text(orderState.task) .. ". EOC has finished this one-shot order and locked this station-and-cargo need against every hull size. The player-owned shipyard now handles normal resource delivery and construction scheduling; no further EOC action is required."
+                    elseif persisted or orderState.task then
+                        orderMessage = "ORDER STATUS: SUBMITTED. EOC will not submit another Medium or Large order for this station and cargo need. The player-owned shipyard consumes normal hull and equipment resources; missing resources delay construction."
+                    elseif orderState.error then
+                        orderMessage = "ORDER STATUS: NOT SUBMITTED. " .. text(orderState.error)
+                    elseif orderState.preview then
+                        orderMessage = "CONFIRMATION REQUIRED: The next click queues exactly one " .. (selectedSize == "M" and "Medium" or "Large") .. " ship with an X4-generated, owned-blueprint loadout. No shipyard screen opens. This does not enable automatic or repeat production."
+                    else
+                        orderMessage = "EOC ORDER CONTROL: Size selected. Preview first, then confirm. EOC queues exactly one ship internally. No shipyard screen opens, no resources are bypassed, and no repeat production is enabled."
+                    end
+                    explanation[1]:setColSpan(4):createText(orderMessage, { wordwrap = true })
+                elseif not mediumAvailable and not largeAvailable and not persisted and not orderState.task then
+                    local unavailable = tableWidget:addRow(false)
+                    local availability
+                    if mediumBlueprint or largeBlueprint then
+                        availability = "EOC found " .. (mediumBlueprint and largeBlueprint and "Medium and Large blueprints" or mediumBlueprint and "a Medium blueprint" or "a Large blueprint") .. ", but no matching player-owned shipyard currently reports that it can build an available hull."
+                    else
+                        availability = "EOC found no owned Medium or Large blueprint matching " .. cargo .. " logistics."
+                    end
+                    unavailable[1]:setColSpan(4):createText("SHIP SIZE: " .. availability .. " No order can be previewed or submitted.", { wordwrap = true })
+                end
+
+                local reason = tableWidget:addRow(false)
+                reason[1]:setColSpan(4):createText("WHY ONE: The active EOC case reports a real shortfall and zero compatible logistics ships. Queue no more than one, register and assign it after construction, then rescan before considering another.", { wordwrap = true })
+                local safety = tableWidget:addRow(false)
+                safety[1]:setColSpan(4):createText("PLAYER AUTHORITY: Size choice, preview, and confirmation are separate deliberate actions when both sizes are available. EOC uses X4's valid-loadout generator, never bypasses shipyard resources, and never repeats the order automatically.", { wordwrap = true })
+            else
+                pair(tableWidget, entry[1], entry[2], entry[3], entry[4])
+            end
         end
     end
 

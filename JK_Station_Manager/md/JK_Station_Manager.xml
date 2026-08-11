@@ -1946,17 +1946,6 @@ subordinates, storage modules, and funds. No station or ship settings are change
       </actions>
     </cue>
 
-    <!-- Shared development activation. Ctrl+H currently maps to cockpit toggle. -->
-    <cue name="JKSM_MenuActivation" namespace="this" instantiate="true">
-      <conditions>
-        <event_player_toggled_cockpit />
-      </conditions>
-      <actions>
-        <cancel_conversation actor="player.computer" />
-        <start_conversation actor="player.computer" conversation="JKSM_EmpireOperations" type="unqueued" />
-      </actions>
-    </cue>
-
     <!-- v2.1.0: evidence-driven investigation UI for persistent issues. -->
     <cue name="JKSM_EmpireOperations" namespace="this" instantiate="true">
       <conditions><check_any><event_conversation_started conversation="JKSM_EmpireOperations" /><event_conversation_next_section actor="player.computer" section="JKSM_EmpireOperations" /><event_conversation_returned_to_section section="JKSM_EmpireOperations" /><event_cue_signalled /></check_any></conditions>
