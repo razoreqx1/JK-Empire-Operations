@@ -326,7 +326,7 @@
         <set_value name="$nonce" exact="'B64-%1-%2'.[player.age, global.$JKEOC_B64PendingVerb]" />
         <set_value name="global.$JKEOC_B64Mailbox" exact="table[$schema=2, $status='PENDING', $verb=global.$JKEOC_B64PendingVerb, $nonce=$nonce, $target=if global.$JKEOC_FocusStationObject? then global.$JKEOC_FocusStationObject else null, $created=player.age, $expires=player.age + 60s, $result='', $verification='NOT RUN', $rollback='NOT PROVEN']" />
         <signal_cue_instantly cue="JKEOC_B64_ProcessMailbox" />
-        <debug_text text="'[JKEOC][B144][MAILBOX_SUBMIT] status=%1 verb=%2 conversation_ui=CALLER_OWNED'.[global.$JKEOC_B64Mailbox.$status, global.$JKEOC_B64PendingVerb]" filter="general" />
+        <debug_text text="'[JKEOC][B153][MAILBOX_SUBMIT] status=%1 verb=%2 conversation_ui=CALLER_OWNED'.[global.$JKEOC_B64Mailbox.$status, global.$JKEOC_B64PendingVerb]" filter="general" />
       </actions>
     </cue>
   </cues>
