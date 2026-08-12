@@ -4,21 +4,19 @@ A governance-first operations layer for X4: Foundations.
 
 ## Current release
 
-- Version: 2.3 GA
-- Release build: 157
+- Version: 2.4 GA
+- Release build: 169
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-## What is new in EOC 2.3
+## What is new in EOC 2.4
 
-- Color-coded evidence makes the diagnosis readable at a glance: **green PASS**, **red FAIL**, **amber UNKNOWN**, and **gray neutral/not applicable**.
-- A plain-language **BIG TAKEAWAY** identifies the immediate blocker instead of burying it in supporting data.
-- Players name their EOC command intelligence on first use; the identity persists and can be changed in Global Settings.
-- Conversational Guided Recovery presents one unresolved check, one player action, and then verification.
-- Fresh verification truthfully reports **RESOLVED**, **IMPROVING**, **UNCHANGED**, or **WORSENING**.
-- Storage-pressure cases show exact free-space failures without irrelevant funds. Relevant funds are labeled **Station Operating Account**.
-- The first EOC opening of each X4 session shows five unique humorous startup checks selected from a pool of 30.
-- The Stations page now color-codes role and operational status, clearly separates persistent station roles from advisory policies, and distinguishes current, available, and pending-confirmation controls.
+- Guided Recovery separates the first blocker, supporting evidence, the next player action, and fresh verification.
+- Stable case provenance binds a diagnostic directly to its original station and ware.
+- Players can preview and confirm one bounded NPC-enabled BUY or SELL test without changing existing ware rules or ordinary offers.
+- EOC removes only its matching test offer and blocks repeat creation or completed-removal submissions.
+- Pending confirmations use a consistent amber state across market, fleet, ship-order, role, and policy controls.
+- To make a successful market path permanent, change only that ware's buy or sell trade rule in the station Logical Overview. EOC never converts a test into permanent policy automatically.
 
 ## Existing EOC capabilities
 
@@ -37,8 +35,8 @@ A governance-first operations layer for X4: Foundations.
 
 ## Documentation
 
-- [EOC 2.3 GA User Guide](docs/EOC_2.3_GA_USER_GUIDE.md)
-- [EOC 2.3 GA Release Notes](docs/RELEASE_NOTES_2.3_GA.md)
+- [EOC 2.4 GA User Guide](docs/EOC_2.4_GA_USER_GUIDE.md)
+- [EOC 2.4 GA Release Notes](docs/RELEASE_NOTES_2.4_GA.md)
 
 Older release documents remain available in `docs/`.
 

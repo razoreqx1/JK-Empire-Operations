@@ -169,6 +169,11 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <set_value name="global.$JKEOC_RecoverySuccessCheck" exact="''" />
 
         <debug_text text="'[JKEOC][V330] =================================================='" filter="general" />
+        <!-- Build 158: scan-local marker used to retire an ordinary shortage reclassified as terraforming demand. -->
+        <remove_value name="$terraformingreclassifiedkey" />
+        <remove_value name="global.$JKEOC_TerraformingMissionStation" />
+        <remove_value name="global.$JKEOC_TerraformingMissionWare" />
+        <remove_value name="global.$JKEOC_TerraformingMissionContext" />
         <debug_text text="'[JKEOC][V330] INTELLIGENCE SCAN START | Stations: %1'.[$stations.count]" filter="general" />
 
         <do_all exact="$stations.count" counter="$i">
@@ -696,7 +701,9 @@ subordinates, storage modules, and funds. No station or ship settings are change
                  An empty optional substitute must not become an empire-critical case. -->
             <!-- Build 83A: Do not reference version-specific ware constants.  Active
                  demand remains the version-neutral admission test. -->
-            <do_if value="$maximum gt 0 and $amount le 0 and $targetamount gt 0">
+            <!-- Build 158: active HQ terraforming consumes Allographyne as a universal substitute. -->
+            <set_value name="$terraformingmissiondemand" exact="player.headquarters.exists and $station == player.headquarters and $ware.name == 'Allographyne' and @$station.cluster.terraforming.activeproject.exists and not @$station.cluster.terraforming.activeproject.isaborted" />
+            <do_if value="$maximum gt 0 and $amount le 0 and $targetamount gt 0 and not $terraformingmissiondemand">
               <set_value name="$stationempty" exact="$stationempty + 1" />
               <set_value name="$emptyresources" exact="$emptyresources + 1" />
               <set_value name="$storagetype" exact="'UNKNOWN'" />
@@ -897,13 +904,17 @@ subordinates, storage modules, and funds. No station or ship settings are change
                 <set_value name="$casestatus" exact="'REMEDIATION IN PROGRESS — %1 MATCHING PRODUCTION MODULE(S) PLANNED'.[$plannedproductionmatches]" />
                 <set_value name="$corrective" exact="'DO NOT DUPLICATE: %1 matching production module(s) are already planned (%2). Monitor construction and its required inputs.'.[$plannedproductionmatches, $matchingmodulenames]" />
               </do_elseif>
-              <do_elseif value="$suppliercount gt 0 and $tradershipcount gt 0">
-                <set_value name="$rootcause" exact="'IMPORT REMEDIATION AVAILABLE — %1 KNOWN SELL OFFER(S), %2 STATION TRADER(S)'.[$suppliercount, $tradershipcount]" />
-                <set_value name="$corrective" exact="'PLAYER OPTION: authorize one station trader to attempt %1 supply for 30 minutes before adding production'.[$ware.name]" />
+              <do_elseif value="$suppliercount gt 0 and $compatibletradercount gt 0">
+                <set_value name="$rootcause" exact="'IMPORT PATH AVAILABLE — %1 KNOWN SELL OFFER(S), %2 CARGO-COMPATIBLE STATION TRADER(S)'.[$suppliercount, $compatibletradercount]" />
+                <set_value name="$corrective" exact="'Observe one delivery cycle. If stock remains empty, inspect the %1 ware-specific buy permission, price and manager range before changing storage or production'.[$ware.name]" />
+              </do_elseif>
+              <do_elseif value="$npcsuppliercount gt 0 and $compatibletradercount == 0">
+                <set_value name="$rootcause" exact="'DELIVERY PATH RESTRICTED OR UNAVAILABLE — %1 NPC OFFER(S), %2 ASSIGNED TRADER(S), 0 CARGO-COMPATIBLE'.[$npcsuppliercount, $tradershipcount]" />
+                <set_value name="$corrective" exact="'FIRST: inspect the %1 ware-specific buy rule and permit the intended NPC supplier. THEN: verify an assigned station trader can carry %2 cargo. Do not change the station-wide rule unless you intend the wider effect.'.[$ware.name, $storagetype]" />
               </do_elseif>
               <do_elseif value="$suppliercount gt 0">
-                <set_value name="$rootcause" exact="'SUPPLY AVAILABLE BUT NO STATION TRADER ASSIGNED'" />
-                <set_value name="$corrective" exact="'Assign one suitable trader to this station, then authorize a focused %1 supply attempt'.[$ware.name]" />
+                <set_value name="$rootcause" exact="'SUPPLY EXISTS BUT NO CARGO-COMPATIBLE STATION TRADER IS AVAILABLE'" />
+                <set_value name="$corrective" exact="'Verify the ware-specific buy permission, then assign one operational station trader compatible with %1 cargo'.[$storagetype]" />
               </do_elseif>
               <do_else>
                 <set_value name="$rootcause" exact="'NO KNOWN SUPPLIER OFFER AND NO LOCAL PRODUCTION'" />
@@ -981,6 +992,18 @@ subordinates, storage modules, and funds. No station or ship settings are change
               </do_if>
               <debug_text text="'[JKEOC][V330][RESOURCE_EMPTY] %1 | %2 | amount=%3 max=%4 target=%5'.[$station.name, $ware.name, $amount, $maximum, $station.cargo.{$ware}.target]" filter="general" />
             </do_if>
+            <do_elseif value="$maximum gt 0 and $amount le 0 and $targetamount gt 0 and $terraformingmissiondemand">
+              <set_value name="$terraformingreclassifiedkey" exact="'%1|%2|RESOURCE_EMPTY'.[$station.name, $ware.name]" />
+              <set_value name="global.$JKEOC_TerraformingMissionStation" exact="$station.name" />
+              <set_value name="global.$JKEOC_TerraformingMissionWare" exact="$ware.name" />
+              <set_value name="global.$JKEOC_TerraformingMissionContext" exact="'ACTIVE TERRAFORMING PROJECT — Allographyne may be consumed immediately as a universal substitute. Zero stored stock is not classified as a station failure.'" />
+              <do_if value="global.$JKEOC_FocusActive == true and global.$JKEOC_FocusStationObject? and global.$JKEOC_RecoveryObjectiveWare? and $station == global.$JKEOC_FocusStationObject and $ware.name == global.$JKEOC_RecoveryObjectiveWare">
+                <set_value name="global.$JKEOC_RecoveryRootCause" exact="'ACTIVE TERRAFORMING MISSION DEMAND'" />
+                <set_value name="global.$JKEOC_RecoveryRootEvidence" exact="'X4 reports a live terraforming project at the player HQ; Allographyne is an immediate-consumption substitute.'" />
+                <set_value name="global.$JKEOC_RecoveryRootAction" exact="'No station repair is recommended. Let the terraforming project consume deliveries and reassess after the project changes.'" />
+              </do_if>
+              <debug_text text="'[JKEOC][B159][TERRAFORMING_DEMAND] station=%1 ware=%2 amount=%3 target=%4 classification=MISSION_CONSUMPTION ordinary_case=SUPPRESSED'.[$station.name, $ware.name, $amount, $targetamount]" filter="general" />
+            </do_elseif>
             <do_elseif value="$maximum gt 0 and $amount le 0 and $targetamount le 0">
               <debug_text text="'[JKEOC][V420][RESOURCE_EMPTY_IGNORED] %1 | %2 | amount=%3 max=%4 target=%5 reason=no_active_demand'.[$station.name, $ware.name, $amount, $maximum, $targetamount]" filter="general" />
             </do_elseif>
@@ -1301,9 +1324,9 @@ subordinates, storage modules, and funds. No station or ship settings are change
           </do_else>
           <!-- v2.4.0 Workforce Planner Alpha. Gives complete player-facing paths instead of stopping at diagnosis. -->
           <set_value name="global.$JKEOC_RecommendTitle" exact="'Recommended solutions for %1'.[global.$JKSM_FirstEmptyWare]" />
-          <set_value name="global.$JKEOC_Option1Title" exact="'RECOMMENDED — Expand this station'" />
-          <set_value name="global.$JKEOC_Option1Modules" exact="'Add production for %1 and every missing dependency shown below'.[global.$JKSM_FirstEmptyWare]" />
-          <set_value name="global.$JKEOC_Option1Why" exact="'Fastest permanent fix; uses the station’s existing manager, storage and logistics'" />
+          <set_value name="global.$JKEOC_Option1Title" exact="'OPTION — Resolve the evidenced delivery path first'" />
+          <set_value name="global.$JKEOC_Option1Modules" exact="'Compare ware permission, reachable offers, compatible traders and physical storage before construction'.[global.$JKSM_FirstEmptyWare]" />
+          <set_value name="global.$JKEOC_Option1Why" exact="'Avoids unnecessary modules when a reversible trade or logistics correction can restore flow'" />
           <set_value name="global.$JKEOC_Option2Title" exact="'ALTERNATIVE — Build a dedicated support station'" />
           <set_value name="global.$JKEOC_Option2Modules" exact="'Build the same complete production chain nearby, then supply this station internally'" />
           <set_value name="global.$JKEOC_Option2Why" exact="'Best when one factory should support several stations'" />
@@ -1495,13 +1518,36 @@ subordinates, storage modules, and funds. No station or ship settings are change
               <set_value name="$trackedemptyattemptactive" exact="true" />
             </do_if>
           </do_if>
-          <do_if value="$trackedemptyvalid and ($trackedemptyamount lt $trackedemptysafety or $trackedemptyattemptactive)">
+          <!-- Build 158: close a previously tracked false shortage because its meaning changed, not because a reserve was reached. -->
+          <do_if value="$terraformingreclassifiedkey? and global.$JKSM_TrackedEmptyKey == $terraformingreclassifiedkey">
+            <set_value name="global.$JKSM_EmptyIssueStatus" exact="'RECLASSIFIED'" />
+            <set_value name="global.$JKSM_EmptyCaseStatus" exact="'CLOSED'" />
+            <set_value name="global.$JKSM_EmptyCaseStage" exact="'MISSION CONTEXT CONFIRMED'" />
+            <set_value name="global.$JKSM_EmptyResolvedAt" exact="player.age" />
+            <set_value name="global.$JKEOC_ClosedCaseCount" exact="global.$JKEOC_ClosedCaseCount + 1" />
+            <set_value name="global.$JKSM_LastResolvedIssueID" exact="global.$JKSM_EmptyIssueID" />
+            <set_value name="global.$JKSM_LastResolvedIssueType" exact="'TERRAFORMING MISSION DEMAND'" />
+            <set_value name="global.$JKSM_LastResolvedIssueKey" exact="global.$JKSM_TrackedEmptyKey" />
+            <set_value name="global.$JKSM_LastResolvedIssueDuration" exact="global.$JKSM_EmptyConsecutiveScans" />
+            <set_value name="global.$JKSM_LastResolvedIssueScan" exact="global.$JKSM_ScanCount" />
+            <debug_text text="'[JKEOC][B159][ISSUE_RECLASSIFIED] id=%1 key=%2 old=RESOURCE_EMPTY new=TERRAFORMING_MISSION_DEMAND reason=active_project_confirmed'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey]" filter="general" />
+            <write_to_logbook category="general" title="'EOC Case Reclassified — %1'.[global.$JKSM_EmptyIssueID]" text="'%1 at %2 is being consumed by an active terraforming project. EOC closed the ordinary shortage case because zero stored stock does not prove a station failure in this mission context.'.[global.$JKSM_TrackedEmptyWare, global.$JKSM_TrackedEmptyStation]" />
+            <show_notification text="'EOC CASE RECLASSIFIED
+%1 at %2 is active terraforming demand, not a station failure.'.[global.$JKSM_TrackedEmptyWare, global.$JKSM_TrackedEmptyStation]" timeout="12s" />
+            <remove_value name="global.$JKSM_TrackedEmptyKey" />
+            <remove_value name="global.$JKSM_TrackedEmptyStation" />
+            <remove_value name="global.$JKSM_TrackedEmptyWare" />
+            <remove_value name="global.$JKSM_TrackedEmptyStationObject" />
+            <remove_value name="global.$JKSM_TrackedEmptyWareObject" />
+            <remove_value name="global.$JKSM_TrackedEmptySafetyAmount" />
+          </do_if>
+          <do_elseif value="$trackedemptyvalid and ($trackedemptyamount lt $trackedemptysafety or $trackedemptyattemptactive)">
             <set_value name="global.$JKSM_EmptyIssueStatus" exact="'RECOVERING'" />
             <set_value name="global.$JKSM_EmptyCaseStatus" exact="'OPEN'" />
             <set_value name="global.$JKSM_EmptyCaseStage" exact="'VERIFYING SAFE RESERVE'" />
             <set_value name="global.$JKEOC_OpenCaseCount" exact="global.$JKEOC_OpenCaseCount + 1" />
             <debug_text text="'[JKEOC][V450][ISSUE_RECOVERY_PENDING] id=%1 station=%2 ware=%3 current=%4 safety=%5 active_test=%6'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyStation, global.$JKSM_TrackedEmptyWare, $trackedemptyamount, $trackedemptysafety, $trackedemptyattemptactive]" filter="general" />
-          </do_if>
+          </do_elseif>
           <do_else>
             <set_value name="global.$JKSM_EmptyIssueStatus" exact="'RESOLVED'" />
             <set_value name="global.$JKSM_EmptyCaseStatus" exact="'CLOSED'" />

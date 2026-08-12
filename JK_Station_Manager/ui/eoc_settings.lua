@@ -80,7 +80,7 @@ local investigationUnknownColor = { r = 255, g = 190, b = 72, a = 100 }
 local investigationNeutralColor = { r = 175, g = 185, b = 195, a = 100 }
 local navigationStoryColor = { r = 125, g = 200, b = 235, a = 100 }
 local EOC_IDENTITY_BB = "$JKEOC_CommandIntelligenceIdentity"
-local EOC_OS_BUILD = 155
+local EOC_OS_BUILD = 169
 local EOC_OS_BOOT_DELAY = 1.35
 local EOC_OS_RANDOM_MESSAGE_COUNT = 5
 local EOC_OS_MESSAGE_POOL = {
@@ -627,10 +627,18 @@ local function prerequisiteRows(caseData)
     local supplyCase = not storageCase and not logisticsCase
     local capacity, free = tonumber(v(caseData, 13, 0)) or 0, tonumber(v(caseData, 14, 0)) or 0
     local immediateNeed = tonumber(v(caseData, 30, 0)) or 0
+    local suppliers = tonumber(v(caseData, 18, 0)) or 0
+    local ownSuppliers = tonumber(v(caseData, 19, 0)) or 0
+    local npcSuppliers = tonumber(v(caseData, 20, 0)) or 0
+    local traders = tonumber(v(caseData, 23, 0)) or 0
+    local compatible = tonumber(v(caseData, 24, 0)) or 0
+    if supplyCase and npcSuppliers > 0 and compatible == 0 then
+        add("DELIVERY PATH", "FAIL", npcSuppliers .. " NPC offer(s) known; " .. traders .. " trader(s) assigned; 0 cargo-compatible. Ware buy permission may also exclude NPC suppliers.")
+    end
     if not logisticsCase then
         add("STORAGE INSTALLED", capacity > 0 and "PASS" or "FAIL", text(v(caseData, 12, "UNKNOWN")) .. " capacity " .. formatNumber(capacity))
         local freeState = capacity <= 0 and "UNKNOWN" or ((immediateNeed <= 0 or free >= immediateNeed) and "PASS" or "FAIL")
-        add("STORAGE FREE SPACE", freeState, formatNumber(free) .. " free; " .. formatNumber(immediateNeed) .. " required now")
+        add("STORAGE FREE SPACE", freeState, formatNumber(free) .. " physical free capacity; " .. formatNumber(immediateNeed) .. " required now. Ware allocation is reviewed separately in Logical Overview.")
     end
     if supplyCase then
         local stationFunds = tonumber(v(caseData, 32, 0)) or 0
@@ -638,11 +646,9 @@ local function prerequisiteRows(caseData)
         local requiredBudget = immediateNeed > 0 and minimumPrice > 0 and (immediateNeed * minimumPrice) or 0
         local fundingState = requiredBudget > 0 and (stationFunds >= requiredBudget and "PASS" or "FAIL") or (stationFunds > 0 and "PASS" or "UNKNOWN")
         add("STATION OPERATING FUNDS", fundingState, formatNumber(stationFunds) .. " Cr available; estimated immediate purchase " .. formatNumber(requiredBudget) .. " Cr")
-        local suppliers = tonumber(v(caseData, 18, 0)) or 0
         add("REACHABLE SUPPLY", suppliers > 0 and "PASS" or "FAIL", suppliers .. " offers: own " .. text(v(caseData, 19, 0)) .. ", NPC " .. text(v(caseData, 20, 0)) .. "; NPC price " .. text(v(caseData, 21, 0)) .. "-" .. text(v(caseData, 22, 0)) .. " Cr")
     end
     if supplyCase or logisticsCase then
-        local traders, compatible = tonumber(v(caseData, 23, 0)) or 0, tonumber(v(caseData, 24, 0)) or 0
         add("STATION TRADER", compatible > 0 and "PASS" or "FAIL", traders .. " assigned; " .. compatible .. " compatible")
     end
     if supplyCase then
@@ -657,7 +663,8 @@ end
 local function manualNextAction(caseData, rows)
     for _, check in ipairs(rows) do
         if check.state == "FAIL" or check.state == "UNKNOWN" then
-            if check.label == "STORAGE INSTALLED" then return "Open the Station Build Plan and add compatible " .. text(v(caseData, 12, "cargo")) .. " storage; wait until it is operational."
+            if check.label == "DELIVERY PATH" then return "Open the " .. text(v(caseData, 17, v(caseData, 4, "required ware"))) .. " buy offer first. Confirm its ware-specific trade rule permits the intended NPC supplier; then verify at least one assigned station trader can carry " .. text(v(caseData, 12, "the required cargo")) .. ". Change no station-wide rule unless you intend the wider effect."
+            elseif check.label == "STORAGE INSTALLED" then return "Open the Station Build Plan and add compatible " .. text(v(caseData, 12, "cargo")) .. " storage; wait until it is operational."
             elseif check.label == "STORAGE FREE SPACE" then return "Open Logical Station Overview and move, sell, or reallocate stock until the required " .. text(v(caseData, 12, "cargo")) .. " storage space is free."
             elseif check.label == "STATION OPERATING FUNDS" then local required = math.max(0, ((tonumber(v(caseData, 30, 0)) or 0) * (tonumber(v(caseData, 21, 0)) or 0)) - (tonumber(v(caseData, 32, 0)) or 0)); return "Open the station Information account and transfer at least " .. formatNumber(required) .. " Cr for the immediate purchase. EOC will not move player credits."
             elseif check.label == "REACHABLE SUPPLY" then return "Open the station buy offer for " .. text(v(caseData, 17, v(caseData, 4, "the required ware"))) .. " and verify trade rule, price, and manager range permit a supplier."
@@ -777,7 +784,7 @@ local function init()
     if Helper and Helper.registerMenu then
         Helper.registerMenu(menu)
     else
-    DebugError("[JKEOC][B157][LUA_ERROR] Helper.registerMenu unavailable")
+    DebugError("[JKEOC][B162][LUA_ERROR] Helper.registerMenu unavailable")
     end
 
     AddUITriggeredEvent(menu.name, "INIT", nil)
@@ -878,8 +885,8 @@ local function acknowledgeClick(label)
     menu.clickStatusUntil = getElapsedTime() + 1.25
 end
 
-local function addButton(row, column, label, handler, active)
-    local properties = { active = active ~= false }
+local function addButton(row, column, label, handler, active, background)
+    local properties = { active = active ~= false, bgColor = background }
     if menu.reportRunning and (string.find(label, "GENERATE REPORT", 1, true) == 1 or string.find(label, "REPORT RUNNING", 1, true) == 1) then
         properties.active = false
     end
@@ -1592,7 +1599,7 @@ local function fleetBuildManager(tableWidget)
     section(tableWidget,"FLEET TEMPLATE - "..template.name)
     for _,entry in ipairs(template.entries or {}) do pair(tableWidget,entry.name,entry.size,"QUANTITY",entry.amount) end
     row=tableWidget:addRow(true);row[1]:setColSpan(2);addButton(row,1,"EDIT TEMPLATE",function()state.mode="edit";state.originalName=template.name;state.draft=copySerializable(template);state.plan=nil;state.result=nil;menu.refresh()end,true)
-    row[3]:setColSpan(2);addButton(row,3,state.deleteConfirm and "CONFIRM DELETE TEMPLATE" or "DELETE TEMPLATE",function()if state.deleteConfirm then deleteFleetTemplate(template.name);state.mode="list";state.selected=nil;state.deleteConfirm=false;state.plan=nil;state.result=nil else state.deleteConfirm=true end;menu.refresh()end,true)
+    row[3]:setColSpan(2);addButton(row,3,state.deleteConfirm and "CONFIRM DELETE TEMPLATE" or "DELETE TEMPLATE",function()if state.deleteConfirm then deleteFleetTemplate(template.name);state.mode="list";state.selected=nil;state.deleteConfirm=false;state.plan=nil;state.result=nil else state.deleteConfirm=true end;menu.refresh()end,true,state.deleteConfirm and pendingChoiceBackground or nil)
     section(tableWidget,"BUILD CONTROL")
     row=tableWidget:addRow(true);row[1]:setColSpan(2);addModeButton(row,1,(state.distribute and "" or "ACTIVE: ").."ONE COMPATIBLE SHIPYARD",not state.distribute,true,function()state.distribute=false;state.plan=nil;state.result=nil;menu.refresh()end)
     row[3]:setColSpan(2);addModeButton(row,3,(state.distribute and "ACTIVE: " or "").."SPREAD ACROSS COMPATIBLE SHIPYARDS",state.distribute,true,function()state.distribute=true;state.plan=nil;state.result=nil;menu.refresh()end)
@@ -1605,7 +1612,7 @@ local function fleetBuildManager(tableWidget)
         if #(plan.skipped or {})>0 then row=tableWidget:addRow(false);row[1]:setColSpan(4):createText("SKIPPED - NO COMPATIBLE PLAYER YARD: "..table.concat(plan.skipped,", "),{wordwrap=true}) end
         row=tableWidget:addRow(true);row[1]:setColSpan(4);addButton(row,1,plan.submitted and "FLEET ORDER SUBMITTED - LOCKED" or "CONFIRM: BUILD THIS FLEET",function()
             local success,result=executeFleetBuildPlan(plan);state.result=result;raise(success and "fleetbuild.queued" or "fleetbuild.partial",{name=template.name,accepted=plan.accepted or 0,requested=plan.total or 0});menu.refresh()
-        end,not plan.error and plan.total>0 and not plan.submitted)
+        end,not plan.error and plan.total>0 and not plan.submitted,not plan.error and plan.total>0 and not plan.submitted and pendingChoiceBackground or nil)
     end
     if state.result then row=tableWidget:addRow(false);row[1]:setColSpan(4):createText("STATUS: "..state.result,{wordwrap=true}) end
     row=tableWidget:addRow(true);row[1]:setColSpan(4);addButton(row,1,"RETURN TO SAVED FLEET TEMPLATES",function()state.mode="list";state.plan=nil;state.result=nil;state.deleteConfirm=false;menu.refresh()end,true)
@@ -1950,7 +1957,7 @@ local function fleetCenter(tableWidget)
                                 raise("shipping.purchase.failed", { reason = result })
                             end
                             menu.refresh()
-                        end, true)
+                        end, true, pendingChoiceBackground)
                     else
                         addButton(review, 1, "PREVIEW EOC ORDER: EXACTLY 1 " .. selectedShip, function()
                             orderState.preview = true
@@ -2160,6 +2167,13 @@ local function diagnosticsCenter(tableWidget)
         row = tableWidget:addRow(false)
         row[1]:setColSpan(4):createText("PLAYER CONTROL: EOC will not cancel or replace trader orders, move credits, or alter station configuration. Complete this action manually.", { wordwrap = true })
 
+        local marketEligible = firstProblem and (firstProblem.label == "DELIVERY PATH" or firstProblem.label == "REACHABLE SUPPLY" or firstProblem.label == "STORAGE FREE SPACE")
+        if marketEligible then
+            row = tableWidget:addRow(true); row[1]:setColSpan(4)
+            addButton(row, 1, "OPEN RECOVERY OPTIONS - REVIEW BEFORE CHANGING ANYTHING", function()
+                menu.diagnosticView = "options"; menu.marketChoiceNote = nil; menu.marketTestPreview = nil; menu.marketRemovePreview = nil; menu.refresh()
+            end, true)
+        end
         row = tableWidget:addRow(true)
         row[1]:setColSpan(2)
         addButton(row, 1, "VIEW SUPPORTING EVIDENCE", function() menu.diagnosticView = "supplier"; menu.refresh() end, true)
@@ -2169,6 +2183,54 @@ local function diagnosticsCenter(tableWidget)
         section(tableWidget, "STEP 3 OF 3 - VERIFY AFTER THE ACTION")
         row = tableWidget:addRow(false)
         row[1]:setColSpan(4):createText("After completing the player action, open Verify Result and run one fresh analysis. EOC will report RESOLVED, IMPROVING, UNCHANGED, or WORSENING.", { wordwrap = true })
+    elseif menu.diagnosticView == "options" then
+        if not diagnosticCase then section(tableWidget, "NO ACTIVE CASE"); row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("Return to Guided Recovery and select an active case.", { wordwrap = true }); return end
+        local optionChecks = prerequisiteRows(diagnosticCase)
+        local optionProblem = nil
+        for _, check in ipairs(optionChecks) do if not optionProblem and (check.state == "FAIL" or check.state == "UNKNOWN") then optionProblem = check end end
+        local marketEligible = optionProblem and (optionProblem.label == "DELIVERY PATH" or optionProblem.label == "REACHABLE SUPPLY" or optionProblem.label == "STORAGE FREE SPACE")
+        local marketType = (optionProblem and optionProblem.label == "STORAGE FREE SPACE") and "SELL" or "BUY"
+        local marketKey = stationName .. "|" .. diagnosticSubject .. "|" .. marketType
+        section(tableWidget, "RECOVERY OPTIONS - " .. diagnosticSubject)
+        row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("SELECTED STATION: " .. stationName .. " | BLOCKER: " .. (optionProblem and (optionProblem.state .. " - " .. optionProblem.label) or "NO FAILED CHECK"), { wordwrap = true, color = optionProblem and resultColor(optionProblem.state) or investigationPassColor })
+        row = tableWidget:addRow(false); row[1]:setColSpan(4):createText(optionProblem and ("EVIDENCE: " .. optionProblem.evidence) or "No supported recovery test is currently required.", { wordwrap = true })
+        if marketEligible then
+            section(tableWidget, "OPTION 1 - TEST OUTSIDE TRADE WITHOUT CHANGING YOUR POLICY")
+            row = tableWidget:addRow(false); row[1]:setColSpan(4):createText(marketType == "BUY" and "Creates one bounded NPC-enabled EOC BUY offer. Your existing Empire-only ware rule and ordinary offers remain untouched." or "Creates one bounded NPC-enabled EOC SELL offer for evidenced excess. Your existing ware rule and ordinary offers remain untouched.", { wordwrap = true, color = navigationStoryColor })
+            row = tableWidget:addRow(true); row[1]:setColSpan(2); row[3]:setColSpan(2)
+            local marketState = actionState("market.test")
+            if menu.marketActionKey == marketKey and marketState.running then
+                addButton(row, 1, "CREATING ONE EOC " .. marketType .. " TEST - PLEASE WAIT", function() end, false)
+                addButton(row, 3, "ACTION LOCKED - WAIT FOR RESULT", function() end, false)
+            elseif menu.marketActionKey == marketKey and marketState.result and marketState.result ~= "WORKING" then
+                addButton(row, 1, "TEST ATTEMPT COMPLETE - READ RESULT BELOW", function() end, false)
+                addButton(row, 3, "NO REPEAT SUBMISSION", function() end, false)
+            elseif menu.marketTestPreview == marketKey then
+                addButton(row, 1, "CONFIRM ONE EOC " .. marketType .. " TEST", function() if startAction("market.test") then menu.marketActionKey = marketKey; raise("market.test.confirm", { station = stationName, subject = diagnosticSubject, type = marketType, amount = math.max(1, tonumber(v(diagnosticCase, 30, 0)) or tonumber(v(diagnosticCase, 31, 0)) or 1), current = tonumber(v(diagnosticCase, 8, 0)) or 0, target = tonumber(v(diagnosticCase, 9, 0)) or 0, caseclass = tostring(v(diagnosticCase, 35, "")), caseindex = tonumber(v(diagnosticCase, 36, 0)) or 0 }); menu.marketTestPreview = nil end end, true, pendingChoiceBackground)
+                addButton(row, 3, "CANCEL PREVIEW - CHANGE NOTHING", function() menu.marketTestPreview = nil; menu.refresh() end, true)
+            else
+                addButton(row, 1, "PREVIEW EOC NPC " .. marketType .. " TEST", function() menu.marketTestPreview = marketKey; menu.marketRemovePreview = nil; menu.refresh() end, true)
+                addButton(row, 3, "KEEP EMPIRE-ONLY", function() menu.marketChoiceNote = "Empire-only retained. Your own stations and cargo-compatible ships must satisfy this ware. EOC will not recommend more storage as the first fix while that delivery path remains restricted."; menu.refresh() end, true)
+            end
+            actionResult(tableWidget, "market.test", "Creates one bounded, reversible EOC-owned offer only after confirmation.")
+            section(tableWidget, "OPTION 2 - REVIEW PHYSICAL STORAGE SEPARATELY")
+            row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("Storage construction is a separate decision. Review installed capacity and ware allocation only after deciding whether trade and logistics can restore flow.", { wordwrap = true })
+            row = tableWidget:addRow(true); row[1]:setColSpan(2); row[3]:setColSpan(2)
+            addButton(row, 1, "VIEW STORAGE EVIDENCE", function() menu.diagnosticView = "supplier"; menu.refresh() end, true)
+            local removeState = actionState("market.test.remove")
+            if menu.marketRemoveActionKey == marketKey and removeState.running then
+                addButton(row, 3, "REMOVING EOC TEST OFFER - PLEASE WAIT", function() end, false)
+            elseif menu.marketRemoveActionKey == marketKey and removeState.result and removeState.result ~= "WORKING" then
+                addButton(row, 3, "REMOVAL ATTEMPT COMPLETE - NO REPEAT", function() end, false)
+            else
+                addButton(row, 3, menu.marketRemovePreview == marketKey and "CONFIRM REMOVE EOC TEST OFFER" or "REMOVE EOC TEST / DO NOTHING", function() if menu.marketRemovePreview == marketKey then if startAction("market.test.remove") then menu.marketRemoveActionKey = marketKey; raise("market.test.remove", { station = stationName, subject = diagnosticSubject, type = marketType }); menu.marketRemovePreview = nil end else menu.marketRemovePreview = marketKey; menu.marketTestPreview = nil; menu.marketChoiceNote = "AWAITING CONFIRMATION: No ordinary offer or station rule will be touched. Select the amber CONFIRM REMOVE EOC TEST OFFER button only to remove EOC's matching test offer."; menu.refresh() end end, true, menu.marketRemovePreview == marketKey and pendingChoiceBackground or nil)
+            end
+            actionResult(tableWidget, "market.test.remove", "Removes only EOC's matching test offer; otherwise changes nothing.")
+            if menu.marketChoiceNote then row = tableWidget:addRow(false); row[1]:setColSpan(4):createText(menu.marketChoiceNote, { wordwrap = true, color = investigationUnknownColor }) end
+        end
+        row = tableWidget:addRow(true); row[1]:setColSpan(2); row[3]:setColSpan(2)
+        addButton(row, 1, "RETURN TO GUIDED RECOVERY", function() menu.diagnosticView = "recovery"; menu.refresh() end, true)
+        addButton(row, 3, "GO TO VERIFY RESULT", function() menu.diagnosticView = "stabilization"; menu.refresh() end, true)
     elseif menu.diagnosticView == "supplier" then
         section(tableWidget, "SUPPORTING EVIDENCE: " .. (diagnosticCase and text(v(diagnosticCase, 4, "SELECTED CASE")) or "NO CASE SELECTED"))
         if diagnosticCase then
@@ -2241,19 +2303,19 @@ local function diagnosticsCenter(tableWidget)
         row[1]:setColSpan(4):createText("The requested diagnostics view is unavailable. Select Next Action, Evidence Details, or Verify Result.", { wordwrap = true })
     end
 
-    if diagnosticCase and menu.diagnosticView ~= "recovery" then
+    if diagnosticCase and menu.diagnosticView ~= "recovery" and menu.diagnosticView ~= "options" then
         section(tableWidget, "WHERE WOULD YOU LIKE TO GO NEXT?")
         row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("These choices do not change the diagnosis. Pick where " .. intelligenceName() .. " should take you next.", { wordwrap = true, color = navigationStoryColor })
         row = tableWidget:addRow(true)
         row[1]:setColSpan(2)
-        addButton(row, 1, "OPEN SELECTED STATION - RETURN TO DIAGNOSTICS", function()
+        addButton(row, 1, "OPEN EOC STATIONS - RETURN TO THIS CASE", function()
             captureNavigation("DIAGNOSTICS - " .. text(v(diagnosticCase, 4, "SELECTED CASE")))
             menu.page = "stations"
             menu.activeTab = "stations"
             menu.refresh()
         end, true)
         row[3]:setColSpan(2)
-        addButton(row, 3, "OPEN FLEET & LOGISTICS - RETURN TO DIAGNOSTICS", function()
+        addButton(row, 3, "OPEN EOC FLEET & LOGISTICS - RETURN TO THIS CASE", function()
             captureNavigation("DIAGNOSTICS - " .. text(v(diagnosticCase, 4, "SELECTED CASE")))
             menu.fleetScope = "station"
             menu.fleetView = "stations"
