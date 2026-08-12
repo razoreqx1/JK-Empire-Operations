@@ -1,9 +1,0 @@
-EOC 2.3 GA
-Build 153 / Version 253
-
-- Adds persistent player-named EOC command intelligence with rename support in Global Settings.
-- Adds color-coded diagnostic evidence: green PASS, red FAIL, amber UNKNOWN, and gray neutral/not applicable.
-- Adds clearer conversational cases, guided recovery, BIG TAKEAWAY summaries, and truthful verification outcomes.
-- Clarifies storage-pressure root causes and distinguishes station operating accounts from build-storage funding.
-- Adds a humorous once-per-X4-session EOC startup using five unique messages selected from a pool of 30.
-- Preserves EOC 2.2 fleet templates, fuzzy blueprint search, native resource-backed construction, deliberate Preview/Confirm, and duplicate prevention.

@@ -12,6 +12,17 @@ EOC does not depend on Ctrl+H. The separate EOC pinwheel remains available as a 
 
 On first EOC use for a new or existing save, choose the intelligence name. The name persists with the save and can later be changed under **Global Settings**.
 
+## Read the Stations page
+
+The Stations page separates three different kinds of information:
+
+- **Station list:** role, health, and recurring status are color-coded so attention areas stand out.
+- **Persistent EOC role:** defines what the selected station is intended to do inside EOC. It remains until the player changes it.
+- **EOC operating policy:** changes how EOC recommends actions for that station; it does not change the station's formal role.
+
+Control colors identify state: green is the current selection, amber is a preview awaiting confirmation, gray/blue is an available choice, and red marks an unavailable choice. Role and policy changes require a preview click followed by confirmation.
+
+Explanations name their scope—for example, **ROLE CONTROL**, **POLICY CONTROL**, or **EMPIRE-WIDE ACTION**—so it is clear which controls they describe.
 ## Read a diagnosis
 
 Start with **BIG TAKEAWAY**, then read the colored checks:

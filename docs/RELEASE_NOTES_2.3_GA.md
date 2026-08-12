@@ -1,4 +1,4 @@
-# EOC 2.3 GA — Build 153
+# EOC 2.3 GA — Build 157
 
 ## Headline improvement: diagnostic clarity
 
@@ -40,6 +40,14 @@ This color hierarchy is used across Cases, Guided Recovery, investigations, supp
 - Closing and reopening EOC in the same session does not replay it.
 - The sequence identifies the current build and is explicitly labeled as entertainment, not operational evidence.
 
+## Station clarity update
+
+- Station roles and operational statuses are color-coded for faster scanning.
+- Persistent EOC station roles are explicitly separated from advisory operating policies.
+- Current choices, available choices, and pending confirmations are visually distinct.
+- Scope text now identifies whether a control affects the selected station, the whole empire, or recommendations only.
+- Ambiguous repeated explanations were replaced with role-control, policy-control, and action-specific wording.
+- Button state colors use the UI Extensions-safe background method verified by in-game stress testing and debug-log review.
 ## Preserved capabilities and safeguards
 
 EOC 2.3 retains every EOC 2.2 fleet, logistics, navigation, and reporting capability, including fleet templates, fuzzy blueprint search, distributed construction, native X4 resource requirements, deliberate Preview/Confirm, and duplicate prevention.
@@ -51,4 +59,4 @@ EOC does not create free ships, bypass resources, move credits automatically, re
 - Named intelligence persisted through EOC reopen, save reload, and X4 restart.
 - Session startup behavior and randomized messages passed after the Build 152 seed fix.
 - Color-coded evidence, storage-pressure clarity, navigation context, reports, and truthful UNCHANGED verification passed in game.
-- Build 153 passed 12 XML parses, synchronized identity checks, Lua manual review, rejected-route scans, final exited-game log review, and one-folder ZIP validation.
+- Build 157 passed 12 XML parses, synchronized identity and unsafe-pattern scans, Lua manual review, in-game station-menu button stress testing, post-stress debug-log review, and one-folder ZIP validation.

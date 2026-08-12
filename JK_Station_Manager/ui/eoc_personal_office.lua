@@ -76,7 +76,7 @@ local function init()
             integration.callbackID
         )
         integration.registered = true
-        DebugError("[JKEOC][B153][PERSONAL_OFFICE] callback=REGISTERED attempts=" .. tostring(integration.attempts + 1))
+        DebugError("[JKEOC][B157][PERSONAL_OFFICE] callback=REGISTERED attempts=" .. tostring(integration.attempts + 1))
         return
     end
 
@@ -84,7 +84,7 @@ local function init()
     if integration.attempts < integration.maxAttempts and type(Helper.addDelayedOneTimeCallbackOnUpdate) == "function" then
         Helper.addDelayedOneTimeCallbackOnUpdate(init, true, getElapsedTime() + 1)
     else
-        DebugError("[JKEOC][B153][LUA_ERROR] Personal Office callback unavailable after retries=" .. tostring(integration.attempts))
+        DebugError("[JKEOC][B157][LUA_ERROR] Personal Office callback unavailable after retries=" .. tostring(integration.attempts))
     end
 end
 

@@ -5,7 +5,7 @@ A governance-first operations layer for X4: Foundations.
 ## Current release
 
 - Version: 2.3 GA
-- Release build: 153
+- Release build: 157
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
@@ -18,6 +18,7 @@ A governance-first operations layer for X4: Foundations.
 - Fresh verification truthfully reports **RESOLVED**, **IMPROVING**, **UNCHANGED**, or **WORSENING**.
 - Storage-pressure cases show exact free-space failures without irrelevant funds. Relevant funds are labeled **Station Operating Account**.
 - The first EOC opening of each X4 session shows five unique humorous startup checks selected from a pool of 30.
+- The Stations page now color-codes role and operational status, clearly separates persistent station roles from advisory policies, and distinguishes current, available, and pending-confirmation controls.
 
 ## Existing EOC capabilities
 

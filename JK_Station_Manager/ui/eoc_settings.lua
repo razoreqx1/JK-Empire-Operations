@@ -71,13 +71,16 @@ local activeTabBackground = { r = 0, g = 149, b = 203, a = 100 }
 local selectedModeBackground = { r = 0, g = 116, b = 153, a = 100 }
 local availableModeBackground = { r = 49, g = 69, b = 83, a = 60 }
 local inactiveModeBackground = { r = 32, g = 32, b = 32, a = 100 }
+local currentChoiceBackground = { r = 20, g = 92, b = 48, a = 100 }
+local pendingChoiceBackground = { r = 125, g = 82, b = 12, a = 100 }
+local unavailableChoiceBackground = { r = 105, g = 32, b = 32, a = 100 }
 local investigationPassColor = { r = 90, g = 220, b = 120, a = 100 }
 local investigationFailColor = { r = 255, g = 92, b = 92, a = 100 }
 local investigationUnknownColor = { r = 255, g = 190, b = 72, a = 100 }
 local investigationNeutralColor = { r = 175, g = 185, b = 195, a = 100 }
 local navigationStoryColor = { r = 125, g = 200, b = 235, a = 100 }
 local EOC_IDENTITY_BB = "$JKEOC_CommandIntelligenceIdentity"
-local EOC_OS_BUILD = 152
+local EOC_OS_BUILD = 155
 local EOC_OS_BOOT_DELAY = 1.35
 local EOC_OS_RANDOM_MESSAGE_COUNT = 5
 local EOC_OS_MESSAGE_POOL = {
@@ -774,7 +777,7 @@ local function init()
     if Helper and Helper.registerMenu then
         Helper.registerMenu(menu)
     else
-    DebugError("[JKEOC][B153][LUA_ERROR] Helper.registerMenu unavailable")
+    DebugError("[JKEOC][B157][LUA_ERROR] Helper.registerMenu unavailable")
     end
 
     AddUITriggeredEvent(menu.name, "INIT", nil)
@@ -896,13 +899,13 @@ local function addButton(row, column, label, handler, active)
     end
 end
 
-local function addModeButton(row, column, label, selected, enabled, handler)
+local function addModeButton(row, column, label, selected, enabled, handler, stateColor)
     local isEnabled = enabled ~= false
-    local background = inactiveModeBackground
+    local background = unavailableChoiceBackground
 
     if isEnabled then
         if selected then
-            background = selectedModeBackground
+            background = currentChoiceBackground
         else
             background = availableModeBackground
         end
@@ -912,6 +915,33 @@ local function addModeButton(row, column, label, selected, enabled, handler)
         active = isEnabled,
         bgColor = background,
     }):setText(label)
+    row[column].handlers.onClick = function()
+        acknowledgeClick(label)
+        menu.refresh()
+        handler()
+    end
+end
+
+local function stationStatusColor(status)
+    local value = string.upper(text(status))
+    if value == "CRITICAL" or value == "DETERIORATING" or value == "RELAPSED" then
+        return investigationFailColor
+    elseif value == "WARNING" or value == "RECURRING" or value == "CHRONIC" or value == "TRANSIENT" then
+        return investigationUnknownColor
+    elseif value == "HEALTHY" or value == "MONITORING" or value == "STABLE" then
+        return investigationPassColor
+    end
+    return investigationNeutralColor
+end
+
+local function addStationChoiceButton(row, column, label, current, confirming, handler)
+    local background = availableModeBackground
+    if current then
+        background = currentChoiceBackground
+    elseif confirming then
+        background = pendingChoiceBackground
+    end
+    row[column]:createButton({ active = true, bgColor = background }):setText(label)
     row[column].handlers.onClick = function()
         acknowledgeClick(label)
         menu.refresh()
@@ -2550,11 +2580,15 @@ local function createStationNavigator(frame, x, y, width, height)
                 menu.selected = stationIndex
                 menu.refresh()
             end
-            row[2]:createText(text(v(station, 2, "UNDEFINED")), {
+            local stationRole = text(v(station, 2, "UNDEFINED"))
+            local stationStatus = text(v(station, 3, "MONITORING"))
+            row[2]:createText(stationRole, {
                 fontsize = Helper.standardFontSize - 1,
+                color = stationRole == "UNDEFINED" and investigationUnknownColor or investigationPassColor,
             })
-            row[3]:createText(text(v(station, 3, "MONITORING")), {
+            row[3]:createText(stationStatus, {
                 fontsize = Helper.standardFontSize - 1,
+                color = stationStatusColor(stationStatus),
             })
         end
     end
@@ -2567,16 +2601,27 @@ local function createStationNavigator(frame, x, y, width, height)
 end
 
 local function addRoleControls(tableWidget, station)
-    section(tableWidget, "ROLE CONTROL")
+    section(tableWidget, "PERSISTENT EOC ROLE - REMAINS UNTIL YOU CHANGE IT")
+    local row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("GREEN = CURRENT ROLE | AMBER = PREVIEW AWAITING CONFIRMATION | GRAY = AVAILABLE ROLE", { wordwrap = true, color = navigationStoryColor })
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("ROLE SCOPE: These buttons change only the selected station's persistent EOC role. Select once to preview; select CONFIRM to apply.", { wordwrap = true })
 
     for roleIndex = 1, #roles, 4 do
-        local row = tableWidget:addRow(true)
+        row = tableWidget:addRow(true)
         for column = 1, 4 do
             local role = roles[roleIndex + column - 1]
             if role then
                 local stationIndex = v(station, 16, menu.selected)
+                local current = text(v(station, 2, "UNDEFINED")) == role
                 local confirming = menu.pendingRole and menu.pendingRole.index == stationIndex and menu.pendingRole.role == role
-                addButton(row, column, confirming and ("CONFIRM: " .. role) or role, function()
+                local roleLabel = current and ("CURRENT: " .. role) or (confirming and ("CONFIRM: " .. role) or role)
+                addStationChoiceButton(row, column, roleLabel, current, confirming, function()
+                    if current then
+                        menu.roleConfirmation = role .. " is already the selected station's persistent EOC role. No change is needed."
+                        menu.refresh()
+                        return
+                    end
                     if not confirming then
                         menu.pendingRole = { index = stationIndex, role = role }
                         menu.roleConfirmation = "CONFIRM ROLE CHANGE: Select CONFIRM: " .. role .. " to change " .. text(v(station, 1, "this station")) .. ". No role has changed yet."
@@ -2589,7 +2634,7 @@ local function addRoleControls(tableWidget, station)
                     raise("station.role", { index = stationIndex, role = role })
                     station[2] = role
                     menu.refresh()
-                end, true)
+                end)
             end
         end
     end
@@ -2598,7 +2643,7 @@ local function addRoleControls(tableWidget, station)
         local confirmRow = tableWidget:addRow(false)
         confirmRow[1]:setColSpan(4):createText(menu.roleConfirmation, { wordwrap = true })
     end
-    actionResult(tableWidget, "station.role", "Role changes require two deliberate clicks. The first click previews; the second confirms.")
+    actionResult(tableWidget, "station.role", "ROLE CONTROL: Role changes require two deliberate clicks. The first click previews; the second confirms.")
 
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
@@ -2616,7 +2661,7 @@ local function addRoleControls(tableWidget, station)
     actionResult(
         tableWidget,
         "station.auto",
-        "Assigns roles only to player stations that are currently undefined."
+        "EMPIRE-WIDE ACTION: Assigns roles only to player stations that are currently undefined. Existing persistent roles are not changed."
     )
 end
 
@@ -2719,7 +2764,9 @@ local function addOperationsControls(tableWidget)
         menu.refresh()
     end)
 
-    section(tableWidget, "OPERATION ACTIONS")
+    section(tableWidget, "ONE-TIME OPERATION ACTIONS - RUN ONLY WHEN SELECTED")
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("ACTION SCOPE: Each explanation below begins with the exact button it describes. These are commands, not persistent station settings.", { wordwrap = true, color = navigationStoryColor })
     row = tableWidget:addRow(true)
     addButton(row, 1, actionLabel("trade.review", "ACTION: REVIEW EOC TRADE ORDERS", "REVIEWING ORDERS"), function()
         if startAction("trade.review") then
@@ -2741,17 +2788,17 @@ local function addOperationsControls(tableWidget)
     actionResult(
         tableWidget,
         "trade.review",
-        "Checks EOC-owned trade offers; Managed mode may create, verify, or remove them."
+        "REVIEW EOC TRADE ORDERS: Checks EOC-owned trade offers; Managed mode may create, verify, or remove them."
     )
     actionResult(
         tableWidget,
         "shipping.scan",
-        "Checks logistics needs and registered ships; Auto mode may assign a compatible ship."
+        "SCAN SHIPPING NEEDS: Checks logistics needs and registered ships; Auto mode may assign a compatible ship."
     )
     actionResult(
         tableWidget,
         "analysis.run",
-        "Refreshes EOC intelligence and recommendations; it does not authorize new operations."
+        "RUN EMPIRE ANALYSIS: Refreshes EOC intelligence and recommendations; it does not authorize new operations."
     )
 end
 
@@ -2912,7 +2959,11 @@ local function stationWorkspace(tableWidget)
 
     addRoleControls(tableWidget, station)
 
-    section(tableWidget, "EOC OPERATING POLICY - CHANGES EOC RECOMMENDATION BEHAVIOR")
+    section(tableWidget, "PERSISTENT EOC POLICY - CHANGES RECOMMENDATIONS ONLY")
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("GREEN = CURRENT POLICY | AMBER = PREVIEW AWAITING CONFIRMATION | GRAY = AVAILABLE POLICY", { wordwrap = true, color = navigationStoryColor })
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("POLICY SCOPE: These buttons change how EOC advises this station. They never change the station's formal role.", { wordwrap = true })
     pair(tableWidget, "CURRENT POLICY", menu.stabilizationGoal, "FORMAL STATION ROLE", v(station, 2, "UNDEFINED") .. " (not changed here)")
     local policies = {
         { "MARKET-SUPPORTED", "MARKET-SUPPORTED STABILIZATION" },
@@ -2924,8 +2975,15 @@ local function stationWorkspace(tableWidget)
     for column, policy in ipairs(policies) do
         local label, goal = policy[1], policy[2]
         local stationIndex = v(station, 16, menu.selected)
+        local current = text(menu.stabilizationGoal) == goal
         local confirming = menu.pendingPolicy and menu.pendingPolicy.index == stationIndex and menu.pendingPolicy.goal == goal
-        addButton(row, column, confirming and ("CONFIRM POLICY: " .. label) or label, function()
+        local policyLabel = current and ("CURRENT: " .. label) or (confirming and ("CONFIRM POLICY: " .. label) or label)
+        addStationChoiceButton(row, column, policyLabel, current, confirming, function()
+            if current then
+                menu.policyConfirmation = label .. " is already the selected station's persistent EOC policy. No change is needed."
+                menu.refresh()
+                return
+            end
             if not confirming then
                 menu.pendingPolicy = { index = stationIndex, goal = goal }
                 menu.policyConfirmation = "PREVIEW ONLY: Change EOC policy for " .. text(v(station, 1, "this station")) .. " from " .. text(menu.stabilizationGoal) .. " to " .. goal .. ". This changes EOC recommendations, not the formal station role. Click CONFIRM POLICY to apply."
@@ -2938,13 +2996,13 @@ local function stationWorkspace(tableWidget)
             menu.stabilizationGoal = goal
             raise("diagnostics.goal", { index = stationIndex, goal = goal })
             menu.refresh()
-        end, true)
+        end)
     end
     if menu.policyConfirmation then
         row = tableWidget:addRow(false)
         row[1]:setColSpan(4):createText(menu.policyConfirmation, { wordwrap = true })
     end
-    actionResult(tableWidget, "diagnostics.goal", "Policy changes require preview and confirmation. They alter EOC recommendations but never change the formal station role.")
+    actionResult(tableWidget, "diagnostics.goal", "POLICY CONTROL: Changes require preview and confirmation. They alter EOC recommendations but never change the formal station role.")
 
     addOperationsControls(tableWidget)
     addReportsControls(tableWidget)
