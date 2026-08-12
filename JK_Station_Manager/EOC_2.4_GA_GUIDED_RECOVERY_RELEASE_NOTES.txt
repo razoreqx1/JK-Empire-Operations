@@ -1,5 +1,5 @@
 EOC 2.4 GA - GUIDED RECOVERY AND SAFE MARKET TESTS
-Build 169 / Version 269
+Build 170 / Version 270
 Date: 2026-08-12
 
 - Adds one-step-at-a-time Guided Recovery with separated action, evidence, and verification views.

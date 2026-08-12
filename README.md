@@ -5,7 +5,7 @@ A governance-first operations layer for X4: Foundations.
 ## Current release
 
 - Version: 2.4 GA
-- Release build: 169
+- Release build: 170
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 

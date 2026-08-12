@@ -1,4 +1,4 @@
-# EOC 2.4 GA — Build 169
+# EOC 2.4 GA — Build 170
 
 ## Guided Recovery
 
@@ -39,4 +39,4 @@ EOC 2.4 retains executive intelligence, station roles and policies, cases, repor
 - Exact test-offer removal confirmed; ordinary offers remained untouched.
 - Amber confirmation behavior and creation/removal locks verified.
 - No EOC Lua or Mission Director errors in on-load, post-action, removal, or exit reviews.
-- Build 169 passed 12 XML parses, full-description preservation, Steam's 7,999-byte description limit, stale-identity scans, and one-folder ZIP validation.
+- Build 170 passed 12 XML parses, full-description preservation, Steam's 7,999-byte description limit, stale-identity scans, and one-folder ZIP validation.
