@@ -80,7 +80,7 @@ local investigationUnknownColor = { r = 255, g = 190, b = 72, a = 100 }
 local investigationNeutralColor = { r = 175, g = 185, b = 195, a = 100 }
 local navigationStoryColor = { r = 125, g = 200, b = 235, a = 100 }
 local EOC_IDENTITY_BB = "$JKEOC_CommandIntelligenceIdentity"
-local EOC_OS_BUILD = 170
+local EOC_OS_BUILD = 173
 local EOC_OS_BOOT_DELAY = 1.35
 local EOC_OS_RANDOM_MESSAGE_COUNT = 5
 local EOC_OS_MESSAGE_POOL = {
@@ -784,7 +784,7 @@ local function init()
     if Helper and Helper.registerMenu then
         Helper.registerMenu(menu)
     else
-    DebugError("[JKEOC][B162][LUA_ERROR] Helper.registerMenu unavailable")
+    DebugError("[JKEOC][B173][LUA_ERROR] Helper.registerMenu unavailable")
     end
 
     AddUITriggeredEvent(menu.name, "INIT", nil)
@@ -842,6 +842,7 @@ function menu.onShowMenu()
     menu.shipBlueprints = v(menu.param, 19, {})
     menu.shipWharfRoutes = v(menu.param, 20, {})
     menu.shipOrderRecords = v(menu.param, 21, {})
+    menu.observations = v(menu.param, 22, {})
     menu.shipOrderState = menu.shipOrderState or {}
     menu.pendingShipQueueRefresh = nil
     menu.probesRun = {}
@@ -968,6 +969,13 @@ local function addTabButton(row, column, label, page)
         menu.navigationOrigin = nil
         menu.navigationStack = {}
         menu.reportOrigin = nil
+        if page == "cases" then
+            menu.caseScope = selectedStation() and "station" or "global"
+            menu.caseSeverity = "all"
+            menu.selectedCase = 1
+            menu.casePage = 1
+            menu.diagnosticCase = nil
+        end
         menu.page = page
         menu.activeTab = page
         menu.refresh()
@@ -1163,10 +1171,11 @@ local function openCasesCenter()
     if menu.page ~= "cases" then
         captureNavigation(menu.page == "dashboard" and "OVERVIEW" or string.upper(menu.page or "PREVIOUS SCREEN"))
     end
-    menu.caseScope = "global"
+    menu.caseScope = selectedStation() and "station" or "global"
     menu.caseSeverity = "all"
     menu.selectedCase = 1
     menu.casePage = 1
+    menu.diagnosticCase = nil
     menu.page = "cases"
     menu.activeTab = "cases"
     menu.refresh()
@@ -1264,6 +1273,22 @@ local function filteredCases()
     return filtered
 end
 
+local function stationObservations(station)
+    local matches = {}
+    local stationName = text(v(station, 1, ""))
+    for _, observation in ipairs(menu.observations or {}) do
+        if text(v(observation, 1, "")) == stationName then table.insert(matches, observation) end
+    end
+    return matches
+end
+
+local function observationHasPlayerCase(stationName, subject)
+    for _, case in ipairs(menu.cases or {}) do
+        if text(v(case, 1, "")) == stationName and v(case, 11, "") == "PLAYER" and text(v(case, 4, "")) == subject then return true end
+    end
+    return false
+end
+
 local function focusCaseStation(case)
     local stationName = text(v(case, 1, ""))
     for index, station in ipairs(menu.stations) do
@@ -1293,9 +1318,10 @@ local function casesCenter(tableWidget)
             end
         end
     end
-    local selectedDifference = math.max(0, selectedProfileIssues - selectedEOCCases)
+    local selectedObservations = selectedProfile and stationObservations(selectedProfile) or {}
+    local selectedDifference = math.max(0, #selectedObservations - selectedEOCCases)
     local brief = tableWidget:addRow(false)
-    brief[1]:setColSpan(4):createText("DECISION BRIEF: Cases require tracked action. Profile issues may include observations that have not matured into cases. Select a station to reconcile both counts or request an investigation.", { wordwrap = true })
+    brief[1]:setColSpan(4):createText(menu.caseScope == "station" and "STATION REVIEW: This screen is locked to the working station. It shows every retained observation contributing to its operational history, confirmed cases, and player-requested investigations. Choose ALL STATIONS only when you want to leave this station context." or "DECISION BRIEF: Select a station to review its confirmed cases and complete retained observation history.", { wordwrap = true })
     pair(
         tableWidget,
         "SCOPE",
@@ -1351,47 +1377,46 @@ local function casesCenter(tableWidget)
         menu.refresh()
     end, menu.caseScope ~= "global" or menu.caseSeverity ~= "all")
 
-    section(tableWidget, "PLAYER CASE DESK")
-    pair(tableWidget, "SELECTED STATION", text(v(selectedProfile, 1, "NONE")), "PROFILE ISSUES", selectedProfileIssues)
+    section(tableWidget, "STATION HEALTH AND ISSUE INVENTORY")
+    pair(tableWidget, "SELECTED STATION", text(v(selectedProfile, 1, "NONE")), "HEALTH / TREND", text(v(selectedProfile, 3, "UNKNOWN")) .. " / " .. text(v(selectedProfile, 4, "UNKNOWN")))
+    pair(tableWidget, "CURRENT ISSUES", selectedProfileIssues, "RETAINED OBSERVATIONS", #selectedObservations)
     pair(tableWidget, "EOC-CONFIRMED CASES", selectedEOCCases, "PLAYER-REQUESTED CASES", selectedPlayerCases)
-    pair(tableWidget, "UNRECONCILED OBSERVATIONS", selectedDifference, "PLAYER AUTHORITY", "REQUEST INVESTIGATION / MONITOR")
-    local hasPlayerCase = false
-    if selectedProfile then
-        for _, candidate in ipairs(stationCases(selectedProfile)) do
-            if v(candidate, 11, "") == "PLAYER" then hasPlayerCase = true break end
-        end
-    end
-    row = tableWidget:addRow(true)
-    row[1]:setColSpan(3)
-    addButton(row, 1, actionLabel("case.create", "CREATE PLAYER CASE FOR SELECTED STATION", "CREATING PLAYER CASE"), function()
-        if selectedProfile and startAction("case.create") then
-            local stationName = text(v(selectedProfile, 1, "Selected station"))
-            local subject = selectedProfileIssues > 0 and (selectedProfileIssues .. " detected issue(s) require reconciliation") or "Player-requested station review"
-            table.insert(menu.cases, { stationName, "PLAYER", "PLAYER-REPORTED", subject, "OPEN - PLAYER REQUESTED", "The player requested EOC investigation of this station.", "Review existing evidence, open Diagnostics, and define a verification step.", selectedProfileIssues, 0, 0, "PLAYER" })
-            menu.caseScope = "station"
-            menu.caseSeverity = "all"
-            menu.selectedCase = #menu.cases
-            menu.casePage = math.max(1, math.ceil(#stationCases(selectedProfile) / 8))
-            raise("case.create", { index = v(selectedProfile, 16, menu.selected), subject = subject, issues = selectedProfileIssues })
-            menu.refresh()
-        end
-    end, selectedProfile ~= nil and not hasPlayerCase and not actionState("case.create").running)
-    addButton(row, 4, "CHOOSE STATION - RETURN TO CASES", function()
-        captureNavigation("CASES", true)
-        menu.page = "stations"
-        menu.activeTab = "stations"
-        menu.refresh()
-    end, true)
-    if hasPlayerCase then
-        local existingRow = tableWidget:addRow(false)
-        existingRow[1]:setColSpan(4):createText("STATUS: This station already has a player-requested case. Select it below instead of creating a duplicate.", { wordwrap = true })
-    end
-    actionResult(tableWidget, "case.create", "Creates a persistent player-requested investigation. It remains PLAYER-REPORTED until evidence confirms severity.")
+    pair(tableWidget, "CHRONIC / RECURRING", text(v(selectedProfile, 18, 0)) .. " / " .. text(v(selectedProfile, 17, 0)), "HISTORY HITS", v(selectedProfile, 22, 0))
+    local health = string.upper(text(v(selectedProfile, 3, "MONITORING")))
+    row = tableWidget:addRow(false)
+    local explanation = health == "CHRONIC" and "WHY THIS STATION IS CHRONIC: One or more retained observations reached SYSTEMIC status after repeated evidence. Review every contributor below. CHRONIC clears only after later healthy samples move those observations through recovery and resolution." or "STATUS EXPLANATION: The issue inventory below shows the retained evidence behind this station's health and trend."
+    row[1]:setColSpan(4):createText(explanation, { wordwrap = true, color = health == "CHRONIC" and investigationUnknownColor or navigationStoryColor })
 
+    section(tableWidget, "ALL RETAINED ISSUES FOR THIS STATION  |  " .. #selectedObservations)
+    if #selectedObservations == 0 then
+        row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("No retained issue record is available for this station. Run a fresh Empire Analysis to reconcile its profile.", { wordwrap = true })
+    else
+        for _, observation in ipairs(selectedObservations) do
+            local subject = text(v(observation, 3, "General operations"))
+            local state = string.upper(text(v(observation, 4, "BASELINE")))
+            local contributes = state == "SYSTEMIC" or state == "RECURRING" or state == "CANDIDATE"
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText((contributes and "CONTRIBUTES TO CURRENT STATUS" or "HISTORICAL / RECOVERY EVIDENCE") .. " - " .. state .. " - " .. text(v(observation, 2, "OBSERVATION")) .. ": " .. subject, { wordwrap = true, color = contributes and investigationUnknownColor or investigationPassColor })
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText("EVIDENCE: " .. text(v(observation, 5, "No evidence summary available")) .. " | HITS: " .. text(v(observation, 8, 0)) .. " | SAMPLES: " .. text(v(observation, 9, 0)) .. " | RELAPSES: " .. text(v(observation, 10, 0)), { wordwrap = true })
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText("WHY IT MATTERS: " .. text(v(observation, 6, "Cause not yet confirmed")) .. " DO THIS NEXT: " .. text(v(observation, 7, "Continue monitoring")), { wordwrap = true })
+            local existing = observationHasPlayerCase(text(v(selectedProfile, 1, "")), subject)
+            row = tableWidget:addRow(true); row[1]:setColSpan(4)
+            addButton(row, 1, existing and ("PLAYER CASE ALREADY OPEN: " .. subject) or ("OPEN PLAYER INVESTIGATION: " .. subject), function()
+                if not existing and selectedProfile and startAction("case.create") then
+                    table.insert(menu.cases, { text(v(selectedProfile, 1, "Selected station")), "PLAYER", "PLAYER-REPORTED", subject, "OPEN - PLAYER REQUESTED", text(v(observation, 6, "The player requested EOC investigation.")), text(v(observation, 7, "Review evidence and define a verification step.")), 1, 0, 0, "PLAYER" })
+                    raise("case.create", { index = v(selectedProfile, 16, menu.selected), subject = subject, issues = 1 })
+                    menu.refresh()
+                end
+            end, not existing and not actionState("case.create").running)
+        end
+    end
+    actionResult(tableWidget, "case.create", "Creates one persistent player-requested investigation for the selected issue. Existing issue-specific cases are not duplicated.")
     local cases = filteredCases()
     if #cases == 0 then
         section(tableWidget, "NO MATCHING ACTIVE CASES")
-        pair(tableWidget, "STATUS", "No critical or warning case matches the current filters.", "ACTION", "Continue monitoring.")
+        pair(tableWidget, "STATUS", "No confirmed recovery case matches the current filters.", "ACTION", (#selectedObservations > 0 and "Review retained issues above or open a player investigation." or "Run a fresh Empire Analysis."))
         return
     end
 
@@ -1506,11 +1531,11 @@ local function casesCenter(tableWidget)
                 focusCaseStation(selected)
                 local stationName = text(v(selected, 1, ""))
                 for index = #menu.cases, 1, -1 do
-                    if text(v(menu.cases[index], 1, "")) == stationName and v(menu.cases[index], 11, "") == "PLAYER" then table.remove(menu.cases, index) end
+                    if text(v(menu.cases[index], 1, "")) == stationName and text(v(menu.cases[index], 4, "")) == text(v(selected, 4, "")) and v(menu.cases[index], 11, "") == "PLAYER" then table.remove(menu.cases, index) end
                 end
                 menu.selectedCase = 1
                 menu.casePage = 1
-                raise("case.close", { index = v(selectedStation(), 16, menu.selected) })
+                raise("case.close", { index = v(selectedStation(), 16, menu.selected), subject = text(v(selected, 4, "")) })
                 menu.refresh()
             end
         end, not actionState("case.close").running)
@@ -2141,7 +2166,11 @@ local function diagnosticsCenter(tableWidget)
         elseif not diagnosticCase then
             section(tableWidget, "NO ACTIVE CASE")
             row = tableWidget:addRow(false)
-            row[1]:setColSpan(4):createText("No critical or warning recovery case is active for this station. Continue monitoring or choose another case.", { wordwrap = true })
+            local observations = stationObservations(station)
+            local health = string.upper(text(v(station, 3, "MONITORING")))
+            row[1]:setColSpan(4):createText((health == "CHRONIC" and "This station is CHRONIC because retained observations reached SYSTEMIC status, but no confirmed recovery case is active. Diagnostics requires one exact working case. Open Cases to review every contributing issue and create an issue-specific player investigation." or "No confirmed recovery case is active for this station. Open Cases to review its " .. #observations .. " retained observation(s) or request an investigation."), { wordwrap = true, color = health == "CHRONIC" and investigationUnknownColor or nil })
+            row = tableWidget:addRow(true); row[1]:setColSpan(4)
+            addButton(row, 1, "OPEN THIS STATION'S CASE REVIEW", function() menu.caseScope = "station"; menu.caseSeverity = "all"; menu.selectedCase = 1; menu.casePage = 1; menu.diagnosticCase = nil; menu.page = "cases"; menu.activeTab = "cases"; menu.refresh() end, true)
             return
         end
 
@@ -3006,6 +3035,7 @@ local function stationWorkspace(tableWidget)
         menu.caseSeverity = "all"
         menu.selectedCase = 1
         menu.casePage = 1
+        menu.diagnosticCase = nil
         menu.page = "cases"
         menu.activeTab = "cases"
         menu.refresh()
@@ -3435,3 +3465,4 @@ function menu.viewCreated()
 end
 
 init()
+

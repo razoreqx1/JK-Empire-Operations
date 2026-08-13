@@ -1,0 +1,11 @@
+EOC 2.5 GA - STATION HEALTH AND FOCUSED CASES
+Build 173 / Version 273
+Date: 2026-08-13
+
+- Explains all retained issues contributing to a station's CHRONIC status.
+- Shows evidence, history, and recommended next action for each contributor.
+- Lets the player create one issue-specific investigation without duplicates.
+- Opens Cases in selected-station scope when a working station is active.
+- Hides unrelated stations until ALL STATIONS is deliberately selected.
+- Requires UI Extensions and HUD for EOC interface access.
+- Preserves EOC 2.4 Guided Recovery, bounded market tests, fleet management, reports, and player-authority safeguards.
