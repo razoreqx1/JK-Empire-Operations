@@ -1,34 +1,10 @@
-local ffi = require("ffi")
-
-ffi.cdef[[
-    typedef uint64_t UniverseID;
-    UniverseID GetContextByClass(UniverseID componentid, const char* classname, bool includeself);
-    UniverseID GetPlayerID(void);
-    const char* GetPlayerCurrentControlGroup(void);
-]]
-
-local C = ffi.C
 local integration = {
-    callbackID = "jk_eoc_b139_personal_office",
+    callbackID = "jk_eoc_b195_universal_access",
     menu = nil,
     registered = false,
     attempts = 0,
     maxAttempts = 60,
 }
-
-local function isPersonalOfficeChair()
-    local controlgroup = C.GetPlayerCurrentControlGroup()
-    local isEmpireControl = controlgroup ~= nil and ffi.string(controlgroup) == "empirecontrol"
-
-    local room = C.GetContextByClass(C.GetPlayerID(), "room", false)
-    local isPersonalOffice = false
-    if room ~= 0 then
-        local roommacro = GetComponentData(ConvertStringToLuaID(tostring(room)), "macro")
-        isPersonalOffice = roommacro == "room_gen_playeroffice_01_macro"
-    end
-
-    return isEmpireControl or isPersonalOffice
-end
 
 local function signalEOC()
     AddUITriggeredEvent("JKEOC_PersonalOfficeAccess", "open", nil)
@@ -48,10 +24,7 @@ local function openEOC()
     end
 end
 
-local function addPersonalOfficeAction(tableHeader)
-    if not isPersonalOfficeChair() then
-        return
-    end
+local function addEOCAction(tableHeader)
 
     local row = tableHeader:addRow(true, { fixed = true })
     row[1]:setColSpan(11):createButton({
@@ -72,11 +45,11 @@ local function init()
     if integration.menu and type(integration.menu.registerCallback) == "function" then
         integration.menu.registerCallback(
             "display_on_after_main_interactions",
-            addPersonalOfficeAction,
+            addEOCAction,
             integration.callbackID
         )
         integration.registered = true
-        DebugError("[JKEOC][B159][PERSONAL_OFFICE] callback=REGISTERED attempts=" .. tostring(integration.attempts + 1))
+        DebugError("[JKEOC][B199][UNIVERSAL_ACCESS] callback=REGISTERED attempts=" .. tostring(integration.attempts + 1))
         return
     end
 
@@ -84,7 +57,7 @@ local function init()
     if integration.attempts < integration.maxAttempts and type(Helper.addDelayedOneTimeCallbackOnUpdate) == "function" then
         Helper.addDelayedOneTimeCallbackOnUpdate(init, true, getElapsedTime() + 1)
     else
-        DebugError("[JKEOC][B159][LUA_ERROR] Personal Office callback unavailable after retries=" .. tostring(integration.attempts))
+        DebugError("[JKEOC][B199][LUA_ERROR] Universal Dock Interactions callback unavailable after retries=" .. tostring(integration.attempts))
     end
 end
 

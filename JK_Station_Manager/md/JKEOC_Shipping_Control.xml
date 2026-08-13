@@ -76,3 +76,6 @@
   <cue name="JKEOC_B76_ApproveBuildStorage" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B76_ApproveBuildStorage" /></conditions><actions><signal_cue_instantly cue="JKEOC_B76_AssignBuildStorage" /><add_player_choice_sub text="'RETURN'" position="bottom_right" section="JKEOC_B76_Menu" /></actions></cue>
 </cues></mdscript>
 
+
+
+
