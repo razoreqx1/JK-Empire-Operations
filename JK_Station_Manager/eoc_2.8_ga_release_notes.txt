@@ -1,9 +1,0 @@
-EOC 2.8 GA — Build 199 / Version 299
-
-- Verified targeted reassignment of eligible player construction vessels already performing another role.
-- Exact station attachment verification before EOC reports success.
-- Live construction proof: reassigned Elephant advanced the active module from 15% to 22%.
-- Explicit Save Global Settings workflow with amber unsaved and green saved states.
-- Optional computer loading screen preference now persists per save and remains ON by default for players who have not changed it.
-
-Removing EOC does not make an existing save dependent on the mod.

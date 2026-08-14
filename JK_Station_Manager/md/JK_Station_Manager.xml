@@ -703,7 +703,8 @@ subordinates, storage modules, and funds. No station or ship settings are change
                  demand remains the version-neutral admission test. -->
             <!-- Build 158: active HQ terraforming consumes Allographyne as a universal substitute. -->
             <set_value name="$terraformingmissiondemand" exact="player.headquarters.exists and $station == player.headquarters and $ware.name == 'Allographyne' and @$station.cluster.terraforming.activeproject.exists and not @$station.cluster.terraforming.activeproject.isaborted" />
-            <do_if value="$maximum gt 0 and $amount le 0 and $targetamount gt 0 and not $terraformingmissiondemand">
+            <!-- Build 201: Ordinary stations may expose an allocated Allographyne slot, but Allographyne is an optional terraforming substitute rather than a normal production input. Admit it as a shortage only at the player HQ while X4 reports an active, non-aborted terraforming project. -->
+            <do_if value="$maximum gt 0 and $amount le 0 and $targetamount gt 0 and ($ware.name != 'Allographyne' or $terraformingmissiondemand)">
               <set_value name="$stationempty" exact="$stationempty + 1" />
               <set_value name="$emptyresources" exact="$emptyresources + 1" />
               <set_value name="$storagetype" exact="'UNKNOWN'" />

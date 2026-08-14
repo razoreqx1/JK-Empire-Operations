@@ -49,7 +49,7 @@ local function init()
             integration.callbackID
         )
         integration.registered = true
-        DebugError("[JKEOC][B199][UNIVERSAL_ACCESS] callback=REGISTERED attempts=" .. tostring(integration.attempts + 1))
+        DebugError("[JKEOC][B216][UNIVERSAL_ACCESS] callback=REGISTERED attempts=" .. tostring(integration.attempts + 1))
         return
     end
 
@@ -57,7 +57,7 @@ local function init()
     if integration.attempts < integration.maxAttempts and type(Helper.addDelayedOneTimeCallbackOnUpdate) == "function" then
         Helper.addDelayedOneTimeCallbackOnUpdate(init, true, getElapsedTime() + 1)
     else
-        DebugError("[JKEOC][B199][LUA_ERROR] Universal Dock Interactions callback unavailable after retries=" .. tostring(integration.attempts))
+        DebugError("[JKEOC][B216][LUA_ERROR] Universal Dock Interactions callback unavailable after retries=" .. tostring(integration.attempts))
     end
 end
 

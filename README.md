@@ -1,39 +1,42 @@
 # JK Empire Operations Center (EOC)
 
-A governance-first operations layer for X4: Foundations.
+Transform your X4 empire from reactive management into intelligent operations.
 
 ## Current release
 
-- Version: 2.8 GA
-- Release build: 199
+- Version: 3.0 GA
+- Engineering build: 216
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-## What is new in EOC 2.8
+## What is new in EOC 3.0
 
-- Reassigns an eligible player construction vessel from another role and targets it to the selected station's exact build request through X4's native construction workflow.
-- Verifies the exact vessel is attached before reporting success. Live testing confirmed the reassigned Elephant actively advanced station construction.
-- Adds an explicit **SAVE GLOBAL SETTINGS** workflow with amber unsaved state and green saved confirmation.
-- Makes the optional computer loading-screen preference persist per save. It remains ON by default until the player explicitly turns it off and saves the setting.
+- Adds the live KPI Center with page-scoped 10-second sampling that stops when the page closes.
+- Adds complete applicable station and shipyard filters with **ALL** choices and reliable KPI button routing.
+- Adds compact construction summaries, selected-station module progress, and resource-level shortage details.
+- Enforces an eight-row KPI display budget so large empires cannot overflow the X4 widget system.
+- Preserves the visible text window and selected row during automatic KPI refreshes.
+- Adds bounded live-session case and empire-growth histories plus specialized workforce, storage, logistics, and shipyard views.
 
 ## Existing EOC capabilities
 
-- Standalone EOC access from **Dock Interactions > OPEN EXECUTIVE OPERATIONS CENTER**; UI Extensions and HUD is not required.
-- Station construction status, ordered module progress, missing build wares, exact verified funding, builder assignment, and build-storage evidence.
+- Standalone EOC access from **Dock Interactions > OPEN EXECUTIVE OPERATIONS CENTER**, plus the EOC pinwheel.
+- Persistent station roles and role-aware operational recommendations.
 - Guided Recovery, evidence-backed cases, verification, bounded market tests, Managed Trade, shipping control, fleet templates, and reports.
+- Mission-aware analysis, including intentional Terraforming-related activity.
 - Player-controlled authority modes, deliberate amber confirmations, duplicate prevention, and no free ships or resource bypass.
 
 ## First-time access
 
-1. Load the game and wait about 10 seconds for EOC initialization.
+1. Load the game and wait approximately 10 seconds for EOC initialization.
 2. Open **Dock Interactions** from the top HUD menu.
 3. Select **OPEN EXECUTIVE OPERATIONS CENTER**.
 4. On first use, choose a name for the command intelligence.
 
 ## Documentation and support
 
-- [EOC 2.8 GA User and Support Guide](docs/EOC_2.8_GA_USER_SUPPORT_GUIDE.md)
-- [EOC 2.8 GA Release Notes](docs/RELEASE_NOTES_2.8_GA.md)
+- [EOC 3.0 GA User and Support Guide](docs/EOC_3.0_GA_USER_SUPPORT_GUIDE.md)
+- [EOC 3.0 GA Release Notes](docs/RELEASE_NOTES_3.0_GA.md)
 
 Older release documents remain available in `docs/`.
 
