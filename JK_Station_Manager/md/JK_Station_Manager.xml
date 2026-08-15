@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<!-- V330 EOC RELIABLE MONITORING FOUNDATION — PHASE 1
+<!-- V333 EOC RELIABLE MONITORING FOUNDATION — PHASE 1
 Core principles:
 1 Player is CEO; advisor explains before acting.
 2 Persistence triggers investigation, never an automatic conclusion.
@@ -168,13 +168,13 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <set_value name="global.$JKEOC_RecoveryNextStep" exact="''" />
         <set_value name="global.$JKEOC_RecoverySuccessCheck" exact="''" />
 
-        <debug_text text="'[JKEOC][V330] =================================================='" filter="general" />
+        <debug_text text="'[JKEOC][V333] =================================================='" filter="general" />
         <!-- Build 158: scan-local marker used to retire an ordinary shortage reclassified as terraforming demand. -->
         <remove_value name="$terraformingreclassifiedkey" />
         <remove_value name="global.$JKEOC_TerraformingMissionStation" />
         <remove_value name="global.$JKEOC_TerraformingMissionWare" />
         <remove_value name="global.$JKEOC_TerraformingMissionContext" />
-        <debug_text text="'[JKEOC][V330] INTELLIGENCE SCAN START | Stations: %1'.[$stations.count]" filter="general" />
+        <debug_text text="'[JKEOC][V333] INTELLIGENCE SCAN START | Stations: %1'.[$stations.count]" filter="general" />
 
         <do_all exact="$stations.count" counter="$i">
           <set_value name="$station" exact="$stations.{$i}" />
@@ -652,7 +652,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <!-- Existing construction gate retained unchanged for diagnostic comparison. -->
           <do_if value="not $station.isoperational">
             <set_value name="$skippedconstruction" exact="$skippedconstruction + 1" />
-            <debug_text text="'[JKEOC][V330][CONSTRUCTION_SKIP] %1 | Sector=%2 | reason=station_not_operational'.[$station.name, $station.sector.name]" filter="general" />
+            <debug_text text="'[JKEOC][V333][CONSTRUCTION_SKIP] %1 | Sector=%2 | reason=station_not_operational'.[$station.name, $station.sector.name]" filter="general" />
           </do_if>
           <do_else>
 
@@ -991,7 +991,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
                   </do_if>
                 </do_all>
               </do_if>
-              <debug_text text="'[JKEOC][V330][RESOURCE_EMPTY] %1 | %2 | amount=%3 max=%4 target=%5'.[$station.name, $ware.name, $amount, $maximum, $station.cargo.{$ware}.target]" filter="general" />
+              <debug_text text="'[JKEOC][V333][RESOURCE_EMPTY] %1 | %2 | amount=%3 max=%4 target=%5'.[$station.name, $ware.name, $amount, $maximum, $station.cargo.{$ware}.target]" filter="general" />
             </do_if>
             <do_elseif value="$maximum gt 0 and $amount le 0 and $targetamount gt 0 and $terraformingmissiondemand">
               <set_value name="$terraformingreclassifiedkey" exact="'%1|%2|RESOURCE_EMPTY'.[$station.name, $ware.name]" />
@@ -1077,7 +1077,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
                 <set_value name="global.$JKEOC_FocusFirstFullStorageCapacity" exact="if $ware.waretransport == waretransport.container then $station.cargo.capacity.container else if $ware.waretransport == waretransport.solid then $station.cargo.capacity.solid else if $ware.waretransport == waretransport.liquid then $station.cargo.capacity.liquid else $maximum" />
                 <set_value name="global.$JKEOC_FocusFirstFullStorageFree" exact="if $ware.waretransport == waretransport.container then $station.cargo.free.container else if $ware.waretransport == waretransport.solid then $station.cargo.free.solid else if $ware.waretransport == waretransport.liquid then $station.cargo.free.liquid else $maximum - $amount" />
               </do_if>
-              <debug_text text="'[JKEOC][V330][CARGO_90] %1 | %2 | amount=%3 max=%4 target=%5'.[$station.name, $ware.name, $amount, $maximum, $station.cargo.{$ware}.target]" filter="general" />
+              <debug_text text="'[JKEOC][V333][CARGO_90] %1 | %2 | amount=%3 max=%4 target=%5'.[$station.name, $ware.name, $amount, $maximum, $station.cargo.{$ware}.target]" filter="general" />
             </do_if>
           </do_all>
 
@@ -1089,14 +1089,14 @@ subordinates, storage modules, and funds. No station or ship settings are change
                 <append_to_list name="$stationcases" exact="table[$station=$station, $stationname=$station.name, $ware='Storage', $wareobject=ware.medicalsupplies, $amount=0, $maximum=0, $target=0, $type='NO STORAGE MODULES', $status=$nostoragestatus, $buildactive=$stationhasbuildingtask, $storagetype='WARE-DEPENDENT', $storagecapacity=0, $storagefree=0, $produces=0, $rootcause='NO OPERATIONAL STORAGE MODULES', $corrective=$nostorageaction, $constructionitems=$constructionitems, $constructioncount=$constructionitems.count, $plannedstoragematches=$plannedcontainercount + $plannedsolidcount + $plannedliquidcount + $plannedcondensatecount, $plannedstoragecapacity=$plannedcontainercapacity + $plannedsolidcapacity + $plannedliquidcapacity, $plannedproductionmatches=0, $matchingmodulenames='See related construction for every planned storage module', $recommendedmodule='Storage modules matching the station wares', $recommendedcount=1, $suppliercount=0, $tradershipcount=$station.subordinates.{assignment.trade}.count, $productionmodulecount=0, $ownsuppliercount=0, $npcsuppliercount=0, $compatibletradercount=$station.subordinates.{assignment.trade}.count]" />
             <append_to_list name="global.$JKEOC_WarningCases" exact="$stationcases.{$stationcases.count}" />
             <set_value name="$stationrecs" exact="$stationrecs + 1" />
-            <debug_text text="'[JKEOC][V330][RECOMMEND] %1 | Review storage: productive/resource station reports zero storage modules'.[$station.name]" filter="general" />
+            <debug_text text="'[JKEOC][V333][RECOMMEND] %1 | Review storage: productive/resource station reports zero storage modules'.[$station.name]" filter="general" />
           </do_if>
           <do_if value="$products.count gt 0 and $shipcount == 0">
             <set_value name="$nosupport" exact="$nosupport + 1" />
                 <append_to_list name="$stationcases" exact="table[$station=$station, $stationname=$station.name, $ware='Logistics', $wareobject=ware.medicalsupplies, $amount=0, $maximum=0, $target=0, $type='NO ASSIGNED SUPPORT SHIPS', $status='OPEN — ACTION REQUIRED', $buildactive=$stationhasbuildingtask, $storagetype='NOT APPLICABLE', $storagecapacity=0, $storagefree=0, $produces=0, $rootcause='NO ASSIGNED LOGISTICS SHIPS', $corrective='ASSIGN suitable miners or traders for the station required wares, then verify deliveries begin', $constructionitems=$constructionitems, $constructioncount=$constructionitems.count, $plannedstoragematches=0, $plannedstoragecapacity=0, $plannedproductionmatches=0, $matchingmodulenames='No construction remedy identified for missing logistics ships', $recommendedmodule='Suitable station miner or trader', $recommendedcount=1, $suppliercount=0, $tradershipcount=0, $productionmodulecount=0, $ownsuppliercount=0, $npcsuppliercount=0, $compatibletradercount=0]" />
             <append_to_list name="global.$JKEOC_WarningCases" exact="$stationcases.{$stationcases.count}" />
             <set_value name="$stationrecs" exact="$stationrecs + 1" />
-            <debug_text text="'[JKEOC][V330][RECOMMEND] %1 | Review logistics: production station has no assigned support ships'.[$station.name]" filter="general" />
+            <debug_text text="'[JKEOC][V333][RECOMMEND] %1 | Review logistics: production station has no assigned support ships'.[$station.name]" filter="general" />
           </do_if>
           <do_if value="$stationempty gt 0">
             <set_value name="$stationrecs" exact="$stationrecs + 1" />
@@ -1236,7 +1236,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <set_value name="global.$JKEOC_OpenCaseCount" exact="global.$JKEOC_OpenCaseCount + 1" />
           <set_value name="global.$JKSM_EmptyFirstSeenScan" exact="global.$JKSM_ScanCount" />
           <set_value name="global.$JKSM_EmptyLastSeenScan" exact="global.$JKSM_ScanCount" />
-          <debug_text text="'[JKEOC][V330][ISSUE_MIGRATED] id=%1 type=RESOURCE_EMPTY key=%2'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey]" filter="general" />
+          <debug_text text="'[JKEOC][V333][ISSUE_MIGRATED] id=%1 type=RESOURCE_EMPTY key=%2'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey]" filter="general" />
         </do_if>
         <do_if value="$currentemptykey?">
           <set_value name="global.$JKSM_TrackedEmptyStation" exact="global.$JKSM_FirstEmptyStation" />
@@ -1249,12 +1249,12 @@ subordinates, storage modules, and funds. No station or ship settings are change
             <set_value name="global.$JKSM_EmptyIssueStatus" exact="'ACTIVE'" />
             <set_value name="global.$JKSM_EmptyCaseStatus" exact="'OPEN'" />
             <set_value name="global.$JKEOC_OpenCaseCount" exact="global.$JKEOC_OpenCaseCount + 1" />
-            <debug_text text="'[JKEOC][V330][ISSUE_UPDATED] id=%1 type=RESOURCE_EMPTY key=%2 status=%3 duration=%4'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey, global.$JKSM_EmptyIssueStatus, global.$JKSM_EmptyConsecutiveScans]" filter="general" />
+            <debug_text text="'[JKEOC][V333][ISSUE_UPDATED] id=%1 type=RESOURCE_EMPTY key=%2 status=%3 duration=%4'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey, global.$JKSM_EmptyIssueStatus, global.$JKSM_EmptyConsecutiveScans]" filter="general" />
           </do_if>
           <do_else>
             <!-- The scanner currently tracks only the leading issue. A changed key is replaced, not falsely marked resolved. -->
             <do_if value="global.$JKSM_TrackedEmptyKey?">
-              <debug_text text="'[JKEOC][V330][ISSUE_REPLACED] id=%1 type=RESOURCE_EMPTY oldkey=%2 newkey=%3'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey, $currentemptykey]" filter="general" />
+              <debug_text text="'[JKEOC][V333][ISSUE_REPLACED] id=%1 type=RESOURCE_EMPTY oldkey=%2 newkey=%3'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey, $currentemptykey]" filter="general" />
             </do_if>
             <set_value name="global.$JKSM_TrackedEmptyKey" exact="$currentemptykey" />
             <set_value name="global.$JKSM_EmptyIssueID" exact="'EOC-%1'.[global.$JKEOC_NextCaseID]" />
@@ -1267,7 +1267,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
             <set_value name="global.$JKSM_EmptyIssueStatus" exact="'NEW'" />
             <set_value name="global.$JKSM_EmptyFirstSeen" exact="player.age" />
             <set_value name="global.$JKSM_EmptyFirstSeenScan" exact="global.$JKSM_ScanCount" />
-            <debug_text text="'[JKEOC][V330][ISSUE_CREATED] id=%1 type=RESOURCE_EMPTY key=%2 station=%3 ware=%4 scan=%5'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey, global.$JKSM_FirstEmptyStation, global.$JKSM_FirstEmptyWare, global.$JKSM_ScanCount]" filter="general" />
+            <debug_text text="'[JKEOC][V333][ISSUE_CREATED] id=%1 type=RESOURCE_EMPTY key=%2 station=%3 ware=%4 scan=%5'.[global.$JKSM_EmptyIssueID, global.$JKSM_TrackedEmptyKey, global.$JKSM_FirstEmptyStation, global.$JKSM_FirstEmptyWare, global.$JKSM_ScanCount]" filter="general" />
           </do_else>
           <set_value name="global.$JKSM_EmptyLastSeen" exact="player.age" />
           <set_value name="global.$JKSM_EmptyLastSeenScan" exact="global.$JKSM_ScanCount" />
@@ -1502,10 +1502,10 @@ subordinates, storage modules, and funds. No station or ship settings are change
             <set_value name="global.$JKEOC_WorkforceNeedSummary" exact="'SPLIT REQUIRE BOTH CHELT MEAT AND SCRUFFIN FRUIT'" />
             <set_value name="global.$JKEOC_WorkforcePlanSummary" exact="'ADD: 1 Chelt Meat Production + 1 Scruffin Fruit Production + Water and Energy support'" />
           </do_if>
-          <debug_text text="'[JKEOC][V330][WORKFORCE_SUPPORT] station=%1 needs=%2 plan=%3 count=%4'.[global.$JKSM_FirstEmptyStation, global.$JKEOC_WorkforceNeedSummary, global.$JKEOC_WorkforcePlanSummary, $workforceNeedCount]" filter="general" />
+          <debug_text text="'[JKEOC][V333][WORKFORCE_SUPPORT] station=%1 needs=%2 plan=%3 count=%4'.[global.$JKSM_FirstEmptyStation, global.$JKEOC_WorkforceNeedSummary, global.$JKEOC_WorkforcePlanSummary, $workforceNeedCount]" filter="general" />
           <set_value name="global.$JKSM_EmptyCorrectiveAction" exact="'Open RECOMMENDED SOLUTIONS for exact build, support-station and trade options'" />
           <set_value name="global.$JKSM_EmptyCaseStage" exact="'RECOMMENDATION READY'" />
-          <debug_text text="'[JKEOC][V330][WORKFORCE_PLAN_READY] id=%1 ware=%2 race=%3 scope=%4 option1=%5 chain1=%6'.[global.$JKSM_EmptyIssueID, global.$JKSM_FirstEmptyWare, global.$JKEOC_WorkforceRace, global.$JKEOC_PlanScope, global.$JKEOC_Option1Modules, global.$JKEOC_ChainLine1]" filter="general" />
+          <debug_text text="'[JKEOC][V333][WORKFORCE_PLAN_READY] id=%1 ware=%2 race=%3 scope=%4 option1=%5 chain1=%6'.[global.$JKSM_EmptyIssueID, global.$JKSM_FirstEmptyWare, global.$JKEOC_WorkforceRace, global.$JKEOC_PlanScope, global.$JKEOC_Option1Modules, global.$JKEOC_ChainLine1]" filter="general" />
           <debug_text text="'[JKEOC][V420][INVESTIGATION] id=' + global.$JKSM_EmptyIssueID + ' stage=' + global.$JKSM_EmptyInvestigationStage + ' scans=' + global.$JKSM_EmptyConsecutiveScans + ' diagnosis_confidence=' + global.$JKSM_EmptyDiagnosisConfidence + ' allocation=' + global.$JKSM_FirstEmptyMaximum + ' target=' + global.$JKSM_FirstEmptyTarget + ' ships=' + global.$JKSM_FirstEmptyShipCount + ' storage_modules=' + global.$JKSM_FirstEmptyStorageModules + ' rootcause=' + global.$JKSM_EmptyRootCause + ' action=' + global.$JKSM_EmptyCorrectiveAction" filter="general" />
         </do_if>
         <do_elseif value="global.$JKSM_TrackedEmptyKey?">
@@ -1597,7 +1597,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <set_value name="global.$JKSM_FullFirstSeenScan" exact="global.$JKSM_ScanCount" />
           <set_value name="global.$JKSM_FullLastSeenScan" exact="global.$JKSM_ScanCount" />
           <set_value name="global.$JKSM_FullPreviousAmount" exact="global.$JKSM_FirstFullAmount" />
-          <debug_text text="'[JKEOC][V330][ISSUE_MIGRATED] id=%1 type=STORAGE_PRESSURE key=%2'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey]" filter="general" />
+          <debug_text text="'[JKEOC][V333][ISSUE_MIGRATED] id=%1 type=STORAGE_PRESSURE key=%2'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey]" filter="general" />
         </do_if>
         <do_if value="$currentfullkey?">
           <do_if value="global.$JKSM_TrackedFullKey? and global.$JKSM_TrackedFullKey == $currentfullkey">
@@ -1609,11 +1609,11 @@ subordinates, storage modules, and funds. No station or ship settings are change
             <do_if value="global.$JKSM_FullPreviousAmount? and global.$JKSM_FirstFullAmount lt global.$JKSM_FullPreviousAmount">
               <set_value name="global.$JKSM_FullIssueStatus" exact="'IMPROVING'" />
             </do_if>
-            <debug_text text="'[JKEOC][V330][ISSUE_UPDATED] id=%1 type=STORAGE_PRESSURE key=%2 status=%3 duration=%4 previous=%5 current=%6'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, global.$JKSM_FullIssueStatus, global.$JKSM_FullConsecutiveScans, global.$JKSM_FullPreviousAmount, global.$JKSM_FirstFullAmount]" filter="general" />
+            <debug_text text="'[JKEOC][V333][ISSUE_UPDATED] id=%1 type=STORAGE_PRESSURE key=%2 status=%3 duration=%4 previous=%5 current=%6'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, global.$JKSM_FullIssueStatus, global.$JKSM_FullConsecutiveScans, global.$JKSM_FullPreviousAmount, global.$JKSM_FirstFullAmount]" filter="general" />
           </do_if>
           <do_else>
             <do_if value="global.$JKSM_TrackedFullKey?">
-              <debug_text text="'[JKEOC][V330][ISSUE_REPLACED] id=%1 type=STORAGE_PRESSURE oldkey=%2 newkey=%3'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, $currentfullkey]" filter="general" />
+              <debug_text text="'[JKEOC][V333][ISSUE_REPLACED] id=%1 type=STORAGE_PRESSURE oldkey=%2 newkey=%3'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, $currentfullkey]" filter="general" />
             </do_if>
             <set_value name="global.$JKSM_TrackedFullKey" exact="$currentfullkey" />
             <set_value name="global.$JKSM_FullIssueID" exact="'EOC-%1'.[global.$JKEOC_NextCaseID]" />
@@ -1626,7 +1626,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
             <set_value name="global.$JKSM_FullIssueStatus" exact="'NEW'" />
             <set_value name="global.$JKSM_FullFirstSeen" exact="player.age" />
             <set_value name="global.$JKSM_FullFirstSeenScan" exact="global.$JKSM_ScanCount" />
-            <debug_text text="'[JKEOC][V330][ISSUE_CREATED] id=%1 type=STORAGE_PRESSURE key=%2 station=%3 ware=%4 scan=%5'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, global.$JKSM_FirstFullStation, global.$JKSM_FirstFullWare, global.$JKSM_ScanCount]" filter="general" />
+            <debug_text text="'[JKEOC][V333][ISSUE_CREATED] id=%1 type=STORAGE_PRESSURE key=%2 station=%3 ware=%4 scan=%5'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, global.$JKSM_FirstFullStation, global.$JKSM_FirstFullWare, global.$JKSM_ScanCount]" filter="general" />
           </do_else>
           <set_value name="global.$JKSM_FullLastSeen" exact="player.age" />
           <set_value name="global.$JKSM_FullLastSeenScan" exact="global.$JKSM_ScanCount" />
@@ -1660,7 +1660,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <set_value name="global.$JKSM_LastResolvedIssueKey" exact="global.$JKSM_TrackedFullKey" />
           <set_value name="global.$JKSM_LastResolvedIssueDuration" exact="global.$JKSM_FullConsecutiveScans" />
           <set_value name="global.$JKSM_LastResolvedIssueScan" exact="global.$JKSM_ScanCount" />
-          <debug_text text="'[JKEOC][V330][ISSUE_RESOLVED] id=%1 type=STORAGE_PRESSURE key=%2 lifetime=%3 reason=condition_cleared'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, global.$JKSM_FullConsecutiveScans]" filter="general" />
+          <debug_text text="'[JKEOC][V333][ISSUE_RESOLVED] id=%1 type=STORAGE_PRESSURE key=%2 lifetime=%3 reason=condition_cleared'.[global.$JKSM_FullIssueID, global.$JKSM_TrackedFullKey, global.$JKSM_FullConsecutiveScans]" filter="general" />
           <remove_value name="global.$JKSM_TrackedFullKey" />
           <remove_value name="global.$JKSM_FullPreviousAmount" />
         </do_elseif>
@@ -1861,7 +1861,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
             <set_value name="global.$JKEOC_RecoveryAction" exact="global.$JKEOC_RecoveryNextStep" />
           </do_if>
 
-          <debug_text text="'[JKEOC][V330][RECOVERY_VERIFY] station=%1 status=%2 objective=%3 lastcomplete=%4 completed=%5 attempts=%6'.[global.$JKEOC_FocusStationDisplay, global.$JKEOC_RecoveryStatus, if global.$JKEOC_RecoveryObjectiveWare? then global.$JKEOC_RecoveryObjectiveWare else 'NONE', if global.$JKEOC_RecoveryLastCompleted? then global.$JKEOC_RecoveryLastCompleted else 'NONE', global.$JKEOC_RecoveryCompletedCount, global.$JKEOC_RecoveryVerificationAttempts]" filter="general" />
+          <debug_text text="'[JKEOC][V333][RECOVERY_VERIFY] station=%1 status=%2 objective=%3 lastcomplete=%4 completed=%5 attempts=%6'.[global.$JKEOC_FocusStationDisplay, global.$JKEOC_RecoveryStatus, if global.$JKEOC_RecoveryObjectiveWare? then global.$JKEOC_RecoveryObjectiveWare else 'NONE', if global.$JKEOC_RecoveryLastCompleted? then global.$JKEOC_RecoveryLastCompleted else 'NONE', global.$JKEOC_RecoveryCompletedCount, global.$JKEOC_RecoveryVerificationAttempts]" filter="general" />
         </do_if>
 
         <!-- Advisor priority model. Empty required resources are critical. Storage/logistics findings are warnings. -->
@@ -1943,7 +1943,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <set_value name="global.$JKEOC_ScanCompletedAt" exact="player.age" />
         <set_value name="global.$JKEOC_LastCompletedScanSequence" exact="global.$JKEOC_ScanSequence" />
         <debug_text text="'[JKEOC][V440] SCAN COMPLETE | Sequence=' + global.$JKEOC_ScanSequence + ' Stations=' + $stations.count + ' Operational=' + $operational + ' ConstructionSkipped=' + $skippedconstruction + ' Productive=' + $productive + ' Mixed=' + $mixed + ' TradeHubs=' + $tradehubs + ' EmptyResources=' + $emptyresources + ' Cargo90=' + $fullcargo + ' NoStorage=' + $nostorage + ' NoSupport=' + $nosupport + ' Populated=' + $populated + ' WorkforceWarnings=' + global.$JKEOC_WorkforceIssueCount + ' Recommendations=' + $recommendations" filter="general" />
-        <debug_text text="'[JKEOC][V330] =================================================='" filter="general" />
+        <debug_text text="'[JKEOC][V333] =================================================='" filter="general" />
         <remove_value name="global.$JKEOC_ScanInProgress" />
       </actions>
     </cue>
@@ -3235,7 +3235,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_FocusPrompt" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_FocusPrompt" /></conditions>
       <actions>
-        <debug_text text="'[JKEOC][V330][FOCUS_PROMPT] station=%1'.[global.$JKEOC_ViewStation]" filter="general" />
+        <debug_text text="'[JKEOC][V333][FOCUS_PROMPT] station=%1'.[global.$JKEOC_ViewStation]" filter="general" />
         <add_player_choice_sub text="'INFO: STATION RECOVERY MODE — %1'.[global.$JKEOC_ViewStation]" position="top_left" section="JKSM_FocusPrompt" />
         <add_player_choice_sub text="'INFO: Focus station: %1'.[global.$JKEOC_ViewStation]" position="left" section="JKSM_FocusPrompt" />
         <add_player_choice_sub text="'INFO: The EOC will show only this station while Focus Mode is active'" position="bottom_left" section="JKSM_FocusPrompt" />
@@ -3280,7 +3280,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <set_value name="global.$JKEOC_RecoveryInitialIssueCount" exact="0" />
         <set_value name="global.$JKEOC_RecoveryVerification" exact="'Initial objective established. Make the recommended change, then refresh station analysis.'" />
         <set_value name="global.$JKEOC_RecoveryStatus" exact="'INITIAL ANALYSIS'" />
-        <debug_text text="'[JKEOC][V330][FOCUS_BEGIN] station=%1 ware=%2 case=%3'.[global.$JKEOC_FocusStationName, if global.$JKEOC_FocusEntryWare? then global.$JKEOC_FocusEntryWare else 'NONE', global.$JKEOC_FocusEntryCaseID]" filter="general" />
+        <debug_text text="'[JKEOC][V333][FOCUS_BEGIN] station=%1 ware=%2 case=%3'.[global.$JKEOC_FocusStationName, if global.$JKEOC_FocusEntryWare? then global.$JKEOC_FocusEntryWare else 'NONE', global.$JKEOC_FocusEntryCaseID]" filter="general" />
         <signal_cue_instantly cue="JKSM_RunIntelligenceScan" />
         <!-- Start a new monitor generation. Any delayed loop from an older session becomes invalid. -->
         <do_if value="not global.$JKEOC_MonitorGeneration?">
@@ -3441,7 +3441,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <set_value name="global.$JKEOC_DiagnosticStage" exact="1" />
         <remove_value name="global.$JKEOC_DiagnosticFailedStage" />
         <set_value name="global.$JKEOC_DiagnosticSummary" exact="'Delivery diagnostic started for %1.'.[global.$JKEOC_RecoveryObjectiveWare]" />
-        <debug_text text="'[JKEOC][V330][DIAGNOSTIC_START] station=%1 ware=%2'.[global.$JKEOC_FocusStationDisplay, global.$JKEOC_RecoveryObjectiveWare]" filter="general" />
+        <debug_text text="'[JKEOC][V333][DIAGNOSTIC_START] station=%1 ware=%2'.[global.$JKEOC_FocusStationDisplay, global.$JKEOC_RecoveryObjectiveWare]" filter="general" />
         <add_player_choice_sub text="'STATION: %1 | BEGIN DELIVERY CHECKS — %2'.[global.$JKEOC_FocusStationDisplay, global.$JKEOC_RecoveryObjectiveWare]" position="bottom_right" section="JKSM_DiagnosticCheck" />
       </actions>
     </cue>
@@ -3481,7 +3481,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_DiagnosticPass" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_DiagnosticPass" /></conditions>
       <actions>
-        <debug_text text="'[JKEOC][V330][DIAGNOSTIC_PASS] ware=%1 stage=%2'.[global.$JKEOC_RecoveryObjectiveWare, global.$JKEOC_DiagnosticStage]" filter="general" />
+        <debug_text text="'[JKEOC][V333][DIAGNOSTIC_PASS] ware=%1 stage=%2'.[global.$JKEOC_RecoveryObjectiveWare, global.$JKEOC_DiagnosticStage]" filter="general" />
         <do_if value="global.$JKEOC_DiagnosticStage lt 6">
           <set_value name="global.$JKEOC_DiagnosticStage" exact="global.$JKEOC_DiagnosticStage + 1" />
           <add_player_choice_sub text="'STATION: %1 | CONTINUE TO NEXT CHECK'.[global.$JKEOC_FocusStationDisplay]" position="bottom_right" section="JKSM_DiagnosticCheck" />
@@ -3537,7 +3537,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <set_value name="global.$JKEOC_RecoveryInvestigationChain" exact="'%1 empty -> delivery diagnostic -> %2'.[global.$JKEOC_RecoveryObjectiveWare, global.$JKEOC_RecoveryRootCause]" />
         <set_value name="global.$JKEOC_RecoverySuccessCheck" exact="'Success is verified when %1 has stock after Refresh Station Analysis.'.[global.$JKEOC_RecoveryObjectiveWare]" />
         <set_value name="global.$JKEOC_DiagnosticSummary" exact="'Failed at check %1: %2'.[global.$JKEOC_DiagnosticStage, global.$JKEOC_RecoveryRootCause]" />
-        <debug_text text="'[JKEOC][V330][DIAGNOSTIC_FAIL] ware=%1 stage=%2 cause=%3'.[global.$JKEOC_RecoveryObjectiveWare, global.$JKEOC_DiagnosticStage, global.$JKEOC_RecoveryRootCause]" filter="general" />
+        <debug_text text="'[JKEOC][V333][DIAGNOSTIC_FAIL] ware=%1 stage=%2 cause=%3'.[global.$JKEOC_RecoveryObjectiveWare, global.$JKEOC_DiagnosticStage, global.$JKEOC_RecoveryRootCause]" filter="general" />
         <add_player_choice_sub text="'STATION: %1 | OPEN CORRECTIVE ACTION'.[global.$JKEOC_FocusStationDisplay]" position="bottom_right" section="JKSM_RecoveryActionDetails" />
       </actions>
     </cue>
@@ -3638,7 +3638,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
           <signal_cue_instantly cue="this.static" />
         </do_if>
         <do_else>
-          <debug_text text="'[JKEOC][V330][AUTO_MONITOR_STOP] stale_generation=%1 current_generation=%2 focus=%3'.[$monitorGeneration, global.$JKEOC_MonitorGeneration, global.$JKEOC_FocusActive]" filter="general" />
+          <debug_text text="'[JKEOC][V333][AUTO_MONITOR_STOP] stale_generation=%1 current_generation=%2 focus=%3'.[$monitorGeneration, global.$JKEOC_MonitorGeneration, global.$JKEOC_FocusActive]" filter="general" />
         </do_else>
       </actions>
     </cue>
@@ -3677,7 +3677,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_FocusRefresh" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_FocusRefresh" /></conditions>
       <actions>
-        <debug_text text="'[JKEOC][V330][FOCUS_REFRESH] station=%1'.[global.$JKEOC_FocusStationDisplay]" filter="general" />
+        <debug_text text="'[JKEOC][V333][FOCUS_REFRESH] station=%1'.[global.$JKEOC_FocusStationDisplay]" filter="general" />
         <signal_cue_instantly cue="JKSM_RunIntelligenceScan" />
         <show_notification text="'Station analysis refreshed: %1'.[global.$JKEOC_FocusStationDisplay]" timeout="5s" />
         <add_player_choice_sub text="'RETURN TO STATION RECOVERY — %1'.[global.$JKEOC_FocusStationDisplay]" position="bottom_right" section="JKSM_FocusDashboard" />
@@ -3687,7 +3687,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_FocusExit" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_FocusExit" /></conditions>
       <actions>
-        <debug_text text="'[JKEOC][V330][FOCUS_EXIT] station=%1'.[global.$JKEOC_FocusStationDisplay]" filter="general" />
+        <debug_text text="'[JKEOC][V333][FOCUS_EXIT] station=%1'.[global.$JKEOC_FocusStationDisplay]" filter="general" />
         <do_if value="not global.$JKEOC_MonitorGeneration?">
           <set_value name="global.$JKEOC_MonitorGeneration" exact="0" />
         </do_if>

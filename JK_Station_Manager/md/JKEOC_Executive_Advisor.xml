@@ -13,8 +13,8 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-      <show_notification text="'EOC 3.1 GA | Executive Operations Center Ready'" timeout="12s" />
-      <debug_text text="'[JKEOC][B218][STARTUP] version=318 build=218 ga=1 compatibility=x4_8_and_9 notification=shown'" filter="general" />
+      <show_notification text="'EOC 3.2 GA | Executive Operations Center Ready'" timeout="12s" />
+      <debug_text text="'[JKEOC][B239][STARTUP] version=339 build=239 ga=1 compatibility=x4_8_and_9 clear_all_cases=available supported_status_only=1 cpu_polling=bounded notification=shown'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>
@@ -70,7 +70,12 @@
                     </do_if>
                   </do_for_each>
                 </do_if>
-                <set_value name="$profile.$critical" exact="if $directory.$health == 'CRITICAL' then 1 else 0" />
+                <set_value name="$profile.$critical" exact="0" />
+                <do_if value="global.$JKEOC_CriticalCases?">
+                  <do_for_each name="$supportedcase" in="global.$JKEOC_CriticalCases">
+                    <do_if value="$supportedcase.$station? and $supportedcase.$station == $station"><set_value name="$profile.$critical" exact="1" /></do_if>
+                  </do_for_each>
+                </do_if>
                 <set_value name="$profile.$overall" exact="if $profile.$critical gt 0 then 'CRITICAL' else if $profile.$chronic gt 0 then 'CHRONIC' else if $profile.$relapsed gt 0 then 'RELAPSED' else if $profile.$recurring gt 0 then 'RECURRING' else if $profile.$recovering gt 0 then 'RECOVERING' else if $profile.$resolved gt 0 then 'RESOLVED' else if $profile.$active gt 0 then 'TRANSIENT' else 'MONITORING'" />
                 <set_value name="$profile.$trend" exact="if $profile.$critical gt 0 or $profile.$chronic gt 0 then 'DETERIORATING' else if $profile.$relapsed gt 0 then 'RELAPSED' else if $profile.$recovering gt 0 then 'IMPROVING' else 'STABLE'" />
                 <set_value name="$profile.$confidence" exact="if $profile.$samples ge 12 and $profile.$historyhits ge 18 then 'HIGH' else if $profile.$samples ge 3 then 'MEDIUM' else 'LOW'" />

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<mdscript name="JKEOC_Global_Fleet_Minimums" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+    <cue name="JKEOC_B219_MinimumInit" instantiate="true" namespace="this"><conditions><event_game_loaded /></conditions><delay exact="50s" /><actions>
+      <do_if value="not global.$JKEOC_MinMining?"><set_value name="global.$JKEOC_MinMining" exact="0" /></do_if><do_if value="not global.$JKEOC_MinTrade?"><set_value name="global.$JKEOC_MinTrade" exact="0" /></do_if><do_if value="not global.$JKEOC_MinBuildStorage?"><set_value name="global.$JKEOC_MinBuildStorage" exact="0" /></do_if><do_if value="not global.$JKEOC_MinDefence?"><set_value name="global.$JKEOC_MinDefence" exact="0" /></do_if><do_if value="not global.$JKEOC_MinEscort?"><set_value name="global.$JKEOC_MinEscort" exact="0" /></do_if>
+      <signal_cue_instantly cue="JKEOC_B219_MinimumScan" />
+    </actions></cue>
+    <cue name="JKEOC_B219_MinimumScheduler" instantiate="true" namespace="this" checktime="player.age + 5min" checkinterval="5min"><conditions><check_value value="global.$JKEOC_MinMining?" /></conditions><actions>
+      <signal_cue_instantly cue="md.JKEOC_Shipping_Control.JKEOC_B92_RegisterShipsCore" />
+      <do_if value="global.$JKEOC_B219MinimumPending? and global.$JKEOC_B219MinimumPending.$type? and global.$JKEOC_B219MinimumPending.$type == 'BUILD'">
+        <set_value name="$r" exact="global.$JKEOC_B219MinimumPending" />
+        <do_if value="not $r.$station.exists"><remove_value name="global.$JKEOC_B219MinimumPending" /></do_if>
+        <do_else>
+          <set_value name="$current" exact="if $r.$assignment == assignment.mining then $r.$station.subordinates.{assignment.mining}.count else if $r.$assignment == assignment.trade then $r.$station.subordinates.{assignment.trade}.count else if $r.$assignment == assignment.tradeforbuildstorage then $r.$station.subordinates.{assignment.tradeforbuildstorage}.count else $r.$station.subordinates.{assignment.defence}.count" />
+          <set_value name="$target" exact="if $r.$assignment == assignment.mining then global.$JKEOC_MinMining else if $r.$assignment == assignment.trade then global.$JKEOC_MinTrade else if $r.$assignment == assignment.tradeforbuildstorage then global.$JKEOC_MinBuildStorage else global.$JKEOC_MinDefence" />
+          <remove_value name="$ready" />
+          <do_for_each name="$ship" in="global.$JKEOC_B76EligibleShips"><do_if value="not $ready? and $ship.exists and $ship.owner == faction.player and $ship.isoperational and not $ship.commander and not $ship.subordinates.count and (($r.$assignment == assignment.mining and $ship.primarypurpose == purpose.mine) or (($r.$assignment == assignment.trade or $r.$assignment == assignment.tradeforbuildstorage) and $ship.primarypurpose == purpose.trade) or ($r.$assignment == assignment.defence and $ship.primarypurpose == purpose.fight))"><set_value name="$ready" exact="$ship" /></do_if></do_for_each>
+          <do_if value="$current ge $target or $ready?"><debug_text text="'[JKEOC][B224][MINIMUM_BUILD_RECHECK] station=%1 role=%2 current=%3 target=%4 ready=%5 pending=CLEARED'.[$r.$stationname, $r.$role, $current, $target, $ready?]" filter="general" /><remove_value name="global.$JKEOC_B219MinimumPending" /></do_if>
+          <do_else><debug_text text="'[JKEOC][B224][MINIMUM_BUILD_RECHECK] station=%1 role=%2 current=%3 target=%4 ready=0 pending=HELD'.[$r.$stationname, $r.$role, $current, $target]" filter="general" /></do_else>
+        </do_else>
+      </do_if>
+      <signal_cue_instantly cue="JKEOC_B219_MinimumScan" />
+    </actions></cue>
+    <cue name="JKEOC_B219_MinimumScan" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <do_if value="global.$JKEOC_MinEscort gt 3"><set_value name="global.$JKEOC_MinEscort" exact="3" /></do_if>
+      <do_if value="global.$JKEOC_MinEscort gt 0"><debug_text text="'[JKEOC][B224][ESCORT_OBSERVE] requested=%1 hardcap=3 authority=SSE_COMPATIBILITY EOC_ASSIGNMENT=NONE'.[global.$JKEOC_MinEscort]" filter="general" /></do_if>
+      <remove_value name="$need" /><remove_value name="$needrole" /><remove_value name="$assignment" /><remove_value name="$candidate" />
+      <do_if value="not global.$JKEOC_B219MinimumPending? and global.$JKEOC_B67Profiles?">
+        <do_for_each name="$p" in="global.$JKEOC_B67Profiles">
+          <do_if value="not $need? and $p.$station? and $p.$station.exists and $p.$station.owner == faction.player">
+            <set_value name="$s" exact="$p.$station" />
+            <do_if value="global.$JKEOC_MinBuildStorage gt 0 and $p.$constructionactive? and $p.$constructionactive and $s.subordinates.{assignment.tradeforbuildstorage}.count lt global.$JKEOC_MinBuildStorage"><set_value name="$need" exact="$p" /><set_value name="$needrole" exact="'BUILD STORAGE TRADE'" /><set_value name="$assignment" exact="assignment.tradeforbuildstorage" /></do_if>
+            <do_elseif value="global.$JKEOC_MinMining gt 0 and ($p.$role == 'MINING' or $p.$role == 'MINING HUB') and $s.subordinates.{assignment.mining}.count lt global.$JKEOC_MinMining"><set_value name="$need" exact="$p" /><set_value name="$needrole" exact="'MINE FOR COMMANDER'" /><set_value name="$assignment" exact="assignment.mining" /></do_elseif>
+            <do_elseif value="global.$JKEOC_MinTrade gt 0 and $p.$role != 'DEFENSE' and $p.$role != 'MINING' and $s.subordinates.{assignment.trade}.count lt global.$JKEOC_MinTrade"><set_value name="$need" exact="$p" /><set_value name="$needrole" exact="'TRADE FOR COMMANDER'" /><set_value name="$assignment" exact="assignment.trade" /></do_elseif>
+            <do_elseif value="global.$JKEOC_MinDefence gt 0 and $s.subordinates.{assignment.defence}.count lt global.$JKEOC_MinDefence"><set_value name="$need" exact="$p" /><set_value name="$needrole" exact="'DEFEND COMMANDER'" /><set_value name="$assignment" exact="assignment.defence" /></do_elseif>
+          </do_if>
+        </do_for_each>
+      </do_if>
+      <do_if value="$need? and global.$JKEOC_B76EligibleShips?">
+        <do_for_each name="$ship" in="global.$JKEOC_B76EligibleShips"><do_if value="not $candidate? and $ship.exists and $ship.owner == faction.player and $ship.isoperational and not $ship.commander and not $ship.subordinates.count and (($assignment == assignment.mining and $ship.primarypurpose == purpose.mine) or (($assignment == assignment.trade or $assignment == assignment.tradeforbuildstorage) and $ship.primarypurpose == purpose.trade) or ($assignment == assignment.defence and $ship.primarypurpose == purpose.fight))"><set_value name="$candidate" exact="$ship" /></do_if></do_for_each>
+      </do_if>
+      <do_if value="$need? and $candidate?"><set_value name="global.$JKEOC_B219MinimumPending" exact="table[$ship=$candidate, $station=$need.$station, $stationname=$need.$stationname, $role=$needrole, $assignment=$assignment, $time=player.age]" /><do_if value="global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED'"><signal_cue_instantly cue="JKEOC_B219_MinimumAssign" /></do_if><do_elseif value="global.$JKEOC_B76AssignmentMode == 'APPROVAL REQUIRED'"><show_notification text="'EOC minimum proposal: assign %1 to %2 as %3. Open Global Settings to authorize.'.[$candidate.name, $need.$stationname, $needrole]" timeout="14s" /></do_elseif><debug_text text="'[JKEOC][B224][MINIMUM_PROPOSAL] ship=%1 station=%2 role=%3 mode=%4'.[$candidate.name, $need.$stationname, $needrole, global.$JKEOC_B76AssignmentMode]" filter="general" /></do_if>
+      <do_elseif value="$need? and not $candidate? and global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED'">
+        <set_value name="$buildrole" exact="if $assignment == assignment.mining then 'MINING' else if $assignment == assignment.trade then 'TRADE' else if $assignment == assignment.tradeforbuildstorage then 'BUILDSTORAGE' else 'DEFENCE'" />
+        <set_value name="global.$JKEOC_B219MinimumPending" exact="table[$station=$need.$station, $stationname=$need.$stationname, $role=$needrole, $assignment=$assignment, $buildrole=$buildrole, $type='BUILD', $time=player.age]" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.minimum.build.station'" param="$need.$stationname" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.minimum.build.role'" param="$buildrole" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.minimum.build.commit'" />
+        <debug_text text="'[JKEOC][B224][MINIMUM_BUILD_REQUEST] station=%1 role=%2 reason=NO_COMPATIBLE_IDLE_REGISTERED_SHIP bound=ONE'.[$need.$stationname, $needrole]" filter="general" />
+      </do_elseif>
+      <do_elseif value="$need? and not $candidate?"><debug_text text="'[JKEOC][B224][MINIMUM_BLOCKED] station=%1 role=%2 reason=NO_COMPATIBLE_IDLE_REGISTERED_SHIP mode=%3'.[$need.$stationname, $needrole, global.$JKEOC_B76AssignmentMode]" filter="general" /></do_elseif>
+    </actions></cue>
+    <cue name="JKEOC_B219_MinimumAssign" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions><set_value name="$r" exact="global.$JKEOC_B219MinimumPending" /><do_if value="$r? and $r.$ship.exists and $r.$station.exists and not $r.$ship.commander and not $r.$ship.subordinates.count and global.$JKEOC_B76EligibleShips.indexof.{$r.$ship}"><set_object_commander object="$r.$ship" commander="$r.$station" assignment="$r.$assignment" /><signal_cue_instantly cue="JKEOC_B219_MinimumVerify" param="$r" /></do_if><do_else><remove_value name="global.$JKEOC_B219MinimumPending" /></do_else></actions></cue>
+    <cue name="JKEOC_B219_MinimumVerify" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="3s" /><actions><set_value name="$r" exact="event.param" /><do_if value="$r.$ship.exists and $r.$ship.commander == $r.$station and $r.$ship.assignment == $r.$assignment"><remove_from_list name="global.$JKEOC_B76EligibleShips" exact="$r.$ship" /><show_notification text="'EOC minimum assignment verified: %1 to %2 as %3.'.[$r.$ship.name, $r.$stationname, $r.$role]" timeout="10s" /><debug_text text="'[JKEOC][B224][MINIMUM_VERIFY] result=PASS ship=%1 station=%2 role=%3'.[$r.$ship.name, $r.$stationname, $r.$role]" filter="general" /></do_if><do_else><debug_text text="'[JKEOC][B224][MINIMUM_VERIFY] result=FAIL station=%1 role=%2'.[$r.$stationname, $r.$role]" filter="error" /></do_else><remove_value name="global.$JKEOC_B219MinimumPending" /></actions></cue>
+  </cues>
+</mdscript>

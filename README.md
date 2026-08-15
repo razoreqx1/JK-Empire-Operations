@@ -4,18 +4,22 @@ Transform your X4 empire from reactive management into intelligent operations.
 
 ## Current release
 
-- Version: 3.1 GA
-- Engineering build: 218
+- Version: 3.2 GA
+- Engineering build: 239
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-## What is new in EOC 3.1
+## What is new in EOC 3.2
 
-- Preserves the validated event-driven Dock Interactions access path.
-- Adds bounded support tracing for callback registration, button rendering, player selection, and EOC open-event receipt.
-- Keeps startup registration bounded and stops immediately after success; no recurring watchdog was added.
-- Makes no automation, trade, shipping, construction, KPI, save-data, or player-authority behavior change.
-- Retains all EOC 3.0 GA live KPI safeguards, filters, drilldowns, trends, and scroll preservation.
+- Adds native Player Wealth, Case Trends, and Empire Growth graphs with 5, 10, and 30-minute ranges.
+- Redesigns KPI detail views as bounded five-row pages covering cash flow, profit, construction, shortages, attention, trade, logistics, storage, workforce, shipyards, earners, and drains.
+- Reports actual shipyard ship workload without counting station-module construction as ships.
+- Reduces shipyard polling to five minutes and construction/remediation matching to two minutes.
+- Shows compatible available player ships without silently registering or controlling them.
+- Adds zero-default global minimum policies for mining, trade, build-storage trade, defence, and escorts.
+- Adds two-step Clear All EOC Cases with an immediate MONITORING / STABLE reset and one fresh analysis.
+- Requires visible supporting cases or retained evidence for non-healthy station classifications.
+- Improves player-case evidence handoff and terminal no-match diagnostics.
 
 ## Existing EOC capabilities
 
@@ -34,8 +38,8 @@ Transform your X4 empire from reactive management into intelligent operations.
 
 ## Documentation and support
 
-- [EOC 3.1 GA User and Support Guide](docs/EOC_3.1_GA_USER_SUPPORT_GUIDE.md)
-- [EOC 3.1 GA Release Notes](docs/RELEASE_NOTES_3.1_GA.md)
+- [EOC 3.2 GA User and Support Guide](docs/EOC_3.2_GA_USER_SUPPORT_GUIDE.md)
+- [EOC 3.2 GA Release Notes](docs/RELEASE_NOTES_3.2_GA.md)
 
 Older release documents remain available in `docs/`.
 

@@ -45,7 +45,9 @@
 
     <cue name="JKEOC_B66_Scheduler" instantiate="true" namespace="this">
       <conditions><event_cue_signalled /></conditions>
-      <delay exact="1min" />
+      <!-- Build 236 CPU pass: native build lifecycle events remain immediate; the
+           full empire-wide recovery/reconciliation sweep is a five-minute safety net. -->
+      <delay exact="5min" />
       <actions>
         <signal_cue_instantly cue="JKEOC_B66_Reconcile" />
         <signal_cue_instantly cue="JKEOC_B66_ProcessMailbox" />

@@ -81,8 +81,10 @@ local investigationNeutralColor = { r = 175, g = 185, b = 195, a = 100 }
 local navigationStoryColor = { r = 125, g = 200, b = 235, a = 100 }
 local EOC_IDENTITY_BB = "$JKEOC_CommandIntelligenceIdentity"
 local EOC_OS_BUILD = 202
-local KPI_REFRESH_SECONDS = 10
-local KPI_MAX_SAMPLES = 36
+local KPI_REFRESH_SECONDS = 30
+menu.KPI_HISTORY_LIMIT = 64
+menu.KPI_REFRESH_INTERVALS = { cash = 30, shipyard = 30, construction = 60, trade = 60, storage = 120, earners = 120, drains = 120, attention = 120 }
+function menu.kpiRefreshInterval(view) return menu.KPI_REFRESH_INTERVALS[view or "cash"] or KPI_REFRESH_SECONDS end
 local EOC_OS_BOOT_DELAY = 1.35
 local EOC_OS_RANDOM_MESSAGE_COUNT = 5
 local EOC_OS_MESSAGE_POOL = {
@@ -425,6 +427,63 @@ local function executeFleetBuildPlan(plan)
     if accepted==plan.total then return true,"X4 accepted all "..accepted.." fleet build task(s). Player shipyards now control resources and construction." end
     return false,"X4 accepted "..accepted.." of "..plan.total.." task(s). "..#failed.." failed; no failed task was retried."
 end
+local function minimumBuildBlueprint(role)
+    local candidates = {}
+    for _, blueprint in ipairs(menu.shipBlueprints or {}) do
+        local candidate = { name = tostring(v(blueprint, 1, "")), size = tostring(v(blueprint, 2, "")), macro = tostring(v(blueprint, 3, "")) }
+        local lower = string.lower(candidate.macro)
+        local compatible = (role == "MINING" and string.find(lower, "_miner_", 1, true) ~= nil)
+            or ((role == "TRADE" or role == "BUILDSTORAGE") and string.find(lower, "_trans_", 1, true) ~= nil)
+            or (role == "DEFENCE" and (string.find(lower, "fighter", 1, true) ~= nil or string.find(lower, "corvette", 1, true) ~= nil or string.find(lower, "frigate", 1, true) ~= nil or string.find(lower, "destroyer", 1, true) ~= nil))
+        if compatible then candidates[#candidates + 1] = candidate end
+    end
+    table.sort(candidates, function(a, b)
+        local rank = { M = 1, S = 2, L = 3, XL = 4, UNKNOWN = 5 }
+        local ar, br = rank[a.size] or 5, rank[b.size] or 5
+        if ar == br then return a.name < b.name end
+        return ar < br
+    end)
+    return candidates[1]
+end
+
+local function minimumBuildStation(_, value)
+    menu.minimumBuildRequest = menu.minimumBuildRequest or {}
+    menu.minimumBuildRequest.station = tostring(value or "")
+end
+
+local function minimumBuildRole(_, value)
+    menu.minimumBuildRequest = menu.minimumBuildRequest or {}
+    menu.minimumBuildRequest.role = tostring(value or "")
+end
+
+local function minimumBuildCommit()
+    local request = menu.minimumBuildRequest or {}
+    menu.minimumBuildRequest = nil
+    local role, station = tostring(request.role or ""), tostring(request.station or "")
+    local blueprint = minimumBuildBlueprint(role)
+    if not blueprint then
+        raise("minimum.build.result", { success = false, station = station, role = role, reason = "NO_COMPATIBLE_OWNED_BLUEPRINT" })
+        return
+    end
+    local yards = {}
+    for _, route in ipairs(menu.shipWharfRoutes or {}) do
+        if tostring(v(route, 9, "")) == blueprint.macro then
+            yards[#yards + 1] = { id=tostring(v(route,10,"")), name=tostring(v(route,2,"Unknown shipyard")), queued=tonumber(v(route,6,0)) or 0, building=tonumber(v(route,7,0)) or 0, distance=tonumber(v(route,5,999999)) or 999999 }
+        end
+    end
+    table.sort(yards, function(a, b)
+        local aload, bload = a.queued + a.building, b.queued + b.building
+        if aload == bload then return a.distance < b.distance end
+        return aload < bload
+    end)
+    local yard = yards[1]
+    if not yard then
+        raise("minimum.build.result", { success = false, station = station, role = role, reason = "NO_COMPATIBLE_PLAYER_WHARF" })
+        return
+    end
+    local success, result, queued, building = queueEOCShipOrder(yard.id, blueprint.macro, "EOC Minimum " .. role)
+    raise("minimum.build.result", { success=success and true or false, station=station, role=role, blueprint=blueprint.name, macro=blueprint.macro, yard=yard.name, task=tostring(result or ""), queued=tonumber(queued) or 0, building=tonumber(building) or 0, reason=success and "X4_BUILD_TASK_ACCEPTED" or tostring(result or "X4_BUILD_TASK_REJECTED") })
+end
 local function actionState(action)
     menu.actions[action] = menu.actions[action] or {
         running = false,
@@ -539,6 +598,26 @@ local function actionComplete()
     if action == "trade.review" then
         menu.offers = tonumber(payload.value) or menu.offers
     end
+    if action == "case.clearall" then
+        menu.cases = {}
+        menu.observations = {}
+        menu.monitoredCases = {}
+        menu.diagnosticCase = nil
+        for _, station in ipairs(menu.stations or {}) do
+            station[3] = "MONITORING"
+            station[4] = "STABLE"
+            station[5] = "LOW"
+            station[6] = "INFO"
+            station[7] = "Continue monitoring; no supported case or retained evidence currently requires intervention"
+            station[8] = 0
+            station[17] = 0
+            station[18] = 0
+            station[19] = 0
+            station[20] = 0
+            station[21] = 0
+            station[22] = 0
+        end
+    end
     menu.pendingAction = nil
     if menu.frame then
         menu.refresh()
@@ -611,10 +690,11 @@ end
 
 formatGameTime = function(value)
     local seconds = math.max(0, math.floor(tonumber(value) or 0))
-    local hours = math.floor(seconds / 3600)
+    local days = math.floor(seconds / 86400)
+    local hours = math.floor((seconds % 86400) / 3600)
     local minutes = math.floor((seconds % 3600) / 60)
     local remainder = seconds % 60
-    return string.format("%02d:%02d:%02d", hours, minutes, remainder)
+    return string.format("SAVE DAY %d, %02d:%02d:%02d", days + 1, hours, minutes, remainder)
 end
 
 local function importReports(source)
@@ -645,6 +725,37 @@ end
 local function verificationClassReceived(_, value) menu.pendingVerificationClass = text(value, "UNKNOWN") end
 local function verificationResultReceived(_, value) menu.pendingVerificationResult = text(value, "UNKNOWN - no verification detail returned.") end
 
+function menu.investigatedCaseBegin()
+    menu.pendingInvestigatedCase = {}
+    menu.caseEvidenceMissing = false
+end
+
+function menu.investigatedCaseField(index)
+    return function(_, value)
+        menu.pendingInvestigatedCase = menu.pendingInvestigatedCase or {}
+        menu.pendingInvestigatedCase[index] = value
+    end
+end
+
+function menu.investigatedCaseFound()
+    if menu.pendingInvestigatedCase and #menu.pendingInvestigatedCase >= 11 then
+        menu.diagnosticCase = menu.pendingInvestigatedCase
+        menu.caseEvidenceMissing = false
+        menu.caseEvidenceKey = menu.pendingCaseEvidenceKey
+        menu.caseEvidenceHandoffMessage = "Fresh evidence was attached to this working case. EOC can now continue the diagnosis."
+    end
+    menu.pendingInvestigatedCase = nil
+    menu.pendingCaseEvidenceKey = nil
+end
+
+function menu.investigatedCaseMissing()
+    menu.pendingInvestigatedCase = nil
+    menu.caseEvidenceMissing = true
+    menu.caseEvidenceKey = menu.pendingCaseEvidenceKey
+    menu.caseEvidenceHandoffMessage = "Fresh analysis completed, but it found no matching confirmed EOC case for this station and subject. EOC will not invent a cause."
+    menu.pendingCaseEvidenceKey = nil
+end
+
 local function prerequisiteRows(caseData)
     local rows = {}
     local function add(label, state, evidence) table.insert(rows, { label = label, state = state, evidence = evidence }) end
@@ -657,6 +768,7 @@ local function prerequisiteRows(caseData)
     local logisticsCase = string.find(family, "LOGISTICS", 1, true) ~= nil or string.find(family, "SUPPORT SHIPS", 1, true) ~= nil
     local supplyCase = not storageCase and not logisticsCase
     local capacity, free = tonumber(v(caseData, 13, 0)) or 0, tonumber(v(caseData, 14, 0)) or 0
+    local currentAmount = tonumber(v(caseData, 8, 0)) or 0
     local immediateNeed = tonumber(v(caseData, 30, 0)) or 0
     local suppliers = tonumber(v(caseData, 18, 0)) or 0
     local ownSuppliers = tonumber(v(caseData, 19, 0)) or 0
@@ -667,7 +779,8 @@ local function prerequisiteRows(caseData)
         add("DELIVERY PATH", "FAIL", npcSuppliers .. " NPC offer(s) known; " .. traders .. " trader(s) assigned; 0 cargo-compatible. Ware buy permission may also exclude NPC suppliers.")
     end
     if not logisticsCase then
-        add("STORAGE INSTALLED", capacity > 0 and "PASS" or "FAIL", text(v(caseData, 12, "UNKNOWN")) .. " capacity " .. formatNumber(capacity))
+        local capacityState = capacity > 0 and "PASS" or (currentAmount > 0 and "UNKNOWN" or "FAIL")
+        add("STORAGE INSTALLED", capacityState, capacity > 0 and (text(v(caseData, 12, "UNKNOWN")) .. " capacity " .. formatNumber(capacity)) or (currentAmount > 0 and "Stock exists, but the last scan did not return a usable storage-capacity value." or "No compatible storage capacity was reported."))
         local freeState = capacity <= 0 and "UNKNOWN" or ((immediateNeed <= 0 or free >= immediateNeed) and "PASS" or "FAIL")
         add("STORAGE FREE SPACE", freeState, formatNumber(free) .. " physical free capacity; " .. formatNumber(immediateNeed) .. " required now. Ware allocation is reviewed separately in Logical Overview.")
     end
@@ -694,7 +807,9 @@ end
 local function manualNextAction(caseData, rows)
     for _, check in ipairs(rows) do
         if check.state == "FAIL" or check.state == "UNKNOWN" or check.state == "NOT YET TESTED" then
-            if check.label == "INCIDENT EVIDENCE" then return text(v(caseData, 7, "Review the grouped retained evidence, then run a focused diagnostic before changing the station."))
+            if check.state == "UNKNOWN" or check.state == "NOT YET TESTED" then
+                return "Run a fresh Empire Analysis so EOC can collect the missing evidence. Do not change the station until EOC identifies a supported cause."
+            elseif check.label == "INCIDENT EVIDENCE" then return text(v(caseData, 7, "Review the grouped retained evidence, then run a focused diagnostic before changing the station."))
             elseif check.label == "DELIVERY PATH" then return "Open the " .. text(v(caseData, 17, v(caseData, 4, "required ware"))) .. " buy offer first. Confirm its ware-specific trade rule permits the intended NPC supplier; then verify at least one assigned station trader can carry " .. text(v(caseData, 12, "the required cargo")) .. ". Change no station-wide rule unless you intend the wider effect."
             elseif check.label == "STORAGE INSTALLED" then return "Open the Station Build Plan and add compatible " .. text(v(caseData, 12, "cargo")) .. " storage; wait until it is operational."
             elseif check.label == "STORAGE FREE SPACE" then return "Open Logical Station Overview and move, sell, or reallocate stock until the required " .. text(v(caseData, 12, "cargo")) .. " storage space is free."
@@ -717,6 +832,7 @@ local function rootCauseAssessment(caseData, rows)
     local produces = tonumber(v(caseData, 15, 0)) or 0
     local inactive = v(caseData, 29, false)
     if missing > 0 then return "CONFIRMED", "Production is blocked by missing input: " .. text(v(caseData, 28, "unnamed input")) .. ".", "Restore the confirmed missing input, then run Verify Result.", facts, unknowns end
+    if #unknowns > 0 then return "CAUSE NOT YET KNOWN", "The current evidence is incomplete, so EOC cannot safely identify one cause yet.", "Run a fresh Empire Analysis. Do not change station funding, storage, trade, production, or ship assignments until the missing evidence is collected.", facts, unknowns end
     for _, check in ipairs(rows) do
         if check.state == "FAIL" and check.label ~= "LOCAL PRODUCTION" then return "CONFIRMED", check.label .. " failed: " .. check.evidence .. ".", manualNextAction(caseData, rows), facts, unknowns end
     end
@@ -724,7 +840,6 @@ local function rootCauseAssessment(caseData, rows)
         unknowns[#unknowns + 1] = "X4 reports inactive local production, but the current evidence does not prove the player manually paused it."
         return "MORE OBSERVATION REQUIRED", "Local production is inactive; manual pause is not confirmed. Inputs currently show no empty production input.", "Save this as a monitored case. EOC will compare later observations before recommending a change.", facts, unknowns
     end
-    if #unknowns > 0 then return "MORE OBSERVATION REQUIRED", "The snapshot contains unresolved evidence and does not support a single root cause yet.", "Save this as a monitored case and continue normal play while EOC gathers later observations.", facts, unknowns end
     return "PROBABLE", text(v(caseData, 6, "No single blocker is confirmed.")), "Observe one operating cycle, then run Verify Result before changing station configuration.", facts, unknowns
 end
 
@@ -860,7 +975,7 @@ local function constructionFundingResult(_, value)
     if menu.frame then menu.refresh() end
 end
 function menu.kpiRefreshBegin()
-    menu.kpiRefreshIncoming = { stations = {}, station = {} }
+    menu.kpiRefreshIncoming = { stations = {}, station = {}, shipyards = {}, shipyard = {} }
 end
 function menu.kpiRefreshState()
     if not menu.kpiRefreshIncoming then menu.kpiRefreshBegin() end
@@ -875,18 +990,32 @@ function menu.kpiStationCommit()
     table.insert(state.stations, state.station)
     state.station = {}
 end
+function menu.kpiShipyardName(_, value) menu.kpiRefreshState().shipyard.name = tostring(value or "Unknown shipyard") end
+function menu.kpiShipyardQueued(_, value) menu.kpiRefreshState().shipyard.queued = tonumber(value) or 0 end
+function menu.kpiShipyardActive(_, value) menu.kpiRefreshState().shipyard.active = tonumber(value) or 0 end
+function menu.kpiShipyardModules(_, value) menu.kpiRefreshState().shipyard.modules = tonumber(value) or 0 end
+function menu.kpiShipyardCommit()
+    local state = menu.kpiRefreshState()
+    local yard = state.shipyard
+    yard.total = (tonumber(yard.active) or 0) + (tonumber(yard.queued) or 0)
+    table.insert(state.shipyards, yard)
+    state.shipyard = {}
+end
 function menu.kpiRefreshComplete()
     local state = menu.kpiRefreshState()
     menu.kpiHistory = menu.kpiHistory or {}
     local previous = menu.kpiHistory[#menu.kpiHistory]
-    local sample = { time = tonumber(state.time) or 0, credits = tonumber(state.credits) or 0, stations = state.stations or {}, shortageCritical = 0, shortageWarning = 0, caseCritical = 0, caseWarning = 0, caseOther = 0, constructionActive = 0, constructionProgress = 0, stationCount = #(menu.stations or {}), registeredShipCount = #(menu.registeredShips or {}), constructionRecordCount = #(menu.constructionRecords or {}), shipOrderCount = #(menu.shipOrderRecords or {}) }
+    local sample = { time = tonumber(state.time) or 0, credits = tonumber(state.credits) or 0, stations = state.stations or {}, caseCritical = 0, caseWarning = 0, caseOther = 0, constructionActive = 0, constructionProgress = 0, constructionStations = {}, caseStations = {}, tradeStations = {}, storageStations = {}, workforceStations = {}, shipyards = {} }
+    local caseMap = {}
     for _, case in ipairs(menu.cases or {}) do
         local severity = string.upper(text(v(case, 2, "")))
-        local caseType = string.upper(text(v(case, 3, "")))
-        if string.find(caseType, "WARE", 1, true) or string.find(caseType, "SHORT", 1, true) or (tonumber(v(case, 30, 0)) or 0) > 0 then
-            if severity == "CRITICAL" then sample.shortageCritical = sample.shortageCritical + 1 elseif severity == "WARNING" then sample.shortageWarning = sample.shortageWarning + 1 end
-        end
+        local stationName = text(v(case, 1, "Unknown station"))
+        local caseItem = caseMap[stationName] or { name = stationName, critical = 0, warning = 0, other = 0 }
+        if severity == "CRITICAL" then sample.caseCritical = sample.caseCritical + 1 elseif severity == "WARNING" then sample.caseWarning = sample.caseWarning + 1 else sample.caseOther = sample.caseOther + 1 end
+        if severity == "CRITICAL" then caseItem.critical = caseItem.critical + 1 elseif severity == "WARNING" then caseItem.warning = caseItem.warning + 1 else caseItem.other = caseItem.other + 1 end
+        caseMap[stationName] = caseItem
     end
+    for _, item in pairs(caseMap) do table.insert(sample.caseStations, item) end
     local progressTotal, progressCount = 0, 0
     for _, record in ipairs(menu.constructionRecords or {}) do
         if (tonumber(v(record, 3, 0)) or 0) > 0 then sample.constructionActive = sample.constructionActive + 1 end
@@ -895,13 +1024,32 @@ function menu.kpiRefreshComplete()
         end
     end
     sample.constructionProgress = progressCount > 0 and (progressTotal / progressCount) or 0
+    for _, record in ipairs(menu.constructionRecords or {}) do
+        if (tonumber(v(record, 3, 0)) or 0) > 0 then
+            local total, count = 0, 0
+            for _, item in ipairs(v(record, 8, {})) do if string.upper(text(v(item, 3, ""))) == "UNDER CONSTRUCTION" then total = total + (tonumber(v(item, 4, 0)) or 0); count = count + 1 end end
+            table.insert(sample.constructionStations, { name = text(v(record, 1, "Unknown station")), percent = count > 0 and total / count or 0 })
+        end
+    end
+    local tradeMap = {}
+    for _, offer in ipairs(menu.tradeOffers or {}) do local name=text(v(offer,1,"Unknown station")); tradeMap[name]=(tradeMap[name] or 0)+(tonumber(v(offer,4,0)) or 0) end
+    for name, amount in pairs(tradeMap) do table.insert(sample.tradeStations,{name=name,amount=amount}) end
+    for _, storage in ipairs(menu.storageRecords or {}) do local capacity=tonumber(v(storage,4,0)) or 0; table.insert(sample.storageStations,{name=text(v(storage,1,"Unknown station")),kind=text(v(storage,2,"STORAGE")),percent=capacity>0 and math.max(0,math.min(100,(tonumber(v(storage,3,0)) or 0)*100/capacity)) or 0}) end
+    local workforceMap = {}
+    for _, workforce in ipairs(menu.workforceRecords or {}) do
+        local name=text(v(workforce,1,"Unknown station")); local item=workforceMap[name] or {name=name,current=0,optimal=0,provision=100}
+        item.current=math.max(item.current,tonumber(v(workforce,3,0)) or 0); item.optimal=math.max(item.optimal,tonumber(v(workforce,5,0)) or 0)
+        local target=tonumber(v(workforce,10,0)) or 0; if target>0 then item.provision=math.min(item.provision,math.max(0,math.min(100,(tonumber(v(workforce,9,0)) or 0)*100/target))) end; workforceMap[name]=item
+    end
+    for _, item in pairs(workforceMap) do item.percent=item.optimal>0 and item.current*100/item.optimal or 0; table.insert(sample.workforceStations,item) end
+    if #(state.shipyards or {}) > 0 then sample.shipyards = state.shipyards else sample.shipyards = previous and previous.shipyards or {} end
     sample.creditChange = previous and (sample.credits - (tonumber(previous.credits) or sample.credits)) or 0
     table.insert(menu.kpiHistory, sample)
-    while #menu.kpiHistory > KPI_MAX_SAMPLES do table.remove(menu.kpiHistory, 1) end
+    while #menu.kpiHistory > menu.KPI_HISTORY_LIMIT do table.remove(menu.kpiHistory, 1) end
     menu.kpiRefreshIncoming = nil
     menu.kpiRefreshing = false
     menu.kpiLastRefreshAt = getElapsedTime()
-    menu.kpiNextRefreshAt = menu.kpiLastRefreshAt + KPI_REFRESH_SECONDS
+    menu.kpiNextRefreshAt = menu.kpiLastRefreshAt + menu.kpiRefreshInterval(menu.kpiView)
     if menu.frame and menu.page == "kpi" and not menu.kpiControlDropdownActive then menu.refresh(true) end
 end
 function menu.PrepareMenuData()
@@ -922,7 +1070,7 @@ local function init()
     if Helper and Helper.registerMenu then
         Helper.registerMenu(menu)
     else
-    DebugError("[JKEOC][B218][LUA_ERROR] Helper.registerMenu unavailable")
+    DebugError("[JKEOC][B224][LUA_ERROR] Helper.registerMenu unavailable")
     end
 
     AddUITriggeredEvent(menu.name, "INIT", nil)
@@ -930,6 +1078,10 @@ local function init()
     RegisterEvent(menu.name .. ".analysis.complete", analysisComplete)
     RegisterEvent(menu.name .. ".verification.class", verificationClassReceived)
     RegisterEvent(menu.name .. ".verification.result", verificationResultReceived)
+    RegisterEvent(menu.name .. ".case.evidence.begin", menu.investigatedCaseBegin)
+    for index = 1, 36 do RegisterEvent(menu.name .. ".case.evidence." .. tostring(index), menu.investigatedCaseField(index)) end
+    RegisterEvent(menu.name .. ".case.evidence.found", menu.investigatedCaseFound)
+    RegisterEvent(menu.name .. ".case.evidence.missing", menu.investigatedCaseMissing)
     RegisterEvent(menu.name .. ".analysis.output", analysisOutputReceived)
     RegisterEvent(menu.name .. ".analysis.time", analysisTimeReceived)
     RegisterEvent(menu.name .. ".report.saved", reportSaved)
@@ -986,7 +1138,15 @@ local function init()
     RegisterEvent(menu.name .. ".kpi.station.name", menu.kpiStationName)
     RegisterEvent(menu.name .. ".kpi.station.money", menu.kpiStationMoney)
     RegisterEvent(menu.name .. ".kpi.station.commit", menu.kpiStationCommit)
+    RegisterEvent(menu.name .. ".kpi.shipyard.name", menu.kpiShipyardName)
+    RegisterEvent(menu.name .. ".kpi.shipyard.queued", menu.kpiShipyardQueued)
+    RegisterEvent(menu.name .. ".kpi.shipyard.active", menu.kpiShipyardActive)
+    RegisterEvent(menu.name .. ".kpi.shipyard.modules", menu.kpiShipyardModules)
+    RegisterEvent(menu.name .. ".kpi.shipyard.commit", menu.kpiShipyardCommit)
     RegisterEvent(menu.name .. ".kpi.refresh.complete", menu.kpiRefreshComplete)
+    RegisterEvent(menu.name .. ".minimum.build.station", minimumBuildStation)
+    RegisterEvent(menu.name .. ".minimum.build.role", minimumBuildRole)
+    RegisterEvent(menu.name .. ".minimum.build.commit", minimumBuildCommit)
 end
 
 function menu.onShowMenu()
@@ -1016,15 +1176,21 @@ function menu.onShowMenu()
     menu.constructionAuthority = v(menu.param, 25, "APPROVAL REQUIRED")
     menu.workforceRecords = v(menu.param, 27, {})
     menu.storageRecords = v(menu.param, 28, {})
+    menu.minimums = { mining = tonumber(v(menu.param, 29, 0)) or 0, trade = tonumber(v(menu.param, 30, 0)) or 0, buildstorage = tonumber(v(menu.param, 31, 0)) or 0, defence = tonumber(v(menu.param, 32, 0)) or 0, escort = tonumber(v(menu.param, 33, 0)) or 0 }
+    menu.availableUnregisteredShips = v(menu.param, 34, {})
+    menu.minimumDraft = menu.minimumDraft or { mining = menu.minimums.mining, trade = menu.minimums.trade, buildstorage = menu.minimums.buildstorage, defence = menu.minimums.defence, escort = menu.minimums.escort }
     local rawStartupPreference = v(menu.param, 26, 1)
     local restoredStartupPreference = tonumber(rawStartupPreference) ~= 0
-    DebugError("[JKEOC][B218][STARTUP_PREFERENCE_LUA] raw=" .. tostring(rawStartupPreference) .. " decoded=" .. (restoredStartupPreference and "ON" or "OFF"))
+    DebugError("[JKEOC][B233][STARTUP_PREFERENCE_LUA] raw=" .. tostring(rawStartupPreference) .. " decoded=" .. (restoredStartupPreference and "ON" or "OFF"))
     if type(menu.savedStartupPreference) ~= "boolean" then
         menu.savedStartupPreference = restoredStartupPreference
         menu.pendingStartupPreference = restoredStartupPreference
     end
     menu.startupPreference = menu.savedStartupPreference
     menu.kpiView = menu.kpiView or "cash"
+    if menu.kpiView == "profit" then menu.kpiView = "cash" end
+    if menu.kpiView == "logistics" or menu.kpiView == "growth" then menu.kpiView = "attention" end
+    if menu.kpiView == "shortages" then menu.kpiView = "cash" end
     menu.kpiHistory = menu.kpiHistory or {}
     menu.kpiNextRefreshAt = getElapsedTime()
     local persistedIdentity = commandIdentityStore()
@@ -1625,6 +1791,35 @@ local function casesCenter(tableWidget)
     local selectedDifference = math.max(0, #selectedObservations - selectedEOCCases)
     local brief = tableWidget:addRow(false)
     brief[1]:setColSpan(4):createText(menu.caseScope == "station" and "STATION REVIEW: This screen is locked to the working station. It shows every retained observation contributing to its operational history, confirmed cases, and player-requested investigations. Choose ALL STATIONS only when you want to leave this station context." or "DECISION BRIEF: Select a station to review its confirmed cases and complete retained observation history.", { wordwrap = true })
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(4)
+    if menu.clearCasesConfirm then
+        addButton(row, 1, "CONFIRM: DELETE ALL EOC CASES AND REBUILD FROM LIVE DATA", function()
+            if startAction("case.clearall") then
+                menu.clearCasesConfirm = false
+                menu.cases = {}
+                menu.observations = {}
+                menu.monitoredCases = {}
+                menu.diagnosticCase = nil
+                menu.selectedCase = 1
+                menu.casePage = 1
+                raise("case.clearall", {})
+                menu.refresh()
+            end
+        end, not actionState("case.clearall").running)
+        local cancelrow = tableWidget:addRow(true)
+        cancelrow[1]:setColSpan(4)
+        addButton(cancelrow, 1, "CANCEL - KEEP ALL CASES", function()
+            menu.clearCasesConfirm = false
+            menu.refresh()
+        end, true)
+    else
+        addButton(row, 1, "CLEAR ALL EOC CASES", function()
+            menu.clearCasesConfirm = true
+            menu.refresh()
+        end, not actionState("case.clearall").running)
+    end
+    actionResult(tableWidget, "case.clearall", "Deletes EOC case and retained evidence records only, then runs one fresh Empire Analysis. It does not change stations, ships, orders, funds, or settings.")
     pair(
         tableWidget,
         "SCOPE",
@@ -1806,19 +2001,19 @@ local function casesCenter(tableWidget)
         elseif not firstProblem and (check.state == "FAIL" or check.state == "UNKNOWN" or check.state == "NOT YET TESTED") then firstProblem = check end
     end
 
-    section(tableWidget, "CURRENT BLOCKER")
+    section(tableWidget, firstProblem and (firstProblem.state == "FAIL" and "WHAT EOC FOUND" or "WHAT EOC STILL NEEDS TO LEARN") or "WHAT EOC FOUND")
     row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText(firstProblem and (firstProblem.state .. " - " .. firstProblem.label .. ": " .. firstProblem.evidence) or "PASS - NO VERIFIED BLOCKER: all reported prerequisites pass or do not apply.", { wordwrap = true, color = firstProblem and resultColor(firstProblem.state) or investigationPassColor })
-    section(tableWidget, "DO THIS NEXT")
+    section(tableWidget, "WHAT YOU NEED TO DO NOW")
     row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText(manualNextAction(selected, checks), { wordwrap = true })
     row = tableWidget:addRow(false)
-    row[1]:setColSpan(4):createText("SUPPORTING RESULTS: " .. passCount .. " PASS | " .. notApplicableCount .. " NOT APPLICABLE - open Guided Recovery to view details.", { wordwrap = true })
+    row[1]:setColSpan(4):createText("EOC CHECKED " .. tostring(#checks) .. " CONDITION(S): " .. passCount .. " passed | " .. notApplicableCount .. " did not apply. Guided Recovery explains the result in order.", { wordwrap = true })
     row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText("EVIDENCE SNAPSHOT: Values came from " .. (menu.lastUpdated and ("the EOC analysis at " .. menu.lastUpdated) or "the last EOC analysis") .. ". They may differ from the current vanilla station screen until verification runs.", { wordwrap = true })
     row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
-    addButton(row, 1, "OPEN GUIDED NEXT ACTION: " .. text(v(selected, 4, "SELECTED CASE")), function()
+    addButton(row, 1, firstProblem and firstProblem.state ~= "FAIL" and "CONTINUE - COLLECT THE MISSING EVIDENCE" or ("SHOW ME WHAT TO DO: " .. text(v(selected, 4, "SELECTED CASE"))), function()
         focusCaseStation(selected)
         menu.diagnosticCase = selected
         captureNavigation("CASE - " .. text(v(selected, 4, "SELECTED CASE")))
@@ -2416,13 +2611,22 @@ local function diagnosticsCenter(tableWidget)
     local diagnosticCase = menu.diagnosticCase
     if diagnosticCase and text(v(diagnosticCase, 1, "")) ~= text(v(station, 1, "")) then diagnosticCase = nil end
     if not diagnosticCase then diagnosticCase = cases[1] end
+    -- Player-requested cases are 11-field investigation requests, not completed
+    -- 36-field diagnostic evidence records. Never render absent evidence as zero.
+    local diagnosticReady = diagnosticCase and string.upper(text(v(diagnosticCase, 2, ""))) ~= "PLAYER" and #diagnosticCase >= 32
+    if diagnosticCase and not diagnosticReady and menu.diagnosticView ~= "recovery" then menu.diagnosticView = "recovery" end
     local diagnosticPlaybook = diagnosticCase and casePlaybook(diagnosticCase) or nil
     local diagnosticSubject = diagnosticCase and text(v(diagnosticCase, 4, "SELECTED CASE")) or "NO CASE"
     local verificationKey = stationName .. "|" .. diagnosticSubject
+    local workingCaseEvidenceMissing = menu.caseEvidenceMissing and menu.caseEvidenceKey == verificationKey
+    local noMatchComplete = diagnosticCase and not diagnosticReady and (workingCaseEvidenceMissing or string.upper(text(v(diagnosticCase, 5, ""))) == "NO CURRENT PROBLEM CONFIRMED")
+    local workingChecks = diagnosticCase and prerequisiteRows(diagnosticCase) or {}
+    local workingEvidenceMissing = false
+    for _, check in ipairs(workingChecks) do if check.state == "UNKNOWN" or check.state == "NOT YET TESTED" then workingEvidenceMissing = true; break end end
 
     section(tableWidget, "EOC GUIDED RECOVERY")
     local brief = tableWidget:addRow(false)
-    brief[1]:setColSpan(4):createText("ONE STEP AT A TIME: EOC shows the first unresolved check, one player action, and then verification. Values are from the last EOC scan; supporting evidence is available separately.", { wordwrap = true })
+    brief[1]:setColSpan(4):createText("THIS CASE HAS ONE STORY: what EOC noticed, what the evidence proves, what you need to do, and how EOC will verify the result.", { wordwrap = true })
     pair(tableWidget, "WORKING STATION", stationName, "ACTIVE CASES", #cases)
     if diagnosticCase then
         section(tableWidget, "WORKING CASE: " .. text(v(diagnosticCase, 4, "SELECTED CASE")))
@@ -2433,12 +2637,12 @@ local function diagnosticsCenter(tableWidget)
         menu.diagnosticView = "recovery"
         menu.refresh()
     end)
-    addModeButton(row, 2, (menu.diagnosticView == "supplier" and "ACTIVE: " or "") .. "EVIDENCE DETAILS", menu.diagnosticView == "supplier", true, function()
+    addModeButton(row, 2, (menu.diagnosticView == "supplier" and "ACTIVE: " or "") .. (diagnosticReady and "EVIDENCE DETAILS" or (noMatchComplete and "NO EVIDENCE REQUIRED" or "EVIDENCE AFTER ANALYSIS")), menu.diagnosticView == "supplier", diagnosticReady, function()
         menu.diagnosticView = "supplier"
         menu.refresh()
     end)
     row[3]:setColSpan(2)
-    addModeButton(row, 3, (menu.diagnosticView == "stabilization" and "ACTIVE: " or "") .. "VERIFY RESULT", menu.diagnosticView == "stabilization", true, function()
+    addModeButton(row, 3, (menu.diagnosticView == "stabilization" and "ACTIVE: " or "") .. (diagnosticReady and "VERIFY RESULT" or (noMatchComplete and "NO ACTION TO VERIFY" or "VERIFY AFTER ANALYSIS")), menu.diagnosticView == "stabilization", diagnosticReady, function()
         menu.diagnosticView = "stabilization"
         menu.refresh()
     end)
@@ -2447,17 +2651,23 @@ local function diagnosticsCenter(tableWidget)
         if not diagnosticCase then section(tableWidget, "NO CASE AVAILABLE"); row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("Select an active case before starting a root-cause investigation.", { wordwrap = true }); return end
         local investigationChecks = prerequisiteRows(diagnosticCase)
         local confidence, cause, recommendation, facts, unknowns = rootCauseAssessment(diagnosticCase, investigationChecks)
-        section(tableWidget, "ROOT-CAUSE INVESTIGATION - " .. confidence)
-        row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("CURRENT FINDING: " .. cause, { wordwrap = true })
-        row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("RECOMMENDED NEXT STEP: " .. recommendation, { wordwrap = true })
-        section(tableWidget, "FACTS COLLECTED BY THIS INVESTIGATION")
+        section(tableWidget, "EOC'S CONCLUSION - " .. confidence)
+        row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("WHAT EOC CAN SAY: " .. cause, { wordwrap = true })
+        row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("WHAT YOU NEED TO DO: " .. recommendation, { wordwrap = true })
+        section(tableWidget, "WHAT EOC CHECKED")
         for _, check in ipairs(investigationChecks) do
             local checkColor = resultColor(check.state)
             row = tableWidget:addRow(false)
             row[1]:setColSpan(4):createText(check.state .. " - " .. check.label .. ": " .. check.evidence, { wordwrap = true, color = checkColor })
         end
         if #unknowns > 0 then section(tableWidget, "WHAT EOC STILL NEEDS TO LEARN"); for _, item in ipairs(unknowns) do row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("UNKNOWN - " .. item, { wordwrap = true, color = investigationUnknownColor }) end end
-        if confidence == "MORE OBSERVATION REQUIRED" then
+        if confidence == "CAUSE NOT YET KNOWN" then
+            row = tableWidget:addRow(true); row[1]:setColSpan(4)
+            addButton(row, 1, actionLabel("analysis.run", "RUN FRESH ANALYSIS - IDENTIFY THE CAUSE", "COLLECTING FRESH EVIDENCE"), function()
+                if startAction("analysis.run") then menu.analysisRunning = true; menu.pendingCaseEvidenceKey = verificationKey; raise("analysis.run", { investigate = true, station = stationName, subject = diagnosticSubject }) end
+            end, not actionState("analysis.run").running)
+            row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("Do not change this station yet. EOC will return with a supported action or clearly state which evidence is still unavailable.", { wordwrap = true, color = investigationUnknownColor })
+        elseif confidence == "MORE OBSERVATION REQUIRED" then
             row = tableWidget:addRow(true); row[1]:setColSpan(4)
             addButton(row, 1, actionLabel("case.monitor", "SAVE THIS CASE - " .. intelligenceName() .. " WILL KEEP WATCHING", "SAVING MONITORED CASE"), function()
                 if startAction("case.monitor") then raise("case.monitor", { station = stationName, subject = diagnosticSubject, confidence = confidence, cause = cause, amount = tonumber(v(diagnosticCase, 8, 0)) or 0, target = tonumber(v(diagnosticCase, 9, 0)) or 0 }) end
@@ -2496,8 +2706,38 @@ local function diagnosticsCenter(tableWidget)
             return
         end
 
+        if noMatchComplete then
+            section(tableWidget, "ANALYSIS COMPLETE - NO CURRENT PROBLEM CONFIRMED")
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText("EOC completed a fresh Empire Analysis and found no current " .. diagnosticSubject .. " problem at " .. stationName .. ". The request did not match any active EOC case, so EOC recommends no station change.", { wordwrap = true, color = investigationPassColor })
+            section(tableWidget, "WHAT THIS MEANS FOR YOU")
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText("Do not transfer funds, change storage, alter trade settings, add production, or reassign ships for this investigation. There is no diagnosed action and therefore nothing to verify.", { wordwrap = true })
+            section(tableWidget, "WHERE TO GO NEXT")
+            row = tableWidget:addRow(true); row[1]:setColSpan(4)
+            addButton(row, 1, "RETURN TO CASES - CLOSE OR KEEP THIS INVESTIGATION", function()
+                menu.caseScope = "station"; menu.caseSeverity = "all"; menu.selectedCase = 1; menu.casePage = 1; menu.page = "cases"; menu.activeTab = "cases"; menu.refresh()
+            end, true)
+            return
+        elseif not diagnosticReady then
+            section(tableWidget, "INVESTIGATION REQUEST RECEIVED")
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText("EOC has recorded your concern about " .. diagnosticSubject .. " at " .. stationName .. ". This is not a diagnosis yet, so EOC will not display or infer station funds, storage, supply, production, or logistics evidence from this request.", { wordwrap = true, color = navigationStoryColor })
+            section(tableWidget, "WHAT YOU NEED TO DO")
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText("Select RUN EMPIRE ANALYSIS below. EOC will inspect the station, build the complete evidence record, and then return you to this case with Evidence Details available.", { wordwrap = true })
+            row = tableWidget:addRow(true); row[1]:setColSpan(4)
+            addButton(row, 1, actionLabel("analysis.run", "RUN EMPIRE ANALYSIS - DIAGNOSE THIS CASE", "ANALYZING THIS STATION"), function()
+                if startAction("analysis.run") then menu.analysisRunning = true; menu.pendingCaseEvidenceKey = verificationKey; raise("analysis.run", { investigate = true, station = stationName, subject = diagnosticSubject }) end
+            end, not actionState("analysis.run").running)
+            section(tableWidget, "WHAT HAPPENS NEXT")
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText("After analysis, EOC will show what it observed, the station's actual operating-account balance from X4, the supported cause, and the next player action. Verification remains locked until there is a diagnosed action to verify.", { wordwrap = true })
+            return
+        end
+
         row = tableWidget:addRow(true); row[1]:setColSpan(4)
-        addButton(row, 1, "INVESTIGATE ROOT CAUSE - COLLECT AND EXPLAIN EVIDENCE", function() menu.diagnosticView = "investigation"; menu.refresh() end, true)
+        addButton(row, 1, "READ EOC'S CONCLUSION AND EVIDENCE", function() menu.diagnosticView = "investigation"; menu.refresh() end, true)
 
         local diagnosticChecks = prerequisiteRows(diagnosticCase)
         local firstProblem = nil
@@ -2505,18 +2745,26 @@ local function diagnosticsCenter(tableWidget)
             if not firstProblem and (check.state == "FAIL" or check.state == "UNKNOWN" or check.state == "NOT YET TESTED") then firstProblem = check end
         end
         local nextAction = manualNextAction(diagnosticCase, diagnosticChecks)
+        local evidenceMissing = firstProblem and (firstProblem.state == "UNKNOWN" or firstProblem.state == "NOT YET TESTED")
 
-        section(tableWidget, "STEP 1 OF 3 - WHAT FAILED FIRST")
+        section(tableWidget, evidenceMissing and "STEP 1 OF 3 - WHAT EOC DOES NOT KNOW YET" or "STEP 1 OF 3 - WHAT EOC FOUND")
         row = tableWidget:addRow(false)
         row[1]:setColSpan(4):createText(firstProblem and (firstProblem.state .. " - " .. firstProblem.label) or "PASS - ALL REPORTED PREREQUISITES", { wordwrap = true, color = firstProblem and resultColor(firstProblem.state) or investigationPassColor })
         row = tableWidget:addRow(false)
         row[1]:setColSpan(4):createText(firstProblem and ("EVIDENCE: " .. firstProblem.evidence) or "EVIDENCE: No failed or unknown prerequisite was returned.", { wordwrap = true, color = firstProblem and resultColor(firstProblem.state) or investigationPassColor })
 
-        section(tableWidget, "STEP 2 OF 3 - DO THIS NOW")
+        section(tableWidget, "STEP 2 OF 3 - WHAT YOU NEED TO DO NOW")
         row = tableWidget:addRow(false)
         row[1]:setColSpan(4):createText(nextAction, { wordwrap = true })
         row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText("PLAYER CONTROL: EOC will not cancel or replace trader orders, move credits, or alter station configuration. Complete this action manually.", { wordwrap = true })
+        row[1]:setColSpan(4):createText(evidenceMissing and "DO NOT CHANGE THE STATION YET. EOC needs fresh evidence before it can safely recommend funding, storage, trade, production, or ship changes." or "PLAYER CONTROL: EOC will not cancel or replace trader orders, move credits, or alter station configuration. Complete this one action manually.", { wordwrap = true, color = evidenceMissing and investigationUnknownColor or nil })
+
+        if evidenceMissing then
+            row = tableWidget:addRow(true); row[1]:setColSpan(4)
+            addButton(row, 1, actionLabel("analysis.run", "RUN FRESH ANALYSIS - IDENTIFY THE CAUSE", "COLLECTING FRESH EVIDENCE"), function()
+                if startAction("analysis.run") then menu.analysisRunning = true; menu.pendingCaseEvidenceKey = verificationKey; raise("analysis.run", { investigate = true, station = stationName, subject = diagnosticSubject }) end
+            end, not actionState("analysis.run").running)
+        end
 
         local marketEligible = firstProblem and (firstProblem.label == "DELIVERY PATH" or firstProblem.label == "REACHABLE SUPPLY" or firstProblem.label == "STORAGE FREE SPACE")
         if marketEligible then
@@ -2529,11 +2777,11 @@ local function diagnosticsCenter(tableWidget)
         row[1]:setColSpan(2)
         addButton(row, 1, "VIEW SUPPORTING EVIDENCE", function() menu.diagnosticView = "supplier"; menu.refresh() end, true)
         row[3]:setColSpan(2)
-        addButton(row, 3, "ACTION COMPLETE - GO TO VERIFY RESULT", function() menu.diagnosticView = "stabilization"; menu.refresh() end, true)
+        addButton(row, 3, evidenceMissing and "VERIFICATION WAITS FOR A SUPPORTED ACTION" or "I COMPLETED THE ACTION - VERIFY IT", function() menu.diagnosticView = "stabilization"; menu.refresh() end, not evidenceMissing)
 
         section(tableWidget, "STEP 3 OF 3 - VERIFY AFTER THE ACTION")
         row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText("After completing the player action, open Verify Result and run one fresh analysis. EOC will report RESOLVED, IMPROVING, UNCHANGED, or WORSENING.", { wordwrap = true })
+        row[1]:setColSpan(4):createText(evidenceMissing and "EOC must identify a supported action before there is anything to verify." or "After completing the action above, select I COMPLETED THE ACTION - VERIFY IT. EOC will run a fresh comparison and explain whether the case is resolved, improving, unchanged, or worsening.", { wordwrap = true })
     elseif menu.diagnosticView == "options" then
         if not diagnosticCase then section(tableWidget, "NO ACTIVE CASE"); row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("Return to Guided Recovery and select an active case.", { wordwrap = true }); return end
         local optionChecks = prerequisiteRows(diagnosticCase)
@@ -2586,37 +2834,46 @@ local function diagnosticsCenter(tableWidget)
         section(tableWidget, "SUPPORTING EVIDENCE: " .. (diagnosticCase and text(v(diagnosticCase, 4, "SELECTED CASE")) or "NO CASE SELECTED"))
         if diagnosticCase then
             local detailChecks = prerequisiteRows(diagnosticCase)
+            local detailConfidence, detailCause, detailRecommendation = rootCauseAssessment(diagnosticCase, detailChecks)
             row = tableWidget:addRow(false)
-            row[1]:setColSpan(4):createText("EVIDENCE SNAPSHOT: Values came from " .. (menu.lastUpdated and ("the EOC analysis at " .. menu.lastUpdated) or "the last EOC analysis") .. ". Run Verify Result to refresh and compare it.", { wordwrap = true })
-            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText("LAST CHECKED: " .. (menu.lastUpdated or "No completed analysis time is available") .. ". These values remain a snapshot until you run another analysis.", { wordwrap = true })
+            if menu.caseEvidenceHandoffMessage and menu.caseEvidenceKey == verificationKey then
+                row = tableWidget:addRow(false)
+                row[1]:setColSpan(4):createText(menu.caseEvidenceHandoffMessage, { wordwrap = true, color = workingCaseEvidenceMissing and investigationUnknownColor or investigationPassColor })
+            end
             local awaitingEvidence = false
             for _, check in ipairs(detailChecks) do
                 local state = string.upper(text(check.state))
                 if state == "UNKNOWN" or state == "NOT YET TESTED" then awaitingEvidence = true; break end
             end
-            row[1]:setColSpan(4):createText((awaitingEvidence and "SUSPECTED CAUSE - CONFIRMATION REQUIRED: " or "ROOT CAUSE: ") .. text(v(diagnosticCase, 6, "Evidence requires review.")), { wordwrap = true })
+            section(tableWidget, "WHAT EOC CAN SAY")
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText(workingCaseEvidenceMissing and "NO CONFIRMED MATCH: The fresh analysis found no evidence-confirmed EOC case for this station and subject." or (detailConfidence .. ": " .. detailCause), { wordwrap = true, color = awaitingEvidence and investigationUnknownColor or navigationStoryColor })
             local caseType = string.upper(text(v(diagnosticCase, 3, "")))
             local currentStock = tonumber(v(diagnosticCase, 8, 0)) or 0
             local targetStock = tonumber(v(diagnosticCase, 9, 0)) or 0
             local maximumStock = tonumber(v(diagnosticCase, 10, 0)) or 0
             local storagePressure = caseType == "STORAGE PRESSURE"
+            section(tableWidget, "WHAT EOC KNOWS")
             row = tableWidget:addRow(false)
-            if storagePressure then
-                row[1]:setColSpan(4):createText("CURRENT STOCK: " .. formatNumber(currentStock) .. " | TARGET: " .. formatNumber(targetStock) .. " | MAXIMUM: " .. formatNumber(maximumStock), { wordwrap = true })
-            else
-                row[1]:setColSpan(4):createText("CURRENT STOCK: " .. formatNumber(currentStock) .. " | TARGET: " .. formatNumber(targetStock) .. " | MAXIMUM: " .. formatNumber(maximumStock) .. " | STATION OPERATING ACCOUNT: " .. formatNumber(v(diagnosticCase, 32, 0)) .. " Cr", { wordwrap = true })
-            end
-            section(tableWidget, "BIG TAKEAWAY")
+            row[1]:setColSpan(4):createText("CURRENT " .. text(v(diagnosticCase, 4, "WARE")) .. " STOCK: " .. formatNumber(currentStock), { wordwrap = true })
             row = tableWidget:addRow(false)
-            if storagePressure then
+            row[1]:setColSpan(4):createText("STORAGE TARGET: " .. (targetStock > 0 and formatNumber(targetStock) or "UNAVAILABLE OR NOT SET") .. " | STORAGE CAPACITY: " .. (maximumStock > 0 and formatNumber(maximumStock) or "UNAVAILABLE IN THE LAST SCAN"), { wordwrap = true, color = (targetStock <= 0 or maximumStock <= 0) and investigationUnknownColor or nil })
+            local accountBalance = tonumber(v(diagnosticCase, 32, 0)) or 0
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText("STATION OPERATING ACCOUNT BALANCE: " .. formatNumber(accountBalance) .. " Cr" .. (accountBalance <= 0 and " - X4 reports no available operating funds at the last analysis." or " - available to this station at the last analysis."), { wordwrap = true, color = accountBalance <= 0 and investigationFailColor or investigationPassColor })
+            section(tableWidget, "WHAT THIS MEANS FOR YOU")
+            row = tableWidget:addRow(false)
+            if workingCaseEvidenceMissing then
+                row[1]:setColSpan(4):createText("EOC completed the requested analysis and found no matching confirmed case. That does not prove the station is healthy, but repeating the same analysis will not create evidence. Continue normal play and let EOC watch for a supported change.", { wordwrap = true, color = investigationUnknownColor })
+            elseif storagePressure and not awaitingEvidence then
                 row[1]:setColSpan(4):createText(text(v(diagnosticCase, 4, "This ware")) .. " storage is effectively full. Incoming deliveries, mining, production, or trade may stall. Reduce the ware target or allocation, add matching storage, or improve outbound use and sales; then run Verify Result.", { wordwrap = true, color = investigationUnknownColor })
             elseif awaitingEvidence then
-                row[1]:setColSpan(4):createText(intelligenceName() .. " has identified a suspected blocker that still requires focused evidence. The colored checks below show what is supported and what remains untested.", { wordwrap = true, color = investigationUnknownColor })
+                row[1]:setColSpan(4):createText("EOC does not have enough evidence to recommend a safe station change. " .. detailRecommendation, { wordwrap = true, color = investigationUnknownColor })
             else
                 row[1]:setColSpan(4):createText(intelligenceName() .. " has isolated the immediate blocker. The colored checks below show what is working and what needs attention.", { wordwrap = true, color = navigationStoryColor })
             end
-            section(tableWidget, intelligenceName() .. " - HERE IS WHAT I FOUND")
-            section(tableWidget, "EVIDENCE CHECKS - GREEN PASSED | RED FAILED | AMBER NEEDS MORE EVIDENCE")
+            section(tableWidget, "EVIDENCE CHECKS - GREEN CONFIRMED | RED FAILED | AMBER NOT YET KNOWN")
             for _, check in ipairs(detailChecks) do
                 row = tableWidget:addRow(false)
                 row[1]:setColSpan(4):createText(check.state .. " - " .. check.label .. ": " .. check.evidence, { wordwrap = true, color = resultColor(check.state) })
@@ -2624,6 +2881,18 @@ local function diagnosticsCenter(tableWidget)
             section(tableWidget, "WHY THIS CASE MATTERS")
             row = tableWidget:addRow(false)
             row[1]:setColSpan(4):createText(diagnosticPlaybook.impact, { wordwrap = true })
+            if awaitingEvidence then
+                row = tableWidget:addRow(true); row[1]:setColSpan(4)
+                if workingCaseEvidenceMissing then
+                    addButton(row, 1, actionLabel("case.monitor", "START MONITORING - WAIT FOR NEW EVIDENCE", "STARTING MONITORING"), function()
+                        if startAction("case.monitor") then raise("case.monitor", { station = stationName, subject = diagnosticSubject, confidence = "NO CONFIRMED MATCH", cause = "Fresh analysis found no matching confirmed case.", amount = tonumber(v(diagnosticCase, 8, 0)) or 0, target = tonumber(v(diagnosticCase, 9, 0)) or 0 }) end
+                    end, not actionState("case.monitor").running)
+                else
+                    addButton(row, 1, actionLabel("analysis.run", "RUN FRESH ANALYSIS - IDENTIFY THE CAUSE", "COLLECTING FRESH EVIDENCE"), function()
+                        if startAction("analysis.run") then menu.analysisRunning = true; menu.pendingCaseEvidenceKey = verificationKey; raise("analysis.run", { investigate = true, station = stationName, subject = diagnosticSubject }) end
+                    end, not actionState("analysis.run").running)
+                end
+            end
         else
             row = tableWidget:addRow(false)
             row[1]:setColSpan(4):createText("No working case is selected.", { wordwrap = true })
@@ -2631,11 +2900,12 @@ local function diagnosticsCenter(tableWidget)
     elseif menu.diagnosticView == "stabilization" then
         section(tableWidget, "VERIFY RECOVERY")
         row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText("This page does not change the station role or EOC operating policy. Complete the working case's recommended player action, then run a fresh analysis and compare evidence, severity, and trend.", { wordwrap = true })
+        row[1]:setColSpan(4):createText(workingEvidenceMissing and "THERE IS NOTHING TO VERIFY YET. EOC has not identified a supported player action. Return to Next Action and run the requested fresh analysis first." or ("ACTION BEING VERIFIED: " .. manualNextAction(diagnosticCase, workingChecks)), { wordwrap = true, color = workingEvidenceMissing and investigationUnknownColor or navigationStoryColor })
         if string.upper(text(v(diagnosticCase, 2, ""))) == "PLAYER" then row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("VERIFICATION LOCKED: This player-requested incident is NOT YET TESTED. Collect supported focused evidence before claiming recovery.", { wordwrap = true, color = investigationUnknownColor }) end
         row = tableWidget:addRow(true)
         row[1]:setColSpan(2)
-        addButton(row, 1, actionLabel("analysis.run", "VERIFY: RUN FRESH ANALYSIS", "VERIFYING WITH FRESH ANALYSIS"), function()
+        addButton(row, 1, actionLabel("analysis.run", workingEvidenceMissing and "RETURN TO NEXT ACTION - EVIDENCE IS MISSING" or "I COMPLETED THE ACTION - VERIFY IT NOW", "VERIFYING WITH FRESH ANALYSIS"), function()
+            if workingEvidenceMissing then menu.diagnosticView = "recovery"; menu.refresh(); return end
             if startAction("analysis.run") then
                 menu.analysisRunning = true
                 menu.pendingVerificationKey = verificationKey
@@ -2643,7 +2913,7 @@ local function diagnosticsCenter(tableWidget)
                 menu.verificationResult = "FRESH VERIFICATION RUNNING for " .. stationName .. " -> " .. diagnosticSubject
                 raise("analysis.run", { verify = true, station = stationName, subject = diagnosticSubject, severity = text(v(diagnosticCase, 2, "UNKNOWN")), amount = tonumber(v(diagnosticCase, 8, 0)) or 0 })
             end
-        end, not actionState("analysis.run").running and string.upper(text(v(diagnosticCase, 2, ""))) ~= "PLAYER")
+        end, not actionState("analysis.run").running and (workingEvidenceMissing or string.upper(text(v(diagnosticCase, 2, ""))) ~= "PLAYER"))
         row[3]:setColSpan(2)
         addButton(row, 3, "RETURN TO GUIDED RECOVERY", function() menu.diagnosticView = "recovery"; menu.refresh() end, true)
         if menu.verificationKey == verificationKey then
@@ -2654,7 +2924,7 @@ local function diagnosticsCenter(tableWidget)
             row[1]:setColSpan(4):createText("CASE VERIFICATION: RUNNING\n" .. text(menu.verificationResult), { wordwrap = true })
         else
             row = tableWidget:addRow(false)
-            row[1]:setColSpan(4):createText("CASE VERIFICATION: NOT RUN FOR THIS WORKING CASE\nACTION: Select VERIFY: RUN FRESH ANALYSIS", { wordwrap = true })
+            row[1]:setColSpan(4):createText(workingEvidenceMissing and "VERIFICATION STATUS: WAITING FOR EOC TO IDENTIFY A SUPPORTED ACTION" or "VERIFICATION STATUS: READY AFTER YOU COMPLETE THE ACTION ABOVE", { wordwrap = true })
         end
     else
         section(tableWidget, "GUIDED RECOVERY")
@@ -2690,13 +2960,19 @@ local function diagnosticsCenter(tableWidget)
             menu.refresh()
         end, true)
         row[3]:setColSpan(2)
-        addButton(row, 3, actionLabel("analysis.run", "VERIFY: RUN EMPIRE ANALYSIS", "VERIFYING WITH EMPIRE ANALYSIS"), function()
+        addButton(row, 3, actionLabel("analysis.run", workingCaseEvidenceMissing and "NO CONFIRMED MATCH - RETURN TO NEXT ACTION" or (workingEvidenceMissing and "RUN FRESH ANALYSIS - IDENTIFY THE CAUSE" or "I COMPLETED THE ACTION - VERIFY IT"), "RUNNING FRESH ANALYSIS"), function()
+            if workingCaseEvidenceMissing then menu.diagnosticView = "recovery"; menu.refresh(); return end
             if startAction("analysis.run") then
                 menu.analysisRunning = true
-                menu.pendingVerificationKey = verificationKey
-                menu.verificationKey = nil
-                menu.verificationResult = "FRESH VERIFICATION RUNNING for " .. stationName .. " -> " .. diagnosticSubject
-                raise("analysis.run", { verify = true, station = stationName, subject = diagnosticSubject, severity = text(v(diagnosticCase, 2, "UNKNOWN")), amount = tonumber(v(diagnosticCase, 8, 0)) or 0 })
+                if workingEvidenceMissing then
+                    menu.pendingCaseEvidenceKey = verificationKey
+                    raise("analysis.run", { investigate = true, station = stationName, subject = diagnosticSubject })
+                else
+                    menu.pendingVerificationKey = verificationKey
+                    menu.verificationKey = nil
+                    menu.verificationResult = "FRESH VERIFICATION RUNNING for " .. stationName .. " -> " .. diagnosticSubject
+                    raise("analysis.run", { verify = true, station = stationName, subject = diagnosticSubject, severity = text(v(diagnosticCase, 2, "UNKNOWN")), amount = tonumber(v(diagnosticCase, 8, 0)) or 0 })
+                end
             end
         end, not actionState("analysis.run").running)
     end
@@ -2781,118 +3057,70 @@ local function buildKpiRows()
     return rows
 end
 
-local KPI_MAX_VISIBLE_ROWS = 8
+local KPI_RESULT_PAGE_SIZE = 5
 
-local function kpiTruncationNotice(tableWidget, total, shown)
-    if total > shown then
+local function kpiPageBounds(total)
+    total = math.max(0, tonumber(total) or 0)
+    local pages = math.max(1, math.ceil(total / KPI_RESULT_PAGE_SIZE))
+    local page = math.max(1, math.min(pages, tonumber(menu.kpiResultPage) or 1))
+    menu.kpiResultPage = page
+    local first = total > 0 and ((page - 1) * KPI_RESULT_PAGE_SIZE + 1) or 0
+    local last = total > 0 and math.min(total, first + KPI_RESULT_PAGE_SIZE - 1) or 0
+    return first, last, page, pages
+end
+
+local function kpiPageControls(tableWidget, total, first, last, page, pages)
+    local row = tableWidget:addRow(true)
+    addButton(row, 1, "PREVIOUS", function() menu.kpiResultPage = math.max(1, page - 1); menu.refresh() end, page > 1)
+    row[2]:setColSpan(2):createText("PAGE " .. page .. " / " .. pages .. " | ROWS " .. first .. "-" .. last .. " OF " .. total, { halign = "center" })
+    addButton(row, 4, "NEXT", function() menu.kpiResultPage = math.min(pages, page + 1); menu.refresh() end, page < pages)
+end
+
+local function kpiPagedRows(tableWidget, rows, renderRow, emptyText)
+    if #rows == 0 then
         local row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText("DISPLAY LIMIT: Showing " .. tostring(shown) .. " of " .. tostring(total) .. " rows. Use a filter for detail; " .. tostring(total - shown) .. " additional row(s) are hidden to protect the X4 widget height.", { wordwrap = true, color = investigationWarnColor })
+        row[1]:setColSpan(4):createText(emptyText or "No records are available for this view.", { wordwrap = true })
     end
+    local first, last, page, pages = kpiPageBounds(#rows)
+    for index = first, last do renderRow(rows[index], index) end
+    kpiPageControls(tableWidget, #rows, first, last, page, pages)
+end
+
+local function kpiHeader(tableWidget, labels)
+    local row = tableWidget:addRow(false)
+    for i = 1, 4 do row[i]:createText(labels[i] or "", { wordwrap = false, font = Helper.headerFont }) end
+    local line = tableWidget:addRow(false)
+    line[1]:setColSpan(4):createText(string.rep("━", 420), { wordwrap = false, fontsize = 3, color = navigationStoryColor })
 end
 
 local function kpiAttentionView(tableWidget)
     local rows = buildKpiRows()
     local counts = { CRITICAL = 0, WARNING = 0, WATCH = 0, HEALTHY = 0 }
     for _, item in ipairs(rows) do counts[item.state] = counts[item.state] + 1 end
-
     section(tableWidget, "EMPIRE KPI CENTER")
-    local brief = tableWidget:addRow(false)
-    brief[1]:setColSpan(4):createText("PURPOSE: This page answers which station deserves attention first. Scores rank review priority; they never authorize an operation.", { wordwrap = true })
-    section(tableWidget, "EOC CONCLUSION")
-    local pulse = tableWidget:addRow(false)
-    pulse[1]:setColSpan(4):createText(
-        ((counts.CRITICAL + counts.WARNING) > 0 and ((counts.CRITICAL + counts.WARNING) .. " station(s) need review. ") or "No station currently needs urgent review. ") ..
-        "DO THIS NEXT: Start with the first station in the queue.",
-        { wordwrap = true }
-    )
     pair(tableWidget, "CRITICAL", counts.CRITICAL, "WARNING", counts.WARNING)
-
     section(tableWidget, "EXECUTIVE ATTENTION QUEUE")
-    if #rows == 0 then
-        pair(tableWidget, "STATUS", "No player stations are currently available.", "NEXT STEP", "Wait for the EOC property scan.")
-        return
-    end
-
-    local header = tableWidget:addRow(false)
-    header[1]:createText("RANK / STATE")
-    header[2]:createText("STATION")
-    header[3]:createText("HEALTH / TREND")
-    header[4]:createText("SCORE / ISSUES")
-    local headerLine = tableWidget:addRow(false)
-    headerLine[1]:setColSpan(4):createText(string.rep("━", 420), { wordwrap = false, fontsize = 3, color = navigationStoryColor })
-
-    for rank = 1, math.min(#rows, KPI_MAX_VISIBLE_ROWS) do
-        local item = rows[rank]
+    kpiHeader(tableWidget, { "RANK / STATE", "STATION", "HEALTH / TREND", "SCORE / ISSUES" })
+    kpiPagedRows(tableWidget, rows, function(item, rank)
         local selectedItem = item
         local row = tableWidget:addRow(true)
         row[1]:createText(rank .. ". " .. item.state)
-        addButton(row, 2, item.name, function()
-            menu.kpiSelected = selectedItem.index
-            menu.refresh()
-        end, true)
+        addButton(row, 2, item.name, function() menu.kpiSelected = selectedItem.index; menu.refresh() end, true)
         row[3]:createText(item.health .. " / " .. item.trend)
         row[4]:createText(item.score .. " / " .. item.issues)
-    end
-
-    local selectedIndex = menu.kpiSelected or rows[1].index
-    local selected = rows[1]
-    for _, item in ipairs(rows) do
-        if item.index == selectedIndex then selected = item break end
-    end
+    end, "No player stations are currently available.")
+    if #rows == 0 then return end
+    local selectedIndex, selected = menu.kpiSelected or rows[1].index, rows[1]
+    for _, item in ipairs(rows) do if item.index == selectedIndex then selected = item break end end
     menu.kpiSelected = selected.index
-
     section(tableWidget, "FOCUS: " .. selected.name)
-    pair(tableWidget, "ATTENTION STATE", selected.state, "ATTENTION SCORE", selected.score)
-    pair(tableWidget, "ROLE", selected.role, "PRIORITY", selected.priority)
-    pair(tableWidget, "CRITICAL CASES", selected.critical, "WARNING CASES", selected.warning)
-
-    local whyRow = tableWidget:addRow(false)
-    whyRow[1]:setColSpan(4):createText("WHY THIS RANKS HERE: " .. selected.why, { wordwrap = true })
-    local actionRow = tableWidget:addRow(false)
-    actionRow[1]:setColSpan(4):createText("RECOMMENDED NEXT ACTION: " .. selected.recommendation, { wordwrap = true })
-
+    local summary = tableWidget:addRow(false)
+    summary[1]:setColSpan(4):createText(selected.state .. " | SCORE " .. selected.score .. " | " .. selected.health .. " / " .. selected.trend .. " | NEXT: " .. selected.recommendation, { wordwrap = true })
     local row = tableWidget:addRow(true)
-    addButton(row, 1, "OPEN STATION", function()
-        menu.selected = selected.index
-        captureNavigation("KPI CENTER")
-        menu.page = "stations"
-        menu.activeTab = "stations"
-        menu.refresh()
-    end, true)
-    addButton(row, 2, "OPEN STATION CASES", function()
-        menu.selected = selected.index
-        captureNavigation("KPI CENTER")
-        menu.caseScope = "station"
-        menu.caseSeverity = "all"
-        menu.selectedCase = 1
-        menu.casePage = 1
-        menu.page = "cases"
-        menu.activeTab = "cases"
-        menu.refresh()
-    end, selected.issues > 0 or selected.critical > 0 or selected.warning > 0)
-    addButton(row, 3, "OPEN DIAGNOSTICS", function()
-        menu.selected = selected.index
-        captureNavigation("KPI CENTER")
-        menu.diagnosticView = "recovery"
-        menu.page = "diagnostics"
-        menu.activeTab = "diagnostics"
-        menu.refresh()
-    end, true)
-    addButton(row, 4, "RUN EMPIRE ANALYSIS", function()
-        if not menu.analysisRunning then
-            menu.analysisRunning = true
-            menu.analysisStatus = "ANALYSIS RUNNING"
-            menu.refresh()
-            raise("analysis.run", {})
-        end
-    end, not menu.analysisRunning)
-
-    local guide = tableWidget:addRow(false)
-    guide[1]:setColSpan(4):createText(
-        "SCORING GUIDE: confirmed cases, persistent health states, worsening trends, priority, and issue count raise attention. " ..
-        "Scores rank focus; they do not authorize or perform any operation.",
-        { wordwrap = true }
-    )
+    addButton(row, 1, "OPEN STATION", function() menu.selected=selected.index; captureNavigation("KPI CENTER"); menu.page="stations"; menu.activeTab="stations"; menu.refresh() end, true)
+    addButton(row, 2, "OPEN CASES", function() menu.selected=selected.index; captureNavigation("KPI CENTER"); menu.caseScope="station"; menu.caseSeverity="all"; menu.selectedCase=1; menu.casePage=1; menu.page="cases"; menu.activeTab="cases"; menu.refresh() end, selected.issues>0 or selected.critical>0 or selected.warning>0)
+    addButton(row, 3, "DIAGNOSTICS", function() menu.selected=selected.index; captureNavigation("KPI CENTER"); menu.diagnosticView="recovery"; menu.page="diagnostics"; menu.activeTab="diagnostics"; menu.refresh() end, true)
+    addButton(row, 4, "RUN ANALYSIS", function() if not menu.analysisRunning then menu.analysisRunning=true; menu.analysisStatus="ANALYSIS RUNNING"; menu.refresh(); raise("analysis.run",{}) end end, not menu.analysisRunning)
 end
 local function kpiStationOptions()
     local names, seen = {}, {}
@@ -2904,26 +3132,25 @@ local function kpiStationOptions()
 end
 
 local function kpiProtectedDropdown(row, column, options, selected, confirmed)
-    row[column]:setColSpan(4 - column + 1):createDropDown(options, { active = #options > 0, startOption = selected })
+    for _, option in ipairs(options) do
+        if not string.find(option.text or "", "SELECTED FILTER:", 1, true) then option.text = "SELECTED FILTER: " .. tostring(option.text or "") .. "  v" end
+    end
+    local dropdown = row[column]:setColSpan(4 - column + 1):createDropDown(options, { active = #options > 0, startOption = selected, height = Helper.standardButtonHeight, mouseOverText = "CLICK TO CHANGE KPI FILTER" })
+    dropdown:setTextProperties({ fontsize = Helper.standardFontSize })
     row[column].handlers.onDropDownActivated = function() menu.kpiControlDropdownActive = true end
-    row[column].handlers.onDropDownDeactivated = function() menu.kpiControlDropdownActive = false; menu.kpiNextRefreshAt = getElapsedTime() + KPI_REFRESH_SECONDS end
-    row[column].handlers.onDropDownConfirmed = function(_, value) menu.kpiControlDropdownActive = false; confirmed(value); menu.kpiNextRefreshAt = getElapsedTime() + KPI_REFRESH_SECONDS; menu.refresh() end
+    row[column].handlers.onDropDownDeactivated = function() menu.kpiControlDropdownActive = false; menu.kpiNextRefreshAt = getElapsedTime() + menu.kpiRefreshInterval(menu.kpiView) end
+    row[column].handlers.onDropDownConfirmed = function(_, value) menu.kpiControlDropdownActive = false; confirmed(value); menu.kpiResultPage = 1; menu.kpiNextRefreshAt = getElapsedTime(); menu.refresh() end
 end
 
 local function kpiControlLabel(row, label)
-    row[1]:createText(label, { wordwrap = false, font = Helper.headerFont, color = investigationWarnColor })
-end
-
-local function kpiHeader(tableWidget, labels)
-    local row = tableWidget:addRow(false)
-    for i = 1, 4 do row[i]:createText(labels[i] or "", { wordwrap = false, font = Helper.headerFont }) end
-    local line = tableWidget:addRow(false)
-    line[1]:setColSpan(4):createText(string.rep("━", 420), { wordwrap = false, fontsize = 3, color = navigationStoryColor })
+    row[1]:createText("FILTER  >  " .. label, { wordwrap = false, font = Helper.headerFont, color = investigationWarnColor, mouseOverText = "USE THE BLUE FIELD TO CHANGE THIS FILTER" })
 end
 
 local function kpiViewButtonCallback(view)
     return function()
         menu.kpiView = view
+        menu.kpiResultPage = 1
+        menu.kpiNextRefreshAt = getElapsedTime()
         menu.refresh()
     end
 end
@@ -2931,10 +3158,9 @@ end
 local function kpiDashboardControls(tableWidget)
     section(tableWidget, "LIVE KPI DASHBOARDS")
     local choices = {
-        { "EMPIRE CASH FLOW", "cash" }, { "STATION PROFIT", "profit" }, { "CONSTRUCTION PROGRESS", "construction" }, { "WARE SHORTAGES", "shortages" },
-        { "EXECUTIVE ATTENTION", "attention" }, { "TRADE ACTIVITY", "trade" }, { "LOGISTICS HEALTH", "logistics" }, { "STORAGE LEVELS", "storage" },
-        { "TOP EARNERS", "earners" }, { "CASH DRAINS", "drains" }, { "SHIPYARD ACTIVITY", "shipyard" }, { "WORKFORCE HEALTH", "workforce" },
-        { "CASE TRENDS", "casetrends" }, { "EMPIRE GROWTH", "growth" }
+        { "CASH FLOW", "cash" }, { "CONSTRUCTION PROGRESS", "construction" }, { "EXECUTIVE ATTENTION", "attention" },
+        { "OPEN TRADE OFFERS", "trade" }, { "STORAGE LEVELS", "storage" },
+        { "TOP EARNERS", "earners" }, { "CASH DRAINS", "drains" }, { "SHIPYARD ACTIVITY", "shipyard" }
     }
     local row
     for index, choice in ipairs(choices) do
@@ -2944,7 +3170,12 @@ local function kpiDashboardControls(tableWidget)
         local column = ((index - 1) % 4) + 1
         addButton(row, column, label, kpiViewButtonCallback(view), true, menu.kpiView == view and selectedModeBackground or availableModeBackground)
     end
-    if menu.kpiView == "construction" then
+    if menu.kpiView == "cash" then
+        local options = { { id="__player__", text="PLAYER ACCOUNT / EMPIRE", icon="", displayremoveoption=false } }
+        local names, seen = {}, {}; for _, station in ipairs(menu.stations or {}) do local name=text(v(station,1,"Unknown station")); if not seen[name] then seen[name]=true; table.insert(names,name) end end; table.sort(names)
+        for _,name in ipairs(names) do table.insert(options,{id=name,text=name,icon="",displayremoveoption=false}) end
+        menu.kpiStation_cash=menu.kpiStation_cash or "__player__"; row=tableWidget:addRow(true); kpiControlLabel(row,"ACCOUNT / STATION FILTER"); kpiProtectedDropdown(row,2,options,menu.kpiStation_cash,function(name) menu.kpiStation_cash=name end)
+    elseif menu.kpiView == "construction" then
         local options = { { id = "__all__", text = "ALL CONSTRUCTION STATIONS", icon = "", displayremoveoption = false } }
         local recordById = {}
         for _, record in ipairs(menu.constructionRecords or {}) do
@@ -2972,115 +3203,314 @@ local function kpiDashboardControls(tableWidget)
                 if selected then raise("construction.refresh", { index = selected.index, station = selected.station }) end
             end
         end)
-    elseif menu.kpiView == "shortages" or menu.kpiView == "trade" or menu.kpiView == "storage" or menu.kpiView == "workforce" or menu.kpiView == "logistics" then
+    elseif menu.kpiView == "trade" or menu.kpiView == "storage" then
         local options, seen = kpiStationOptions(); local key = "kpiStation_" .. menu.kpiView; menu[key] = menu[key] or "__all__"; if menu[key] ~= "__all__" and not seen[menu[key]] then menu[key] = "__all__" end
         row = tableWidget:addRow(true); kpiControlLabel(row, "STATION FILTER")
         kpiProtectedDropdown(row, 2, options, menu[key], function(name) menu[key] = name end)
-        local function sortOption(id, label)
-            return { id = id, text = label, icon = "", displayremoveoption = false }
-        end
-        local sortChoices = {
-            trade = { sortOption("station", "STATION"), sortOption("ware", "WARE"), sortOption("type", "BUY / SELL"), sortOption("quantity", "QUANTITY") },
-            logistics = { sortOption("ship", "SHIP"), sortOption("role", "ROLE"), sortOption("station", "COMMANDER / HOME"), sortOption("state", "OPERATIONAL STATE") },
-            storage = { sortOption("station", "STATION"), sortOption("fill", "FILL %"), sortOption("free", "FREE SPACE"), sortOption("type", "STORAGE TYPE") },
-            workforce = { sortOption("station", "STATION"), sortOption("population", "POPULATION"), sortOption("change", "WORKFORCE CHANGE"), sortOption("shortfall", "PROVISION SHORTFALL") }
-        }
-        local sortKey = "kpiSort_" .. menu.kpiView
-        menu[sortKey] = menu[sortKey] or "station"
-        row = tableWidget:addRow(true); kpiControlLabel(row, "SORT BY")
-        kpiProtectedDropdown(row, 2, sortChoices[menu.kpiView], menu[sortKey], function(value) menu[sortKey] = value end)
     elseif menu.kpiView == "shipyard" then
-        local names, seen = {}, {}; for _, route in ipairs(menu.shipWharfRoutes or {}) do local name = text(v(route, 2, "Unknown shipyard")); if not seen[name] then seen[name] = true; table.insert(names, name) end end; table.sort(names)
+        local names, seen = {}, {}; local history = menu.kpiHistory or {}; local latest = history[#history] or {}
+        for _, yard in ipairs(latest.shipyards or {}) do local name = text(yard.name, "Unknown shipyard"); if not seen[name] then seen[name] = true; table.insert(names, name) end end
+        if #names == 0 then for _, route in ipairs(menu.shipWharfRoutes or {}) do local name = text(v(route, 2, "Unknown shipyard")); if not seen[name] then seen[name] = true; table.insert(names, name) end end end
+        table.sort(names)
         local options = { { id="__all__", text="ALL SHIPYARDS", icon="", displayremoveoption=false } }; for _, name in ipairs(names) do table.insert(options, {id=name,text=name,icon="",displayremoveoption=false}) end
         menu.kpiShipyard = menu.kpiShipyard or "__all__"; row = tableWidget:addRow(true); kpiControlLabel(row, "SHIPYARD FILTER"); kpiProtectedDropdown(row, 2, options, menu.kpiShipyard, function(name) menu.kpiShipyard=name end)
     end
     row = tableWidget:addRow(true)
     addButton(row, 1, menu.kpiPaused and "RESUME LIVE" or "PAUSE LIVE", function() menu.kpiPaused = not menu.kpiPaused; if not menu.kpiPaused then menu.kpiNextRefreshAt = getElapsedTime() end; menu.refresh() end, true)
-    addButton(row, 2, "RESET VIEW", function() menu.kpiHistory = {}; menu.kpiNextRefreshAt = getElapsedTime(); menu.refresh() end, true)
-    row[3]:setColSpan(2):createText("SCOPE: FILTERED VIEW | PERIOD: LIVE SESSION", { wordwrap = false })
+    addButton(row, 2, "REFRESH VIEW", function() menu.kpiNextRefreshAt = getElapsedTime(); menu.refresh(true) end, true)
+    row[3]:setColSpan(2):createText("SCOPE: FILTERED VIEW | TREND WINDOW: ROLLING 30 MIN", { wordwrap = false })
     row = tableWidget:addRow(false); local seconds = math.max(0, math.ceil((tonumber(menu.kpiNextRefreshAt) or getElapsedTime()) - getElapsedTime()))
-    row[1]:setColSpan(4):createText((menu.kpiPaused and "LIVE PAUSED" or menu.kpiRefreshing and "LIVE REFRESH IN PROGRESS" or ("LIVE - 10s | NEXT REFRESH: " .. tostring(seconds) .. "s")) .. " | Sampling stops when KPI Center closes or another page opens.", { wordwrap = true, color = investigationPassColor })
+    row[1]:setColSpan(4):createText((menu.kpiPaused and "LIVE PAUSED" or menu.kpiRefreshing and "LIVE REFRESH IN PROGRESS" or ("LIVE - " .. tostring(menu.kpiRefreshInterval(menu.kpiView)) .. "s | NEXT REFRESH: " .. tostring(seconds) .. "s")) .. " | Sampling stops when KPI Center closes or another page opens.", { wordwrap = true, color = investigationPassColor })
 end
 
 local function kpiBar(value, maximum) value=tonumber(value) or 0; maximum=math.max(1,tonumber(maximum) or 1); return (value<0 and "-" or "+") .. string.rep("=", math.max(1,math.min(30,math.floor((math.abs(value)/maximum)*30+0.5)))) end
 local function stationMoneyMap(sample) local result={}; for _,station in ipairs((sample and sample.stations) or {}) do result[tostring(station.name or "Unknown station")]=tonumber(station.money) or 0 end; return result end
+menu.KPI_GRAPH_RANGES = { { seconds = 300, label = "5 MIN" }, { seconds = 600, label = "10 MIN" }, { seconds = 1800, label = "30 MIN" } }
+
+function menu.kpiGraphHistory()
+    local history = menu.kpiHistory or {}
+    if #history == 0 then return {} end
+    local seconds = tonumber(menu.kpiGraphRange) or 1800
+    local endtime = tonumber(history[#history].time) or 0
+    local cutoff, result = endtime - seconds, {}
+    for _, sample in ipairs(history) do if (tonumber(sample.time) or 0) >= cutoff then table.insert(result, sample) end end
+    return result
+end
+
+function menu.kpiGraphGranularity(minimum, maximum)
+    local span = math.max(1, maximum - minimum)
+    local raw = span / 8
+    local magnitude = 10 ^ math.floor(math.log(raw) / math.log(10))
+    local normalized = raw / magnitude
+    local step = normalized <= 1 and 1 or normalized <= 2 and 2 or normalized <= 5 and 5 or 10
+    return step * magnitude
+end
+
+function menu.kpiGraphRangeButtons(t)
+    local row = t:addRow(true, { fixed = true })
+    for column, choice in ipairs(menu.KPI_GRAPH_RANGES) do
+        local selected = (tonumber(menu.kpiGraphRange) or 1800) == choice.seconds
+        addButton(row, column, choice.label, function() menu.kpiGraphRange = choice.seconds; menu.refresh() end, true, selected and selectedModeBackground or availableModeBackground)
+    end
+    row[4]:createText("ROLLING LIVE SESSION | MAX 30 MIN", { halign = "center" })
+end
+
+menu.KPI_GRAPH_COLORS = { Color["transactionlog_graph_data"], investigationPassColor, investigationUnknownColor, investigationFailColor, investigationNeutralColor, navigationStoryColor }
+
+function menu.kpiNativeGraph(t, title, series, yLabel, yUnit, fixedMinimum, fixedMaximum)
+    local history = menu.kpiGraphHistory()
+    if #history == 0 then pair(t, "STATUS", "Waiting for first live sample.", "REFRESH", "Automatic in 10 seconds."); return false end
+    local endtime = tonumber(history[#history].time) or 0
+    local range = tonumber(menu.kpiGraphRange) or 1800
+    local minY, maxY
+    local legendRow
+    for index, definition in ipairs(series) do
+        if ((index - 1) % 4) == 0 then legendRow = t:addRow(false, { fixed = true }) end
+        legendRow[((index - 1) % 4) + 1]:createText(definition.label, { color = definition.color, wordwrap = false })
+    end
+    local row = t:addRow(false, { fixed = true })
+    local graph = row[1]:setColSpan(4):createGraph({ height = Helper.scaleY(240), scaling = false }):setTitle(title, { font = Helper.titleFont, fontsize = Helper.scaleFont(Helper.titleFont, Helper.titleFontSize) })
+    for _, definition in ipairs(series) do
+        local record = graph:addDataRecord({ markertype = "square", markersize = 7, markercolor = definition.color, linetype = "normal", linewidth = 2, linecolor = definition.color, mouseOverText = definition.label })
+        for _, sample in ipairs(history) do
+            local value = tonumber(definition.value(sample))
+            if value then
+                minY = minY and math.min(minY, value) or value
+                maxY = maxY and math.max(maxY, value) or value
+                record:addData(((tonumber(sample.time) or endtime) - endtime) / 60, value)
+            end
+        end
+    end
+    minY, maxY = fixedMinimum or minY or 0, fixedMaximum or maxY or 1
+    local granularity = menu.kpiGraphGranularity(minY, maxY)
+    if maxY == minY then minY = minY - granularity; maxY = maxY + granularity else minY = math.floor(minY / granularity) * granularity; maxY = math.ceil(maxY / granularity) * granularity end
+    local xGranularity = range <= 300 and 1 or range <= 600 and 2 or 5
+    graph:setXAxis({ startvalue = -(range / 60), endvalue = 0, granularity = xGranularity, offset = 0, gridcolor = Color["graph_grid"], unittext = "min" })
+    graph:setXAxisLabel("TIME")
+    graph:setYAxis({ startvalue = minY, endvalue = maxY, granularity = granularity, offset = 0, gridcolor = Color["graph_grid"], unittext = yUnit or "" })
+    graph:setYAxisLabel(yLabel)
+    menu.kpiGraphRangeButtons(t)
+    return true
+end
+
+function menu.kpiArrayValue(sample, field, name, valueField, secondaryField, secondary)
+    for _, item in ipairs((sample and sample[field]) or {}) do if item.name == name and (not secondaryField or item[secondaryField] == secondary) then return item[valueField] end end
+end
+
+function menu.kpiLatestNames(field, filter, secondaryField)
+    local history=menu.kpiGraphHistory(); local latest=history[#history] or {}; local result,seen={},{}
+    for _,item in ipairs(latest[field] or {}) do if filter=="__all__" or item.name==filter then local label=secondaryField and (item.name.." / "..tostring(item[secondaryField])) or item.name; if not seen[label] then seen[label]=true; table.insert(result,{name=item.name,label=label,secondary=secondaryField and item[secondaryField] or nil}) end end end
+    table.sort(result,function(a,b)return a.label<b.label end); while #result > 5 do table.remove(result) end; return result
+end
+
+function menu.kpiGraphDefinitions(field, names, valueField, secondaryField)
+    local definitions={}
+    for index,item in ipairs(names) do local current=item; table.insert(definitions,{label=current.label,color=menu.KPI_GRAPH_COLORS[((index-1)%#menu.KPI_GRAPH_COLORS)+1],value=function(sample)return menu.kpiArrayValue(sample,field,current.name,valueField,secondaryField,current.secondary)end}) end
+    return definitions
+end
+
+function menu.kpiCashFlowGraph(t)
+    local selected=menu.kpiStation_cash or "__player__"; local history=menu.kpiGraphHistory(); section(t,"CASH FLOW - VERIFIED ACCOUNT BALANCE")
+    local definition
+    if selected=="__player__" then definition={label="PLAYER ACCOUNT / EMPIRE",color=menu.KPI_GRAPH_COLORS[1],value=function(x)return x.credits end}
+    else definition={label=selected,color=menu.KPI_GRAPH_COLORS[1],value=function(x)local map=stationMoneyMap(x); return map[selected] end} end
+    menu.kpiNativeGraph(t,selected=="__player__" and "PLAYER ACCOUNT CASH FLOW" or (selected.." CASH FLOW"),{definition},"ACCOUNT","Cr")
+end
+
+function menu.kpiConstructionGraph(t)
+    section(t,"CONSTRUCTION PROGRESS - ACTIVE STATIONS")
+    local selected=menu.kpiConstructionSelection or "__all__"; local stationName="__all__"
+    if selected~="__all__" then for _,record in ipairs(menu.constructionRecords or {}) do if tostring(tonumber(v(record,2,0)) or 0)==selected then stationName=text(v(record,1,"Unknown station")) end end end
+    local names=menu.kpiLatestNames("constructionStations",stationName); menu.kpiNativeGraph(t,"MODULE COMPLETION BY STATION",menu.kpiGraphDefinitions("constructionStations",names,"percent"),"COMPLETE","%",0,100)
+end
+
+function menu.kpiTradeGraph(t)
+    section(t,"OPEN TRADE OFFERS - AVAILABLE BUY / SELL QUANTITY")
+    local selected=menu.kpiStation_trade or "__all__"; local names=menu.kpiLatestNames("tradeStations",selected)
+    local definitions=menu.kpiGraphDefinitions("tradeStations",names,"amount")
+    menu.kpiNativeGraph(t,"OPEN OFFER QUANTITY - NOT COMPLETED TRADE VOLUME",definitions,"QUANTITY","")
+end
+
+function menu.kpiStorageGraph(t)
+    section(t,"STORAGE LEVELS - CAPACITY USED")
+    local selected=menu.kpiStation_storage or "__all__"; local definitions={}
+    if selected=="__all__" then
+        local names=menu.kpiLatestNames("storageStations",selected); for index,item in ipairs(names) do local name=item.name; table.insert(definitions,{label=name,color=menu.KPI_GRAPH_COLORS[((index-1)%#menu.KPI_GRAPH_COLORS)+1],value=function(sample)local highest; for _,x in ipairs(sample.storageStations or {}) do if x.name==name then highest=math.max(highest or 0,tonumber(x.percent) or 0) end end; return highest end}) end
+    else
+        local names=menu.kpiLatestNames("storageStations",selected,"kind"); definitions=menu.kpiGraphDefinitions("storageStations",names,"percent","kind")
+    end
+    menu.kpiNativeGraph(t,selected=="__all__" and "HIGHEST STORAGE FILL BY STATION" or "STORAGE FILL BY TYPE",definitions,"USED","%",0,100)
+end
+
+function menu.kpiShipyardGraph(t)
+    section(t,"SHIPYARD ACTIVITY - LIVE WORKLOAD")
+    local history=menu.kpiHistory or {}; local latest=history[#history] or {}; local selected=menu.kpiShipyard or "__all__"; local rows={}
+    for _,yard in ipairs(latest.shipyards or {}) do if selected=="__all__" or yard.name==selected then table.insert(rows,yard) end end
+    table.sort(rows,function(a,b) if (a.total or 0)==(b.total or 0) then return tostring(a.name)<tostring(b.name) end return (a.total or 0)>(b.total or 0) end)
+    local totalYards=#rows; while #rows>8 do table.remove(rows) end
+    kpiHeader(t,{"SHIPYARD","ACTIVE BUILDS","QUEUED BUILDS","TOTAL / MODULES / STATUS"})
+    for _,yard in ipairs(rows) do local row=t:addRow(false); local total=(tonumber(yard.active) or 0)+(tonumber(yard.queued) or 0); row[1]:createText(yard.name or "Unknown shipyard"); row[2]:createText(tostring(yard.active or 0)); row[3]:createText(tostring(yard.queued or 0)); row[4]:createText(tostring(total).." / "..tostring(yard.modules or 0).." / "..(total>0 and "WORKING" or "IDLE"),{color=total>0 and investigationPassColor or investigationNeutralColor}) end
+    if #rows==0 then pair(t,"STATUS","Waiting for a live shipyard sample.","REFRESH","Use REFRESH VIEW or wait for the next 30-second sample.") elseif totalYards>#rows then pair(t,"DISPLAY","Eight busiest shipyards shown.","TOTAL SHIPYARDS",tostring(totalYards)) end
+end
+
+function menu.kpiEarnersDrainsGraph(t, drains)
+    local history=menu.kpiGraphHistory(); section(t,drains and "CASH DRAINS - FIVE FASTEST DECLINES" or "TOP EARNERS - FIVE FASTEST GAINS")
+    if #history<2 then pair(t,"STATUS","Waiting for the second live sample.","WINDOW","Bounded live session"); return end
+    local first,last=stationMoneyMap(history[1]),stationMoneyMap(history[#history]); local ranked={}
+    for name,amount in pairs(last) do local baseline=first[name]; if baseline and baseline>0 then local change=(amount-baseline)*100/baseline; if (drains and change<0) or (not drains and change>0) then table.insert(ranked,{name=name,change=change,baseline=baseline}) end end end
+    table.sort(ranked,function(a,b)
+        if drains then return a.change < b.change end
+        return a.change > b.change
+    end); while #ranked>5 do table.remove(ranked) end
+    local definitions={}; for index,item in ipairs(ranked) do local current=item; table.insert(definitions,{label=current.name,color=menu.KPI_GRAPH_COLORS[((index-1)%#menu.KPI_GRAPH_COLORS)+1],value=function(sample)local amount=stationMoneyMap(sample)[current.name]; return amount and (amount-current.baseline)*100/current.baseline or nil end}) end
+    menu.kpiNativeGraph(t,drains and "ACCOUNT DECLINE FROM WINDOW START" or "ACCOUNT GROWTH FROM WINDOW START",definitions,"CHANGE","%")
+end
+
+function menu.kpiAttentionSummary(t)
+    local rows=buildKpiRows(); section(t,"EXECUTIVE ATTENTION - FIVE HIGHEST PRIORITIES"); kpiHeader(t,{"RANK / STATE","STATION","HEALTH / TREND","SCORE / ISSUES"})
+    for index=1,math.min(5,#rows) do local item=rows[index]; local row=t:addRow(false); row[1]:createText(index..". "..item.state); row[2]:createText(item.name); row[3]:createText(item.health.." / "..item.trend); row[4]:createText(item.score.." / "..item.issues) end
+    if #rows==0 then pair(t,"STATUS","No player stations are available.","PRIORITIES","0") end
+end
 
 local function kpiCashFlowView(t)
-    local h=menu.kpiHistory or {}; section(t,"EMPIRE CASH FLOW - VERIFIED PLAYER ACCOUNT"); if #h==0 then pair(t,"STATUS","Waiting for first live sample.","REFRESH","Automatic in 10 seconds."); return end
-    local latest=h[#h]; pair(t,"CURRENT CREDITS",formatNumber(latest.credits).." Cr","CHANGE SINCE LAST SAMPLE",formatNumber(latest.creditChange).." Cr"); local maximum=1; for _,s in ipairs(h) do maximum=math.max(maximum,math.abs(tonumber(s.creditChange) or 0)) end
-    kpiHeader(t,{"GAME TIME","ACCOUNT","10s CHANGE","CHANGE CHART"}); local first=math.max(1,#h-KPI_MAX_VISIBLE_ROWS+1); for i=first,#h do local s=h[i]; local r=t:addRow(false); r[1]:createText(formatGameTime(s.time)); r[2]:createText(formatNumber(s.credits).." Cr"); r[3]:createText(formatNumber(s.creditChange).." Cr"); r[4]:createText(kpiBar(s.creditChange,maximum),{color=s.creditChange<0 and investigationFailColor or investigationPassColor}) end
-    kpiTruncationNotice(t,#h,#h-first+1)
+    local h = menu.kpiHistory or {}
+    section(t, "EMPIRE CASH FLOW - VERIFIED PLAYER ACCOUNT")
+    if #h == 0 then pair(t, "STATUS", "Waiting for first live sample.", "REFRESH", "Automatic in " .. tostring(menu.kpiRefreshInterval("cash")) .. " seconds."); return end
+    local latest = h[#h]
+    pair(t, "CURRENT CREDITS", formatNumber(latest.credits) .. " Cr", "CHANGE SINCE LAST SAMPLE", formatNumber(latest.creditChange) .. " Cr")
+    menu.kpiNativeGraph(t, "OVERALL WEALTH", { { label = "PLAYER ACCOUNT", color = Color["transactionlog_graph_data"], value = function(sample) return sample.credits end } }, "ACCOUNT", "Cr")
 end
 
 local function kpiStationProfitView(t)
-    local h=menu.kpiHistory or {}; section(t,"STATION ACCOUNT MOVEMENT - LIVE"); if #h==0 then pair(t,"STATUS","Waiting for first live sample.","REFRESH","Automatic in 10 seconds."); return end
-    local current=stationMoneyMap(h[#h]); local previous=stationMoneyMap(h[#h-1]); local rows={}; for name,money in pairs(current) do table.insert(rows,{name=name,money=money,change=previous[name] and money-previous[name] or 0}) end; table.sort(rows,function(a,b) return a.change==b.change and a.name<b.name or a.change>b.change end)
-    kpiHeader(t,{"STATION","ACCOUNT","10s MOVEMENT","DIRECTION"}); local shown=math.min(KPI_MAX_VISIBLE_ROWS,#rows); for i=1,shown do local x=rows[i]; local r=t:addRow(false); r[1]:createText(x.name); r[2]:createText(formatNumber(x.money).." Cr"); r[3]:createText(formatNumber(x.change).." Cr"); r[4]:createText(x.change>0 and "UP" or x.change<0 and "DOWN" or "UNCHANGED") end
-    kpiTruncationNotice(t,#rows,shown); local r=t:addRow(false); r[1]:setColSpan(4):createText("Account movement is verified; it is not identical to transaction profit.",{wordwrap=true})
+    local h, rows = menu.kpiHistory or {}, {}
+    if #h >= 2 then
+        local current, previous = stationMoneyMap(h[#h]), stationMoneyMap(h[#h - 1])
+        for name, money in pairs(current) do table.insert(rows, { time = h[#h].time, name = name, money = money, change = previous[name] and money - previous[name] or 0 }) end
+        table.sort(rows, function(a,b) return a.change == b.change and a.name < b.name or a.change > b.change end)
+    end
+    section(t, "STATION ACCOUNT MOVEMENT - LATEST VERIFIED INTERVAL")
+    kpiHeader(t, { "STATION", "ACCOUNT", "LATEST MOVEMENT", "DIRECTION" })
+    kpiPagedRows(t, rows, function(item)
+        local row=t:addRow(false); row[1]:createText(item.name); row[2]:createText(formatNumber(item.money).." Cr"); row[3]:createText(formatNumber(item.change).." Cr"); row[4]:createText(item.change>0 and "UP" or item.change<0 and "DOWN" or "UNCHANGED")
+    end, "Waiting for the second live sample.")
 end
 
 local function kpiConstructionView(t)
-    local selection=menu.kpiConstructionSelection or "__all__"; local records={}
-    for _,record in ipairs(menu.constructionRecords or {}) do local id=tostring(tonumber(v(record,2,0)) or 0); if (tonumber(v(record,3,0)) or 0)>0 and (selection=="__all__" or id==selection) then table.insert(records,record) end end
-    if selection~="__all__" and menu.activeConstructionSnapshot then local snapshotId=tostring(tonumber(v(menu.activeConstructionSnapshot,2,0)) or 0); if snapshotId==selection then records={menu.activeConstructionSnapshot} end end
+    local selection, records = menu.kpiConstructionSelection or "__all__", {}
+    for _, record in ipairs(menu.constructionRecords or {}) do local id=tostring(tonumber(v(record,2,0)) or 0); if (tonumber(v(record,3,0)) or 0)>0 and (selection=="__all__" or id==selection) then table.insert(records,record) end end
+    if selection~="__all__" and menu.activeConstructionSnapshot and tostring(tonumber(v(menu.activeConstructionSnapshot,2,0)) or 0)==selection then records={menu.activeConstructionSnapshot} end
     table.sort(records,function(a,b)return text(v(a,1,""))<text(v(b,1,""))end)
     if selection=="__all__" then
-        section(t,"CONSTRUCTION PROGRESS - ALL ACTIVE STATIONS"); if #records==0 then pair(t,"STATUS","No active station construction detected.","MODULES","0"); return end
-        kpiHeader(t,{"STATION","ACTIVE / PLANNED","TOTAL QUEUE","CURRENT MODULE"}); local shown=math.min(KPI_MAX_VISIBLE_ROWS,#records)
-        for i=1,shown do local record=records[i]; local current="NONE"; for _,item in ipairs(v(record,8,{})) do if string.upper(text(v(item,3,"")))=="UNDER CONSTRUCTION" then current=text(v(item,1,"Unknown module")).." / "..string.format("%.1f%%",tonumber(v(item,4,0)) or 0); break end end; local r=t:addRow(false); r[1]:createText(text(v(record,1,"Unknown station")),{wordwrap=true}); r[2]:createText(tostring(v(record,5,0)).." / "..tostring(v(record,4,0))); r[3]:createText(tostring(v(record,3,0))); r[4]:createText(current,{wordwrap=true}) end
-        kpiTruncationNotice(t,#records,shown); return
+        section(t,"CONSTRUCTION PROGRESS - ALL ACTIVE STATIONS"); kpiHeader(t,{"STATION","ACTIVE / PLANNED","TOTAL QUEUE","CURRENT MODULE"})
+        kpiPagedRows(t,records,function(record) local current="NONE"; for _,item in ipairs(v(record,8,{})) do if string.upper(text(v(item,3,"")))=="UNDER CONSTRUCTION" then current=text(v(item,1,"Unknown module")).." / "..string.format("%.1f%%",tonumber(v(item,4,0)) or 0); break end end; local row=t:addRow(false); row[1]:createText(text(v(record,1,"Unknown station")),{wordwrap=true}); row[2]:createText(tostring(v(record,5,0)).." / "..tostring(v(record,4,0))); row[3]:createText(tostring(v(record,3,0))); row[4]:createText(current,{wordwrap=true}) end,"No active station construction detected.")
+        return
     end
     local selected=records[1]; section(t,"CONSTRUCTION PROGRESS - ACTIVE STATION DRILLDOWN"); if not selected then pair(t,"STATUS","No active station construction detected for this filter.","MODULES","0"); return end
-    pair(t,"ACTIVE / PLANNED MODULES",tostring(v(selected,5,0)).." / "..tostring(v(selected,4,0)),"TOTAL QUEUE",v(selected,3,0)); kpiHeader(t,{"QUEUE","MODULE","CURRENT STATUS","PROGRESS"}); local items=v(selected,8,{}); local shown=math.min(KPI_MAX_VISIBLE_ROWS,#items)
-    for i=1,shown do local item=items[i]; local r=t:addRow(false); r[1]:createText("#"..tostring(v(item,8,i))); r[2]:createText(text(v(item,1,"Unknown module")),{wordwrap=true}); r[3]:createText(text(v(item,3,"PLANNED"))); r[4]:createText(string.format("%.1f%%",tonumber(v(item,4,0)) or 0)) end
-    kpiTruncationNotice(t,#items,shown)
-end
-
-local function kpiShortageView(t)
-    section(t,"WARE SHORTAGES - STATION AND RESOURCE DRILLDOWN"); local filtered={}; local selected=menu.kpiStation_shortages or "__all__"; for _,c in ipairs(menu.cases or {}) do local sev=string.upper(text(v(c,2,""))); local typ=string.upper(text(v(c,3,""))); if (sev=="CRITICAL" or sev=="WARNING") and (string.find(typ,"WARE",1,true) or string.find(typ,"SHORT",1,true) or (tonumber(v(c,30,0)) or 0)>0) and (selected=="__all__" or text(v(c,1,""))==selected) then table.insert(filtered,c) end end
-    kpiHeader(t,{"STATION","WARE / RESOURCE","SEVERITY","CURRENT / TARGET / SHORTFALL"}); if #filtered==0 then local r=t:addRow(false); r[1]:setColSpan(4):createText("No confirmed ware shortages are present for this station filter. Run Empire Analysis after conditions change.",{wordwrap=true}) end; local shown=math.min(KPI_MAX_VISIBLE_ROWS,#filtered)
-    for i=1,shown do local c=filtered[i]; local cur=tonumber(v(c,8,0)) or 0; local target=tonumber(v(c,9,0)) or 0; local short=tonumber(v(c,31,0)) or math.max(0,target-cur); local r=t:addRow(false); r[1]:createText(text(v(c,1,"Unknown station"))); r[2]:createText(text(v(c,4,"Unknown resource"))); r[3]:createText(text(v(c,2,"WARNING"))); r[4]:createText(cur.." / "..target.." / "..short) end; kpiTruncationNotice(t,#filtered,shown)
+    kpiHeader(t,{"QUEUE","MODULE","CURRENT STATUS","PROGRESS"}); local items=v(selected,8,{})
+    kpiPagedRows(t,items,function(item,index) local row=t:addRow(false); row[1]:createText("#"..tostring(v(item,8,index))); row[2]:createText(text(v(item,1,"Unknown module")),{wordwrap=true}); row[3]:createText(text(v(item,3,"PLANNED"))); row[4]:createText(string.format("%.1f%%",tonumber(v(item,4,0)) or 0)) end,"No module rows are available.")
 end
 
 local function kpiTradeView(t)
-    section(t,"TRADE ACTIVITY - EOC-MANAGED OFFERS ONLY"); local selected=menu.kpiStation_trade or "__all__"; local sortBy=menu.kpiSort_trade or "station"; local rows={}; for _,x in ipairs(menu.tradeOffers or {}) do if selected=="__all__" or text(v(x,1,""))==selected then table.insert(rows,x) end end
+    local rows, selected, sortBy = {}, menu.kpiStation_trade or "__all__", menu.kpiSort_trade or "station"
+    for _,x in ipairs(menu.tradeOffers or {}) do if selected=="__all__" or text(v(x,1,""))==selected then table.insert(rows,x) end end
     table.sort(rows,function(a,b) if sortBy=="ware" then return text(v(a,3,""))<text(v(b,3,"")) elseif sortBy=="type" then return text(v(a,2,""))<text(v(b,2,"")) elseif sortBy=="quantity" then return (tonumber(v(a,4,0)) or 0)>(tonumber(v(b,4,0)) or 0) end return text(v(a,1,""))<text(v(b,1,"")) end)
-    pair(t,"EOC-MANAGED OFFERS",#rows,"ALL X4 STATION ORDERS","UNAVAILABLE IN CURRENT FEED"); kpiHeader(t,{"STATION","BUY / SELL","WARE","QUANTITY / VERIFIED"}); local shown=math.min(KPI_MAX_VISIBLE_ROWS,#rows); for i=1,shown do local x=rows[i]; local r=t:addRow(false); r[1]:createText(text(v(x,1,"Unknown"))); r[2]:createText(text(v(x,2,"UNKNOWN"))); r[3]:createText(text(v(x,3,"Unknown ware"))); r[4]:createText(tostring(v(x,4,0)).." / "..(v(x,5,false) and "YES" or "NO")) end; kpiTruncationNotice(t,#rows,shown)
+    section(t,"TRADE ACTIVITY - EOC-MANAGED OFFERS ONLY"); kpiHeader(t,{"STATION","BUY / SELL","WARE","QUANTITY / VERIFIED"})
+    kpiPagedRows(t,rows,function(x) local row=t:addRow(false); row[1]:createText(text(v(x,1,"Unknown"))); row[2]:createText(text(v(x,2,"UNKNOWN"))); row[3]:createText(text(v(x,3,"Unknown ware"))); row[4]:createText(tostring(v(x,4,0)).." / "..(v(x,5,false) and "YES" or "NO")) end,"No EOC-managed offers match this filter.")
 end
 
 local function kpiLogisticsView(t)
-    section(t,"LOGISTICS HEALTH - EOC-REGISTERED SHIPS"); local selected=menu.kpiStation_logistics or "__all__"; local sortBy=menu.kpiSort_logistics or "ship"; local rows={}; for _,x in ipairs(menu.registeredShips or {}) do local commander=text(v(x,5,"AVAILABLE")); if selected=="__all__" or commander==selected then table.insert(rows,x) end end
-    table.sort(rows,function(a,b) if sortBy=="role" then return text(v(a,2,""))<text(v(b,2,"")) elseif sortBy=="station" then return text(v(a,5,""))<text(v(b,5,"")) elseif sortBy=="state" then return tostring(v(a,4,false))>tostring(v(b,4,false)) end return text(v(a,1,""))<text(v(b,1,"")) end)
-    local note=t:addRow(false); note[1]:setColSpan(4):createText("Reports only ships registered with EOC: role, class, operational state, commander/home, and assignment. It is not the entire player fleet.",{wordwrap=true}); kpiHeader(t,{"SHIP","ROLE / CLASS","OPERATIONAL","COMMANDER / ASSIGNMENT"}); if #rows==0 then local r=t:addRow(false); r[1]:setColSpan(4):createText("No EOC-registered logistics ships match this station filter.",{wordwrap=true}) end; local shown=math.min(KPI_MAX_VISIBLE_ROWS,#rows); for i=1,shown do local x=rows[i]; local r=t:addRow(false); r[1]:createText(text(v(x,1,"Unknown ship"))); r[2]:createText(text(v(x,2,"Unknown")).." / "..text(v(x,3,"Unknown"))); r[3]:createText(v(x,4,false) and "YES" or "NO"); r[4]:createText(text(v(x,5,"AVAILABLE")).." / "..text(v(x,6,"UNASSIGNED"))) end; kpiTruncationNotice(t,#rows,shown)
+    local rows, scope, sortBy = {}, menu.kpiLogisticsScope or "all", menu.kpiSort_logistics or "ship"
+    if scope == "all" or scope == "registered" then for _,x in ipairs(menu.registeredShips or {}) do table.insert(rows,x) end end
+    if scope == "all" or scope == "available" then for _,x in ipairs(menu.availableUnregisteredShips or {}) do table.insert(rows,x) end end
+    table.sort(rows,function(a,b) if sortBy=="role" then return text(v(a,2,""))<text(v(b,2,"")) elseif sortBy=="status" then return text(v(a,7,""))<text(v(b,7,"")) elseif sortBy=="state" then return tostring(v(a,4,false))>tostring(v(b,4,false)) end return text(v(a,1,""))<text(v(b,1,"")) end)
+    section(t,"LOGISTICS HEALTH - ELIGIBLE SHIP VISIBILITY")
+    pair(t,"REGISTERED",#(menu.registeredShips or {}),"AVAILABLE - NOT REGISTERED",#(menu.availableUnregisteredShips or {}))
+    kpiHeader(t,{"SHIP","ROLE / CLASS","OPERATIONAL","EOC STATUS"})
+    kpiPagedRows(t,rows,function(x) local row=t:addRow(false); row[1]:createText(text(v(x,1,"Unknown ship"))); row[2]:createText(text(v(x,2,"Unknown")).." / "..text(v(x,3,"Unknown"))); row[3]:createText(v(x,4,false) and "YES" or "NO"); row[4]:createText(text(v(x,7,"REGISTERED"))) end,"No eligible ships match this scope. Available ships remain player-controlled until explicitly registered.")
 end
 
 local function kpiStorageView(t)
-    section(t,"STORAGE LEVELS - VERIFIED STATION STORAGE TYPES"); local selected=menu.kpiStation_storage or "__all__"; local sortBy=menu.kpiSort_storage or "station"; local rows={}; for _,x in ipairs(menu.storageRecords or {}) do if (selected=="__all__" or text(v(x,1,""))==selected) and (tonumber(v(x,4,0)) or 0)>0 then table.insert(rows,x) end end
+    local rows, selected, sortBy = {}, menu.kpiStation_storage or "__all__", menu.kpiSort_storage or "station"
+    for _,x in ipairs(menu.storageRecords or {}) do if (selected=="__all__" or text(v(x,1,""))==selected) and (tonumber(v(x,4,0)) or 0)>0 then table.insert(rows,x) end end
     table.sort(rows,function(a,b) local ac=tonumber(v(a,4,0)) or 0; local bc=tonumber(v(b,4,0)) or 0; local af=ac>0 and (tonumber(v(a,3,0)) or 0)/ac or 0; local bf=bc>0 and (tonumber(v(b,3,0)) or 0)/bc or 0; if sortBy=="fill" then return af>bf elseif sortBy=="free" then return (tonumber(v(a,5,0)) or 0)>(tonumber(v(b,5,0)) or 0) elseif sortBy=="type" then return text(v(a,2,""))<text(v(b,2,"")) end local an=text(v(a,1,"")); local bn=text(v(b,1,"")); return an==bn and text(v(a,2,""))<text(v(b,2,"")) or an<bn end)
-    kpiHeader(t,{"STATION / STORAGE TYPE","USED","CAPACITY / FREE","FILL %"}); if #rows==0 then local r=t:addRow(false); r[1]:setColSpan(4):createText("No verified storage capacity is exposed for this station filter.",{wordwrap=true}) end; local shown=math.min(KPI_MAX_VISIBLE_ROWS,#rows); for i=1,shown do local x=rows[i]; local used=tonumber(v(x,3,0)) or 0; local cap=tonumber(v(x,4,0)) or 0; local r=t:addRow(false); r[1]:createText(text(v(x,1,"Unknown")).." / "..text(v(x,2,"UNKNOWN"))); r[2]:createText(formatNumber(used)); r[3]:createText(formatNumber(cap).." / "..formatNumber(v(x,5,0))); r[4]:createText(cap>0 and string.format("%.1f%%",used*100/cap) or "UNAVAILABLE") end; kpiTruncationNotice(t,#rows,shown)
+    section(t,"STORAGE LEVELS - VERIFIED STATION STORAGE TYPES"); kpiHeader(t,{"STATION / STORAGE TYPE","USED","CAPACITY / FREE","FILL %"})
+    kpiPagedRows(t,rows,function(x) local used=tonumber(v(x,3,0)) or 0; local cap=tonumber(v(x,4,0)) or 0; local row=t:addRow(false); row[1]:createText(text(v(x,1,"Unknown")).." / "..text(v(x,2,"UNKNOWN"))); row[2]:createText(formatNumber(used)); row[3]:createText(formatNumber(cap).." / "..formatNumber(v(x,5,0))); row[4]:createText(cap>0 and string.format("%.1f%%",used*100/cap) or "UNAVAILABLE") end,"No verified storage capacity matches this filter.")
 end
 
 local function kpiWorkforceView(t)
-    section(t,"WORKFORCE HEALTH - POPULATION AND PROVISION DEMAND"); local selected=menu.kpiStation_workforce or "__all__"; local sortBy=menu.kpiSort_workforce or "station"; local rows={}; for _,x in ipairs(menu.workforceRecords or {}) do if selected=="__all__" or text(v(x,1,""))==selected then table.insert(rows,x) end end
+    local rows, selected, sortBy = {}, menu.kpiStation_workforce or "__all__", menu.kpiSort_workforce or "station"
+    if selected == "__all__" then
+        local stations = {}
+        for _,x in ipairs(menu.workforceRecords or {}) do
+            local name = text(v(x,1,"Unknown station"))
+            local item = stations[name]
+            if not item then item={name=name,current=0,capacity=0,optimal=0,trend="UNKNOWN",change=0,worstProvision="NONE",worstCurrent=0,worstTarget=0,worstShortfall=0,details=0}; stations[name]=item end
+            item.current=math.max(item.current,tonumber(v(x,3,0)) or 0); item.capacity=math.max(item.capacity,tonumber(v(x,4,0)) or 0); item.optimal=math.max(item.optimal,tonumber(v(x,5,0)) or 0); item.trend=text(v(x,6,item.trend)); item.change=tonumber(v(x,7,item.change)) or item.change; item.details=item.details+1
+            local shortfall=tonumber(v(x,11,0)) or 0
+            if shortfall>item.worstShortfall then item.worstProvision=text(v(x,8,"Unknown provision")); item.worstCurrent=tonumber(v(x,9,0)) or 0; item.worstTarget=tonumber(v(x,10,0)) or 0; item.worstShortfall=shortfall end
+        end
+        for _,item in pairs(stations) do table.insert(rows,item) end
+        table.sort(rows,function(a,b) if sortBy=="population" then return a.current>b.current elseif sortBy=="change" then return a.change>b.change elseif sortBy=="shortfall" then return a.worstShortfall>b.worstShortfall end return a.name<b.name end)
+        section(t,"WORKFORCE HEALTH - ONE SUMMARY PER STATION"); kpiHeader(t,{"STATION / DETAILS","CURRENT / CAP / OPTIMAL","TREND / CHANGE","WORST PROVISION CURRENT / TARGET / SHORT"})
+        kpiPagedRows(t,rows,function(x) local row=t:addRow(false); row[1]:createText(x.name.." / "..x.details.." detail row(s)"); row[2]:createText(x.current.." / "..x.capacity.." / "..x.optimal); row[3]:createText(x.trend.." / "..x.change); row[4]:createText(x.worstProvision.."  "..x.worstCurrent.." / "..x.worstTarget.." / "..x.worstShortfall,{wordwrap=true}) end,"No workforce population is available.")
+        return
+    end
+    for _,x in ipairs(menu.workforceRecords or {}) do if text(v(x,1,""))==selected then table.insert(rows,x) end end
     table.sort(rows,function(a,b) if sortBy=="population" then return (tonumber(v(a,3,0)) or 0)>(tonumber(v(b,3,0)) or 0) elseif sortBy=="change" then return (tonumber(v(a,7,0)) or 0)>(tonumber(v(b,7,0)) or 0) elseif sortBy=="shortfall" then return (tonumber(v(a,11,0)) or 0)>(tonumber(v(b,11,0)) or 0) end local an=text(v(a,1,"")); local bn=text(v(b,1,"")); return an==bn and text(v(a,2,""))<text(v(b,2,"")) or an<bn end)
-    kpiHeader(t,{"STATION / SPECIES","CURRENT / CAP / OPTIMAL","TREND / CHANGE","PROVISION CURRENT / TARGET / SHORT"}); if #rows==0 then local r=t:addRow(false); r[1]:setColSpan(4):createText("No workforce population is exposed for this station filter.",{wordwrap=true}) end; local shown=math.min(KPI_MAX_VISIBLE_ROWS,#rows); for i=1,shown do local x=rows[i]; local r=t:addRow(false); r[1]:createText(text(v(x,1,"Unknown")).." / "..text(v(x,2,"Unknown species"))); r[2]:createText(tostring(v(x,3,0)).." / "..tostring(v(x,4,0)).." / "..tostring(v(x,5,0))); r[3]:createText(text(v(x,6,"UNKNOWN")).." / "..tostring(v(x,7,0))); r[4]:createText(text(v(x,8,"Unknown provision")).."  "..tostring(v(x,9,0)).." / "..tostring(v(x,10,0)).." / "..tostring(v(x,11,0)),{wordwrap=true}) end; kpiTruncationNotice(t,#rows,shown)
+    section(t,"WORKFORCE HEALTH - SELECTED STATION DETAIL"); kpiHeader(t,{"STATION / SPECIES","CURRENT / CAP / OPTIMAL","TREND / CHANGE","PROVISION CURRENT / TARGET / SHORT"})
+    kpiPagedRows(t,rows,function(x) local row=t:addRow(false); row[1]:createText(text(v(x,1,"Unknown")).." / "..text(v(x,2,"Unknown species"))); row[2]:createText(tostring(v(x,3,0)).." / "..tostring(v(x,4,0)).." / "..tostring(v(x,5,0))); row[3]:createText(text(v(x,6,"UNKNOWN")).." / "..tostring(v(x,7,0))); row[4]:createText(text(v(x,8,"Unknown provision")).."  "..tostring(v(x,9,0)).." / "..tostring(v(x,10,0)).." / "..tostring(v(x,11,0)),{wordwrap=true}) end,"No workforce population matches this filter.")
 end
 
 local function kpiShipyardView(t)
-    section(t,"SHIPYARD ACTIVITY - EOC ORDERS AND VERIFIED YARD QUEUES"); local selected=menu.kpiShipyard or "__all__"; local yardMap={}; for _,x in ipairs(menu.shipWharfRoutes or {}) do local name=text(v(x,2,"Unknown shipyard")); if (selected=="__all__" or name==selected) and not yardMap[name] then yardMap[name]={name=name,queued=v(x,6,0),active=v(x,7,0),modules=v(x,8,0)} end end; local yards={}; for _,x in pairs(yardMap) do table.insert(yards,x) end; table.sort(yards,function(a,b)return a.name<b.name end)
-    local split=math.floor(KPI_MAX_VISIBLE_ROWS/2); kpiHeader(t,{"SHIPYARD","QUEUED","IN PROGRESS","BUILD MODULES"}); local yardShown=math.min(split,#yards); for i=1,yardShown do local x=yards[i]; local r=t:addRow(false); r[1]:createText(x.name); r[2]:createText(tostring(x.queued)); r[3]:createText(tostring(x.active)); r[4]:createText(tostring(x.modules)) end; kpiTruncationNotice(t,#yards,yardShown)
-    local orders={}; for _,x in ipairs(menu.shipOrderRecords or {}) do if selected=="__all__" or text(v(x,4,""))==selected then table.insert(orders,x) end end; local r=t:addRow(false); r[1]:setColSpan(4):createText("EOC order records are EOC-created orders only. Compatible blueprint routes are not displayed as active orders.",{wordwrap=true}); kpiHeader(t,{"INTENDED STATION","SHIP","SHIPYARD","TASK / QUEUED TIME"}); local orderShown=math.min(split,#orders); for i=1,orderShown do local x=orders[i]; r=t:addRow(false); r[1]:createText(text(v(x,1,"Unknown"))); r[2]:createText(text(v(x,5,"Unknown ship"))); r[3]:createText(text(v(x,4,"Unknown yard"))); r[4]:createText(text(v(x,6,"Unknown task")).." / "..formatGameTime(v(x,7,0))) end; kpiTruncationNotice(t,#orders,orderShown)
+    local selected, yardMap, rows = menu.kpiShipyard or "__all__", {}, {}
+    for _,x in ipairs(menu.shipWharfRoutes or {}) do local name=text(v(x,2,"Unknown shipyard")); if (selected=="__all__" or name==selected) and not yardMap[name] then yardMap[name]={kind="YARD",a=name,b=v(x,6,0),c=v(x,7,0),d=v(x,8,0)} end end
+    for _,x in pairs(yardMap) do table.insert(rows,x) end
+    for _,x in ipairs(menu.shipOrderRecords or {}) do if selected=="__all__" or text(v(x,4,""))==selected then table.insert(rows,{kind="ORDER",a=text(v(x,1,"Unknown")),b=text(v(x,5,"Unknown ship")),c=text(v(x,4,"Unknown yard")),d=text(v(x,6,"Unknown task")).." / "..formatGameTime(v(x,7,0))}) end end
+    table.sort(rows,function(a,b) return a.kind==b.kind and tostring(a.a)<tostring(b.a) or a.kind<b.kind end)
+    section(t,"SHIPYARD ACTIVITY - RETAINED YARDS AND EOC ORDERS"); kpiHeader(t,{"TYPE / STATION","SHIP / QUEUED","YARD / ACTIVE","TASK / MODULES"})
+    kpiPagedRows(t,rows,function(x) local row=t:addRow(false); row[1]:createText(x.kind.." / "..tostring(x.a)); row[2]:createText(tostring(x.b)); row[3]:createText(tostring(x.c)); row[4]:createText(tostring(x.d),{wordwrap=true}) end,"No shipyard activity matches this filter.")
 end
 
 local function kpiExtendedView(t,view)
     if view=="trade" then return kpiTradeView(t) elseif view=="logistics" then return kpiLogisticsView(t) elseif view=="storage" then return kpiStorageView(t) elseif view=="workforce" then return kpiWorkforceView(t) elseif view=="shipyard" then return kpiShipyardView(t) end
-    local titles={earners="TOP EARNERS",drains="CASH DRAINS",casetrends="CASE TRENDS",growth="EMPIRE GROWTH"}; section(t,(titles[view] or "KPI VIEW").." - VERIFIED EOC SNAPSHOT")
-    if view=="casetrends" or view=="growth" then local h=menu.kpiHistory or {}; kpiHeader(t,view=="casetrends" and {"GAME TIME","CRITICAL","WARNING","OTHER / TOTAL"} or {"GAME TIME","STATIONS / SHIPS","CONSTRUCTION","SHIP ORDERS"}); if #h==0 then local r=t:addRow(false); r[1]:setColSpan(4):createText("Waiting for the first verified 10-second sample.",{wordwrap=true}) end; local first=math.max(1,#h-KPI_MAX_VISIBLE_ROWS+1); for i=first,#h do local x=h[i]; local r=t:addRow(false); r[1]:createText(formatGameTime(x.time)); if view=="casetrends" then local total=(tonumber(x.caseCritical) or 0)+(tonumber(x.caseWarning) or 0)+(tonumber(x.caseOther) or 0); r[2]:createText(tostring(x.caseCritical or 0)); r[3]:createText(tostring(x.caseWarning or 0)); r[4]:createText(tostring(x.caseOther or 0).." / "..tostring(total)) else r[2]:createText(tostring(x.stationCount or 0).." / "..tostring(x.registeredShipCount or 0)); r[3]:createText(tostring(x.constructionRecordCount or 0)); r[4]:createText(tostring(x.shipOrderCount or 0)) end end; kpiTruncationNotice(t,#h,#h-first+1); return end
-    local h=menu.kpiHistory or {}; local changes={}; if #h>=2 then local p=stationMoneyMap(h[#h-1]); local c=stationMoneyMap(h[#h]); for station,amount in pairs(c) do local delta=(tonumber(amount) or 0)-(tonumber(p[station]) or 0); if (view=="earners" and delta>0) or (view=="drains" and delta<0) then table.insert(changes,{station,delta}) end end end; table.sort(changes,function(a,b)return view=="earners" and a[2]>b[2] or view=="drains" and a[2]<b[2] end); kpiHeader(t,{"STATION","10s ACCOUNT MOVEMENT","DIRECTION","NOTE"}); local shown=math.min(KPI_MAX_VISIBLE_ROWS,#changes); for i=1,shown do local x=changes[i]; local r=t:addRow(false); r[1]:createText(x[1]); r[2]:createText(formatNumber(x[2]).." Cr"); r[3]:createText(x[2]>0 and "UP" or "DOWN"); r[4]:createText("Account movement") end; kpiTruncationNotice(t,#changes,shown)
+    local titles={earners="TOP EARNERS",drains="CASH DRAINS",casetrends="CASE TRENDS",growth="EMPIRE GROWTH"}; local h=menu.kpiHistory or {}; local rows={}
+    section(t,(titles[view] or "KPI VIEW")..((view=="earners" or view=="drains") and " - LATEST VERIFIED INTERVAL" or " - NATIVE ROLLING GRAPH"))
+    if view=="casetrends" or view=="growth" then
+        if view=="casetrends" then
+            menu.kpiNativeGraph(t, "OPEN CASE TREND", {
+                { label="CRITICAL", color=investigationFailColor, value=function(x) return x.caseCritical end },
+                { label="WARNING", color=investigationUnknownColor, value=function(x) return x.caseWarning end },
+                { label="OTHER", color=investigationNeutralColor, value=function(x) return x.caseOther end },
+            }, "CASES", "")
+        else
+            menu.kpiNativeGraph(t, "EMPIRE ASSET GROWTH", {
+                { label="STATIONS", color=Color["transactionlog_graph_data"], value=function(x) return x.stationCount end },
+                { label="REGISTERED SHIPS", color=investigationPassColor, value=function(x) return x.registeredShipCount end },
+                { label="CONSTRUCTION", color=investigationUnknownColor, value=function(x) return x.constructionRecordCount end },
+                { label="SHIP ORDERS", color=investigationNeutralColor, value=function(x) return x.shipOrderCount end },
+            }, "COUNT", "")
+        end
+        return
+    end
+    if #h>=2 then local previous=stationMoneyMap(h[#h-1]); local current=stationMoneyMap(h[#h]); for station,amount in pairs(current) do local delta=(tonumber(amount) or 0)-(tonumber(previous[station]) or 0); if (view=="earners" and delta>0) or (view=="drains" and delta<0) then table.insert(rows,{station=station,delta=delta}) end end end
+    table.sort(rows,function(a,b) return view=="earners" and a.delta>b.delta or view=="drains" and a.delta<b.delta end)
+    while #rows>5 do table.remove(rows) end
+    local maximum=1; for _,x in ipairs(rows) do maximum=math.max(maximum,math.abs(x.delta)) end
+    kpiHeader(t,{"STATION","LATEST MOVEMENT","DIRECTION","RELATIVE BAR"})
+    kpiPagedRows(t,rows,function(x) local row=t:addRow(false); row[1]:createText(x.station); row[2]:createText(formatNumber(x.delta).." Cr"); row[3]:createText(x.delta>0 and "UP" or "DOWN"); row[4]:createText(kpiBar(x.delta,maximum),{color=x.delta<0 and investigationFailColor or investigationPassColor}) end,"No qualifying movement occurred in the latest interval.")
 end
-local function kpiCenter(tableWidget)
-    menu.kpiView=menu.kpiView or "cash"; kpiDashboardControls(tableWidget)
-    if menu.kpiView=="profit" then kpiStationProfitView(tableWidget) elseif menu.kpiView=="construction" then kpiConstructionView(tableWidget) elseif menu.kpiView=="shortages" then kpiShortageView(tableWidget) elseif menu.kpiView=="attention" then kpiAttentionView(tableWidget) elseif menu.kpiView~="cash" then kpiExtendedView(tableWidget,menu.kpiView) else kpiCashFlowView(tableWidget) end
+
+local function kpiCenterResults(tableWidget)
+    menu.kpiView=menu.kpiView or "cash"
+    if menu.kpiView=="workforce" or menu.kpiView=="casetrends" or menu.kpiView=="shortages" then menu.kpiView="cash" end
+    if menu.kpiView=="construction" then menu.kpiConstructionGraph(tableWidget)
+    elseif menu.kpiView=="attention" then menu.kpiAttentionSummary(tableWidget)
+    elseif menu.kpiView=="trade" then menu.kpiTradeGraph(tableWidget)
+    elseif menu.kpiView=="storage" then menu.kpiStorageGraph(tableWidget)
+    elseif menu.kpiView=="earners" then menu.kpiEarnersDrainsGraph(tableWidget,false)
+    elseif menu.kpiView=="drains" then menu.kpiEarnersDrainsGraph(tableWidget,true)
+    elseif menu.kpiView=="shipyard" then menu.kpiShipyardGraph(tableWidget)
+    else menu.kpiCashFlowGraph(tableWidget) end
 end
 local function dashboard(tableWidget)
     menu.narrativeScope = menu.narrativeScope or "30m"
@@ -3762,6 +4192,36 @@ local function globalSettings(tableWidget)
         menu.refresh()
     end, startupDirty, startupDirty and investigationUnknownColor or Helper.color.green)
 
+    section(tableWidget, "GLOBAL SHIP MINIMUMS")
+    local minimumHelp = tableWidget:addRow(false)
+    minimumHelp[1]:setColSpan(4):createText("Every value defaults to zero. Zero disables that category. EOC fills at most one verified shortage per scan using compatible idle registered ships; it never creates free ships or queues an empire-wide build order.", { wordwrap = true })
+    local function minimumField(label, key, maximum)
+        local minimumRow = tableWidget:addRow(true)
+        minimumRow[1]:setColSpan(2):createText(label)
+        minimumRow[3]:setColSpan(2):createEditBox({ height = Helper.standardButtonHeight }):setText(tostring(menu.minimumDraft[key] or 0))
+        minimumRow[3].handlers.onEditBoxDeactivated = function(_, entered)
+            local number = math.floor(tonumber(entered) or 0)
+            menu.minimumDraft[key] = clamp(number, 0, maximum)
+        end
+    end
+    minimumField("MINERS PER APPLICABLE STATION", "mining", 99)
+    minimumField("TRADERS PER APPLICABLE STATION", "trade", 99)
+    minimumField("BUILD-STORAGE TRADERS WHILE CONSTRUCTION IS ACTIVE", "buildstorage", 99)
+    minimumField("DEFENCE SHIPS PER STATION", "defence", 99)
+    minimumField("ESCORTS PER ELIGIBLE CARGO / SUPPLY SHIP (HARD CAP 3)", "escort", 3)
+    local minimumSave = tableWidget:addRow(true)
+    minimumSave[1]:setColSpan(4)
+    addButton(minimumSave, 1, "SAVE GLOBAL SHIP MINIMUMS", function()
+        local d = menu.minimumDraft
+        d.mining = clamp(math.floor(tonumber(d.mining) or 0), 0, 99)
+        d.trade = clamp(math.floor(tonumber(d.trade) or 0), 0, 99)
+        d.buildstorage = clamp(math.floor(tonumber(d.buildstorage) or 0), 0, 99)
+        d.defence = clamp(math.floor(tonumber(d.defence) or 0), 0, 99)
+        d.escort = clamp(math.floor(tonumber(d.escort) or 0), 0, 3)
+        raise("minimums.save", { mining=d.mining, trade=d.trade, buildstorage=d.buildstorage, defence=d.defence, escort=d.escort })
+        menu.settingsStatus = "GLOBAL SHIP MINIMUMS SAVED. Zero-valued categories are disabled."
+        menu.refresh(true)
+    end, true, Helper.color.green)
     section(tableWidget, "GLOBAL EOC SETTINGS")
     local brief = tableWidget:addRow(false)
     brief[1]:setColSpan(4):createText("CHANGE ONLY WHAT YOU INTEND: EOC acts only within the authorities selected below. Construction funding uses the exact X4-reported shortfall; it does not alter the station plan or cancel ordinary player orders.", { wordwrap = true })
@@ -3771,6 +4231,14 @@ local function globalSettings(tableWidget)
         local statusRow = tableWidget:addRow(false)
         statusRow[1]:setColSpan(4):createText(menu.settingsStatus, { wordwrap = true })
     end
+
+    local minimumApprove = tableWidget:addRow(true)
+    minimumApprove[1]:setColSpan(4)
+    addButton(minimumApprove, 1, "AUTHORIZE PENDING MINIMUM ASSIGNMENT", function()
+        raise("minimums.authorize", {})
+        menu.settingsStatus = "Pending minimum assignment authorization submitted for verification."
+        menu.refresh(true)
+    end, menu.shipmode == "APPROVAL REQUIRED", investigationUnknownColor)
 
     section(tableWidget, "CONSTRUCTION FUNDING AUTHORITY")
     pair(tableWidget, "APPROVAL", "Player confirms each exact station shortfall.", "DO IT ALL", "Funds verified construction and assigns eligible idle builders automatically.")
@@ -3965,6 +4433,37 @@ function menu.create()
             addButton(returnRow, 1, "RETURN TO " .. text(menu.navigationOrigin.label), restoreNavigation, true)
         end
         stationWorkspace(tableWidget)
+    elseif menu.page == "kpi" then
+        local contentWidth = width - 2 * Helper.borderSize
+        local gap = Helper.borderSize
+        local controlsHeight = math.min(math.floor(contentHeight * 0.48), Helper.scaleY(500))
+        local resultsHeight = contentHeight - controlsHeight - gap
+
+        local controlsTable = menu.frame:addTable(4, {
+            tabOrder = 2,
+            x = Helper.borderSize,
+            y = contentY,
+            width = contentWidth,
+            reserveScrollBar = true,
+            borderEnabled = true,
+        })
+        configureFourColumns(controlsTable, contentWidth)
+        addWorkingStationBanner(controlsTable)
+        kpiDashboardControls(controlsTable)
+        controlsTable.properties.maxVisibleHeight = controlsHeight
+
+        local resultsTable = menu.frame:addTable(4, {
+            tabOrder = 3,
+            x = Helper.borderSize,
+            y = contentY + controlsHeight + gap,
+            width = contentWidth,
+            reserveScrollBar = true,
+            borderEnabled = true,
+        })
+        configureFourColumns(resultsTable, contentWidth)
+        menu.mainTable = resultsTable
+        kpiCenterResults(resultsTable)
+        resultsTable.properties.maxVisibleHeight = resultsHeight
     else
         local contentWidth = width - 2 * Helper.borderSize
         local tableWidget = menu.frame:addTable(4, {
@@ -3995,8 +4494,6 @@ function menu.create()
             commandOSBoot(tableWidget)
         elseif menu.page == "dashboard" then
             dashboard(tableWidget)
-        elseif menu.page == "kpi" then
-            kpiCenter(tableWidget)
         elseif menu.page == "construction" then
             constructionCenter(tableWidget)
         elseif menu.page == "cases" then
@@ -4046,10 +4543,11 @@ end
 function menu.onUpdate()
     local now = getElapsedTime()
 
+    if menu.kpiView == "shortages" then menu.kpiView = "cash" end
     if menu.page == "kpi" and not menu.kpiPaused and not menu.kpiRefreshing and not menu.kpiControlDropdownActive and now >= (tonumber(menu.kpiNextRefreshAt) or 0) then
         menu.kpiRefreshing = true
-        menu.kpiNextRefreshAt = now + KPI_REFRESH_SECONDS
-        raise("kpi.refresh", {})
+        menu.kpiNextRefreshAt = now + menu.kpiRefreshInterval(menu.kpiView)
+        raise("kpi.refresh", { view = menu.kpiView })
     elseif menu.page == "construction" and not menu.constructionRefreshing and now >= (tonumber(menu.constructionNextRefreshAt) or 0) then
         local record = constructionRecordForSelected()
         local stationName = text(v(record, 1, "SELECTED STATION"))
@@ -4100,8 +4598,3 @@ function menu.viewCreated()
 end
 
 init()
-
-
-
-
-

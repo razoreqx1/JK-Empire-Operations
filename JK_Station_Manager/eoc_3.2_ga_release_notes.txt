@@ -1,0 +1,55 @@
+EOC 3.2 GA
+Build 239 | Version 339
+
+EXECUTIVE SUMMARY
+
+EOC 3.2 delivers a faster, clearer Executive Operations Center with redesigned KPI intelligence, safer case management, stronger evidence consistency, improved fleet visibility, and substantially reduced background polling. Every automated action remains bounded by player authority and normal X4 resources.
+
+KPI CENTER
+
+- Graph-first executive dashboards for Player Wealth, Case Trends, and Empire Growth using native X4 graphs.
+- Selectable 5-minute, 10-minute, and 30-minute graph ranges.
+- Rolling 30-minute history bounded to 180 ten-second samples.
+- Current-state views remain current snapshots instead of accumulating misleading duplicate history.
+- Height-safe five-row result pages preserve complete detail without exceeding X4 menu limits.
+- Cash Flow, Station Profit, Top Earners, Cash Drains, Construction, Ware Shortages, Executive Attention, Trade, Logistics, Storage, Workforce, Shipyard Activity, Case Trends, and Empire Growth all use bounded layouts.
+- Workforce Health provides compact empire-wide station summaries with detailed drilldown for a selected station.
+- Shipyard Activity reports actual ship workload only, with queued, active, completed-history, and shipyard filters. Station-module construction is excluded from ship counts.
+- Automatic KPI sampling preserves the visible page and does not force disruptive menu rebuilding.
+
+PERFORMANCE OPTIMIZATION
+
+- Shipyard workload reconciliation reduced from once per minute to once every five minutes.
+- Construction automation polling reduced from every 30 seconds to every two minutes.
+- Ship matching and remediation matching reduced from every 30 seconds to every two minutes.
+- KPI history and visible result windows are bounded to prevent runaway UI growth.
+- Live testing confirmed stable CPU and memory behavior through a complete five-minute cycle.
+
+CASES, EVIDENCE, AND DIAGNOSTICS
+
+- Two-step confirmed CLEAR ALL EOC CASES action removes player cases, monitored cases, critical and warning cases, retained evidence, remediation records, and transient investigation pointers.
+- Clear All never changes stations, ships, orders, construction, funds, roles, or settings.
+- Every station profile immediately returns to MONITORING / STABLE after a clear.
+- CRITICAL status requires a visible matching current case.
+- CHRONIC, RECURRING, RELAPSED, RECOVERING, and DETERIORATING classifications require supporting retained evidence.
+- One fresh Empire Analysis rebuilds only conditions supported by current live X4 data.
+- Player-requested cases retain exact evidence handoff into guided diagnostics and verification.
+- Successful no-match diagnostic tests terminate cleanly with an evidence-supported result.
+
+FLEET AND LOGISTICS
+
+- Observation-only visibility for compatible player-owned ships that are available but not yet EOC-registered.
+- Registered and available-unregistered ship scopes make logistics capacity easier to review without granting authority.
+- Global minimum policies for mining, trade, build-storage trade, defence, and escorts default to zero and never remove existing assignments.
+- Compatible idle registered ships are preferred, and assignments remain limited by the selected authority mode.
+- Escort observation remains compatible with JK Supply Ship Escorts and retains its three-escort ceiling without competing assignment logic.
+- No free ships, hidden resource bypasses, unauthorized credit movement, or mass assignment behavior.
+
+PLAYER CONTROL AND SAFETY
+
+- EOC remains advisory-first and acts only within explicit player authority.
+- Persistent station roles remain player-editable.
+- Reports continue to save permanent copies in the Logbook Tips system.
+- Compatible with X4 8.x and 9.x.
+
+This is the consolidated EOC 3.2 GA release summary. Superseded TEST build notes and internal hotfix history are intentionally excluded.
