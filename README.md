@@ -4,19 +4,18 @@ Transform your X4 empire from reactive management into intelligent operations.
 
 ## Current release
 
-- Version: 3.0 GA
-- Engineering build: 216
+- Version: 3.1 GA
+- Engineering build: 218
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-## What is new in EOC 3.0
+## What is new in EOC 3.1
 
-- Adds the live KPI Center with page-scoped 10-second sampling that stops when the page closes.
-- Adds complete applicable station and shipyard filters with **ALL** choices and reliable KPI button routing.
-- Adds compact construction summaries, selected-station module progress, and resource-level shortage details.
-- Enforces an eight-row KPI display budget so large empires cannot overflow the X4 widget system.
-- Preserves the visible text window and selected row during automatic KPI refreshes.
-- Adds bounded live-session case and empire-growth histories plus specialized workforce, storage, logistics, and shipyard views.
+- Preserves the validated event-driven Dock Interactions access path.
+- Adds bounded support tracing for callback registration, button rendering, player selection, and EOC open-event receipt.
+- Keeps startup registration bounded and stops immediately after success; no recurring watchdog was added.
+- Makes no automation, trade, shipping, construction, KPI, save-data, or player-authority behavior change.
+- Retains all EOC 3.0 GA live KPI safeguards, filters, drilldowns, trends, and scroll preservation.
 
 ## Existing EOC capabilities
 
@@ -35,8 +34,8 @@ Transform your X4 empire from reactive management into intelligent operations.
 
 ## Documentation and support
 
-- [EOC 3.0 GA User and Support Guide](docs/EOC_3.0_GA_USER_SUPPORT_GUIDE.md)
-- [EOC 3.0 GA Release Notes](docs/RELEASE_NOTES_3.0_GA.md)
+- [EOC 3.1 GA User and Support Guide](docs/EOC_3.1_GA_USER_SUPPORT_GUIDE.md)
+- [EOC 3.1 GA Release Notes](docs/RELEASE_NOTES_3.1_GA.md)
 
 Older release documents remain available in `docs/`.
 

@@ -922,7 +922,7 @@ local function init()
     if Helper and Helper.registerMenu then
         Helper.registerMenu(menu)
     else
-    DebugError("[JKEOC][B216][LUA_ERROR] Helper.registerMenu unavailable")
+    DebugError("[JKEOC][B218][LUA_ERROR] Helper.registerMenu unavailable")
     end
 
     AddUITriggeredEvent(menu.name, "INIT", nil)
@@ -1018,7 +1018,7 @@ function menu.onShowMenu()
     menu.storageRecords = v(menu.param, 28, {})
     local rawStartupPreference = v(menu.param, 26, 1)
     local restoredStartupPreference = tonumber(rawStartupPreference) ~= 0
-    DebugError("[JKEOC][B216][STARTUP_PREFERENCE_LUA] raw=" .. tostring(rawStartupPreference) .. " decoded=" .. (restoredStartupPreference and "ON" or "OFF"))
+    DebugError("[JKEOC][B218][STARTUP_PREFERENCE_LUA] raw=" .. tostring(rawStartupPreference) .. " decoded=" .. (restoredStartupPreference and "ON" or "OFF"))
     if type(menu.savedStartupPreference) ~= "boolean" then
         menu.savedStartupPreference = restoredStartupPreference
         menu.pendingStartupPreference = restoredStartupPreference
