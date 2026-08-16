@@ -5,11 +5,11 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current release
 
 - Version: 3.2 GA
-- Engineering build: 245
+- Engineering build: 250
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-## What is new in EOC 3.2 Build 245
+## What is new in EOC 3.2 Build 250
 
 - Adds bounded managed BUY actions for confirmed shortages and SELL actions for storage pressure.
 - Adds Scout's long-term recommendations and ordered recovery playbooks across every supported issue family.
@@ -19,6 +19,7 @@ Transform your X4 empire from reactive management into intelligent operations.
 - Isolates Docked-menu callbacks so one failing UI addon callback cannot suppress EOC access.
 - Adds bounded Dock lifecycle diagnostics without a watcher, polling loop, or per-frame repair.
 - Clarifies empire-analysis scope, storage evidence, and transient case-result ownership.
+- Same-page buttons, forced verification, and automatic refreshes preserve the player's visible scroll position.
 
 ## Existing EOC capabilities
 

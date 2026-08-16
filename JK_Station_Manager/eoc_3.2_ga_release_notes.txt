@@ -1,9 +1,9 @@
 EOC 3.2 GA
-Build 245 | Version 345
+Build 250 | Version 350
 
-COMMAND CHECKLISTS AND RESILIENT DOCK ACCESS
+COMMAND CHECKLISTS, RESILIENT DOCK ACCESS, AND PRESERVED SCROLL POSITION
 
-Build 245 turns recovery checklists into bounded two-way command and decision paths across every supported issue family. It also hardens the Docked-menu integration reported by a player without adding a watcher, recurring scan, or per-frame repair.
+Build 250 retains the complete Build 245 recovery-intelligence release and adds the proven Build 249 scroll-position correction without adding a watcher, recurring scan, or per-frame repair.
 
 Highlights
 - Docked-menu callbacks are isolated. One failing third-party callback can no longer prevent later callbacks, including EOC's access button, from rendering.
@@ -13,20 +13,11 @@ Highlights
 - The command/decision model applies to shortages, overages, production, missing inputs, unavailable supply, missing logistics, and project-driven demand.
 - EOC-known supplier and compatible-trader facts are not assigned back to the player. Unsupported rules, prices, blacklists, live orders, and manager range remain clear inspection boundaries.
 - Clear All resets checklist answers and command requests with cases and managed actions.
-- Stations now says Run Fresh Empire Analysis and reports empire completion before the selected-station result.
+- Stations says Run Fresh Empire Analysis and reports empire completion before the selected-station result.
 - Diagnostics distinguishes ware allocation limits from physical cargo-storage capacity and fixes the 90 percent display.
 - Transient case-action messages are cleared when another case opens.
+- Same-page buttons, forced verification, and automatic refreshes preserve the player's visible scroll position.
 - Player issues: https://github.com/razoreqx1/JK-Empire-Operations/issues. Include EOC build/version, X4 version, reproduction steps, relevant mods, and a fresh debug log.
-
-Testing focus
-1. Confirm the Docked-menu EOC button renders and opens even if another callback errors.
-2. Use Ask EOC across representative issue families; confirm one bounded analysis and no watcher.
-3. Cycle decisions through Yes, No, and unanswered; confirm guidance changes.
-4. Confirm EOC-known facts are not assigned to the player.
-5. Clear cases mid-checklist and confirm clean rebuilt state.
-6. Confirm empire-analysis wording and selected-station output.
-7. Compare allocation and physical storage labels.
-8. Inspect a copied debug log for Build 245 startup, Dock lifecycle, checklist commands, and Lua/MD errors.
 
 Player support and issue tracking:
 https://github.com/razoreqx1/JK-Empire-Operations/issues

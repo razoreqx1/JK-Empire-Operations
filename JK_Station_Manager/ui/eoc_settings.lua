@@ -997,6 +997,7 @@ local function analysisComplete()
         menu.pendingVerificationClass = nil
         menu.pendingVerificationResult = nil
         menu.pendingVerificationKey = nil
+        if menu.forcedVerificationScrollLocked then menu.forcedVerificationRestoreReady = true end
     end
 
     if menu.frame then
@@ -1397,7 +1398,8 @@ local function addButton(row, column, label, handler, active, background)
             menu.reportRunning = true
             menu.reportStatus = "REPORT RUNNING - waiting for EOC result"
         end
-        menu.refresh()
+        -- The handler owns any required rebuild. Refreshing here first destroys the
+        -- live table position before same-page actions can preserve it.
         handler()
     end
 end
@@ -1420,7 +1422,7 @@ local function addModeButton(row, column, label, selected, enabled, handler, sta
     }):setText(label)
     row[column].handlers.onClick = function()
         acknowledgeClick(label)
-        menu.refresh()
+        -- Mode handlers explicitly rebuild after updating their state.
         handler()
     end
 end
@@ -1447,7 +1449,7 @@ local function addStationChoiceButton(row, column, label, current, confirming, h
     row[column]:createButton({ active = true, bgColor = background }):setText(label)
     row[column].handlers.onClick = function()
         acknowledgeClick(label)
-        menu.refresh()
+        -- Apply the station choice before its handler performs the one required rebuild.
         handler()
     end
 end
@@ -2948,6 +2950,23 @@ local function fleetCenter(tableWidget)
     actionResult(tableWidget, "trade.review", "Checks only EOC-owned trade offers and reports any changes.")
 end
 
+local function captureForcedVerificationScroll()
+    local tableId = menu.mainTable and menu.mainTable.id or nil
+    local ok, topRow = false, nil
+    if tableId ~= nil then ok, topRow = pcall(GetTopRow, tableId) end
+    if ok and topRow ~= nil then
+        menu.forcedVerificationTopRow = topRow
+        menu.forcedVerificationPage = menu.page
+        menu.forcedVerificationScrollLocked = true
+        DebugError("[JKEOC][B250][FORCED_VERIFY_SCROLL_CAPTURE] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
+    else
+        menu.forcedVerificationTopRow = nil
+        menu.forcedVerificationPage = nil
+        menu.forcedVerificationScrollLocked = nil
+        DebugError("[JKEOC][B250][FORCED_VERIFY_SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
+    end
+end
+
 local function diagnosticsCenter(tableWidget)
     local station = selectedStation()
     local stationName = text(v(station, 1, "NO STATION SELECTED"))
@@ -3271,6 +3290,7 @@ local function diagnosticsCenter(tableWidget)
         row[1]:setColSpan(2)
         addButton(row, 1, actionLabel("analysis.run", workingEvidenceMissing and "RETURN TO NEXT ACTION - EVIDENCE IS MISSING" or "RUN A FRESH VERIFICATION CHECK", "VERIFYING WITH FRESH ANALYSIS"), function()
             if workingEvidenceMissing then menu.diagnosticView = "recovery"; menu.refresh(); return end
+            captureForcedVerificationScroll()
             if startAction("analysis.run") then
                 menu.analysisRunning = true
                 menu.pendingVerificationKey = verificationKey
@@ -3311,6 +3331,7 @@ local function diagnosticsCenter(tableWidget)
         row[3]:setColSpan(2)
         addButton(row, 3, actionLabel("analysis.run", workingCaseEvidenceMissing and "NO CONFIRMED MATCH - RETURN TO NEXT ACTION" or (workingEvidenceMissing and "RUN FRESH ANALYSIS - IDENTIFY THE CAUSE" or "RUN A FRESH VERIFICATION CHECK"), "RUNNING FRESH ANALYSIS"), function()
             if workingCaseEvidenceMissing then menu.diagnosticView = "recovery"; menu.refresh(); return end
+            if not workingEvidenceMissing then captureForcedVerificationScroll() end
             if startAction("analysis.run") then
                 menu.analysisRunning = true
                 if workingEvidenceMissing then
@@ -4713,6 +4734,7 @@ end
 function menu.create()
     Helper.clearDataForRefresh(menu, config.layer)
     menu.mainTable = nil
+    menu.stationNavigatorTable = nil
 
     local identityState = commandIdentityStore()
     if identityState.initialized and not menu.sessionBootComplete and startupSequenceEnabled() then
@@ -4754,7 +4776,7 @@ function menu.create()
         local leftWidth = math.floor(usableWidth * 0.31)
         local rightWidth = usableWidth - leftWidth - gap
 
-        createStationNavigator(
+        menu.stationNavigatorTable = createStationNavigator(
             menu.frame,
             Helper.borderSize,
             contentY,
@@ -4772,6 +4794,7 @@ function menu.create()
         })
         configureFourColumns(tableWidget, rightWidth)
         tableWidget.properties.maxVisibleHeight = contentHeight
+        menu.mainTable = tableWidget
         if menu.clickStatus and menu.clickStatusUntil and getElapsedTime() < menu.clickStatusUntil then
             local feedbackRow = tableWidget:addRow(false)
             feedbackRow[1]:setColSpan(4):createText(menu.clickStatus, { wordwrap = true })
@@ -4859,26 +4882,69 @@ function menu.create()
     end
 
     if menu.mainTable and menu.restoreTablePage == menu.page then
-        if menu.restoreTableTopRow then menu.mainTable:setTopRow(menu.restoreTableTopRow) end
-        if menu.restoreTableSelectedRow then menu.mainTable:setSelectedRow(menu.restoreTableSelectedRow) end
+        if menu.restoreTableTopRow then pcall(menu.mainTable.setTopRow, menu.mainTable, menu.restoreTableTopRow) end
+        if menu.restoreTableSelectedRow then pcall(menu.mainTable.setSelectedRow, menu.mainTable, menu.restoreTableSelectedRow) end
+    end
+    if menu.stationNavigatorTable and menu.restoreNavigatorPage == menu.page then
+        if menu.restoreNavigatorTopRow then pcall(menu.stationNavigatorTable.setTopRow, menu.stationNavigatorTable, menu.restoreNavigatorTopRow) end
+        if menu.restoreNavigatorSelectedRow then pcall(menu.stationNavigatorTable.setSelectedRow, menu.stationNavigatorTable, menu.restoreNavigatorSelectedRow) end
     end
     menu.restoreTablePage = nil
     menu.restoreTableTopRow = nil
     menu.restoreTableSelectedRow = nil
+    menu.restoreNavigatorPage = nil
+    menu.restoreNavigatorTopRow = nil
+    menu.restoreNavigatorSelectedRow = nil
 
     menu.frame:display()
+    menu.renderedPage = menu.page
+    if menu.forcedVerificationRestoreReady then
+        menu.forcedVerificationTopRow = nil
+        menu.forcedVerificationPage = nil
+        menu.forcedVerificationScrollLocked = nil
+        menu.forcedVerificationRestoreReady = nil
+    end
 end
 
 function menu.refresh(preserveScroll)
-    if preserveScroll and menu.mainTable and menu.page == "kpi" then
-        local ok, topRow = pcall(GetTopRow, menu.mainTable)
-        if ok then menu.restoreTableTopRow = topRow end
-        if Helper.currentTableRow then menu.restoreTableSelectedRow = Helper.currentTableRow[menu.mainTable] end
+    local samePage = menu.renderedPage == nil or menu.renderedPage == menu.page
+    local shouldPreserve = preserveScroll ~= false and samePage
+    if shouldPreserve and menu.mainTable then
+        local tableId = menu.mainTable.id
+        local ok, topRow = false, nil
+        if tableId ~= nil then ok, topRow = pcall(GetTopRow, tableId) end
+        if menu.forcedVerificationScrollLocked and menu.forcedVerificationPage == menu.page and menu.forcedVerificationTopRow ~= nil then
+            ok = true
+            topRow = menu.forcedVerificationTopRow
+        end
+        if ok then
+            menu.restoreTableTopRow = topRow
+            if not menu.scrollCaptureConfirmed then
+                DebugError("[JKEOC][B250][SCROLL_CAPTURE_CONFIRMED] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
+                menu.scrollCaptureConfirmed = true
+            end
+        elseif not menu.scrollCaptureFailureLogged then
+            DebugError("[JKEOC][B250][SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
+            menu.scrollCaptureFailureLogged = true
+        end
+        if Helper.currentTableRow and tableId then menu.restoreTableSelectedRow = Helper.currentTableRow[tableId] end
         menu.restoreTablePage = menu.page
     else
         menu.restoreTablePage = nil
         menu.restoreTableTopRow = nil
         menu.restoreTableSelectedRow = nil
+    end
+    if shouldPreserve and menu.stationNavigatorTable then
+        local tableId = menu.stationNavigatorTable.id
+        local ok, topRow = false, nil
+        if tableId ~= nil then ok, topRow = pcall(GetTopRow, tableId) end
+        if ok then menu.restoreNavigatorTopRow = topRow end
+        if Helper.currentTableRow and tableId then menu.restoreNavigatorSelectedRow = Helper.currentTableRow[tableId] end
+        menu.restoreNavigatorPage = menu.page
+    else
+        menu.restoreNavigatorPage = nil
+        menu.restoreNavigatorTopRow = nil
+        menu.restoreNavigatorSelectedRow = nil
     end
     menu.create()
 end
