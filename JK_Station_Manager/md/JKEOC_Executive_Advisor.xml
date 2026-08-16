@@ -13,8 +13,8 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-      <show_notification text="'EOC 3.2 GA | Executive Operations Center Ready'" timeout="12s" />
-      <debug_text text="'[JKEOC][B239][STARTUP] version=339 build=239 ga=1 compatibility=x4_8_and_9 clear_all_cases=available supported_status_only=1 cpu_polling=bounded notification=shown'" filter="general" />
+      <show_notification text="'EOC 3.2 GA Build 245 | Executive Operations Center Ready'" timeout="12s" />
+      <debug_text text="'[JKEOC][B245][STARTUP] version=345 build=245 ga=1 command_checklists=1 dock_callback_isolation=1 recurring_watchdog=0 notification=shown'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>

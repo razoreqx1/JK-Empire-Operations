@@ -538,7 +538,7 @@
               <do_if value="global.$JKEOC_ObservationConfig.$c2">
                 <set_value name="$obsstation" exact="$station" /><set_value name="$obscategory" exact="'STORAGE PRESSURE'" /><set_value name="$obssubject" exact="$subject" /><set_value name="$obshit" exact="$pressure and ($shortage or $directoryrecord.$casecount gt 0)" />
                 <set_value name="$obssubjectkey" exact="if $subjectware? then $subjectware else $subject" />
-                <set_value name="$obsevidence" exact="'Storage or ware allocation remained at or above 90%% with a corroborating station case.'" />
+                <set_value name="$obsevidence" exact="'Storage or ware allocation remained at or above 90% with a corroborating station case.'" />
                 <set_value name="$obscause" exact="if $suppliers == 0 and $suitable gt 0 then 'Possible weak demand or restricted outbound flow; fullness alone does not prove missing capacity' else 'Persistent capacity pressure correlated with blocked operational flow'" />
                 <set_value name="$obsrecommendation" exact="'Review demand, sell offers, trade permissions, consuming production and planned storage before adding capacity.'" />
                 <set_value name="$obsconfidence" exact="'MEDIUM'" /><set_value name="$obsquality" exact="$quality" /><set_value name="$obsamount" exact="$amount" /><set_value name="$obstarget" exact="$target" /><set_value name="$obssuppliers" exact="$suppliers" /><set_value name="$obssuitable" exact="$suitable" /><set_value name="$obsrelevant" exact="$relevant" /><set_value name="$obsidle" exact="$idle" /><set_value name="$obscorrelation" exact="$correlation" />

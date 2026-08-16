@@ -18,6 +18,8 @@ Shipyard Activity reports ships queued, active, and retained in completed histor
 
 Immediately after clearing, station profiles return to **MONITORING / STABLE**. Later non-healthy classifications require a visible matching case or retained observation evidence.
 
+Cases include a two-way command checklist. EOC-owned rows update only from supported live evidence. Player decision rows can record Yes/Done, No/Not Done, or remain unanswered. An answer does not independently cancel a managed action; later evidence controls resolution.
+
 ## Fleet visibility and minimums
 
 Fleet & Logistics distinguishes EOC-registered ships from compatible ships that are available but not registered. Visibility does not grant control.
@@ -37,6 +39,8 @@ EOC remains advisory unless you grant the relevant authority and deliberately co
 - Confirm Extensions shows **EOC 3.2 GA**.
 - Wait for the readiness summary before opening EOC after loading.
 - If a station shows a non-monitoring status, open its Cases view and confirm the supporting case or retained evidence is visible.
-- Report the affected page, selected filter, exact visible message, and relevant EOC debug markers when requesting support.
+- Report the affected page, selected filter, exact visible message, EOC build/version, X4 version, reproduction steps, relevant mods, and a fresh debug log.
+
+Issue tracker: https://github.com/razoreqx1/JK-Empire-Operations/issues
 
 Support community: https://discord.gg/qp8pmuWqtt

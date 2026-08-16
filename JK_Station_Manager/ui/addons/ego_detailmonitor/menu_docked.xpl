@@ -604,10 +604,16 @@ function menu.display()
 
 		-- start: kuertee call-back
 		if menu.uix_callbacks ["display_on_after_main_interactions"] then
-  			for uix_id, uix_callback in pairs (menu.uix_callbacks ["display_on_after_main_interactions"]) do
-  				uix_callback (table_header)
-  			end
-  		end
+			menu.jkeocDockDiagnostics = (menu.jkeocDockDiagnostics or 0) + 1
+			if menu.jkeocDockDiagnostics <= 8 then
+				local eocpresent = menu.uix_callbacks ["display_on_after_main_interactions"]["jk_eoc_b218_universal_access"] ~= nil
+				DebugError("[JKEOC][B245][DOCK_LIFECYCLE] stage=CALLBACK_DISPATCH surface=STANDARD eoc_callback_present=" .. tostring(eocpresent) .. " sample=" .. tostring(menu.jkeocDockDiagnostics) .. " recurring_watchdog=0")
+			end
+			for uix_id, uix_callback in pairs (menu.uix_callbacks ["display_on_after_main_interactions"]) do
+				local success, failure = pcall(uix_callback, table_header)
+				if not success then DebugError("[JKEOC][B245][DOCK_CALLBACK_ERROR] callback=" .. tostring(uix_id) .. " error=" .. tostring(failure) .. " continued=1") end
+			end
+		end
 		-- end: kuertee call-back
 
 		if menu.currentplayership ~= 0 then
@@ -1263,10 +1269,16 @@ function menu.display()
 
 		-- start: kuertee call-back
 		if menu.uix_callbacks ["display_on_after_main_interactions"] then
-  			for uix_id, uix_callback in pairs (menu.uix_callbacks ["display_on_after_main_interactions"]) do
-  				uix_callback (table_header)
-  			end
-  		end
+			menu.jkeocDockDiagnostics = (menu.jkeocDockDiagnostics or 0) + 1
+			if menu.jkeocDockDiagnostics <= 8 then
+				local eocpresent = menu.uix_callbacks ["display_on_after_main_interactions"]["jk_eoc_b218_universal_access"] ~= nil
+				DebugError("[JKEOC][B245][DOCK_LIFECYCLE] stage=CALLBACK_DISPATCH surface=TIMELINES eoc_callback_present=" .. tostring(eocpresent) .. " sample=" .. tostring(menu.jkeocDockDiagnostics) .. " recurring_watchdog=0")
+			end
+			for uix_id, uix_callback in pairs (menu.uix_callbacks ["display_on_after_main_interactions"]) do
+				local success, failure = pcall(uix_callback, table_header)
+				if not success then DebugError("[JKEOC][B245][DOCK_CALLBACK_ERROR] callback=" .. tostring(uix_id) .. " error=" .. tostring(failure) .. " continued=1") end
+			end
+		end
 		-- end: kuertee call-back
 
 		local row = table_header:addRow(false, { fixed = true })

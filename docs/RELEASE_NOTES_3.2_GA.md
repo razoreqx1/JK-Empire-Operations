@@ -2,6 +2,17 @@
 
 EOC 3.2 delivers a faster, clearer Executive Operations Center with redesigned KPI intelligence, safer case management, stronger evidence consistency, and expanded fleet visibility.
 
+## Build 245 recovery intelligence update
+
+- Bounded managed BUY actions for confirmed shortages and SELL actions for storage pressure.
+- Scout long-term recommendations and ordered recovery playbooks for shortages, overages, production, missing inputs, unavailable supply, missing logistics, and Allographyne/project demand.
+- Persistent two-way EOC/player command checklists with evidence-owned EOC states and explicit player Yes/No decisions.
+- Managed-action baselines and later stock-movement verification.
+- Clear All resets cases, retained evidence, managed trade actions, checklist answers, and command requests before one fresh analysis.
+- Docked-menu callback isolation so a failing third-party callback does not suppress later callbacks such as EOC access.
+- Bounded Dock lifecycle diagnostics with no recurring watcher, periodic polling, or per-frame repair.
+- Clearer empire-analysis scope, storage-allocation labels, and transient case-result ownership.
+
 ## KPI Center
 
 - Native Player Wealth, Case Trends, and Empire Growth graphs with 5, 10, and 30-minute ranges.
@@ -33,3 +44,5 @@ EOC 3.2 delivers a faster, clearer Executive Operations Center with redesigned K
 ## Safety and compatibility
 
 EOC does not create free ships, bypass normal resources, or make unauthorized credit movements. EOC supports X4 8.x and 9.x and does not require UI Extensions and HUD.
+
+Report reproducible issues at https://github.com/razoreqx1/JK-Empire-Operations/issues with the EOC build/version, X4 version, reproduction steps, relevant mods, and a fresh debug log.

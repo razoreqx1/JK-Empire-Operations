@@ -9,13 +9,13 @@ local integration = {
 }
 
 local function signalEOC()
-    DebugError("[JKEOC][B224][DOCK_ACCESS] stage=OPEN_EVENT_RAISED event=JKEOC_PersonalOfficeAccess")
+    DebugError("[JKEOC][B245][DOCK_ACCESS] stage=OPEN_EVENT_RAISED event=JKEOC_PersonalOfficeAccess")
     AddUITriggeredEvent("JKEOC_PersonalOfficeAccess", "open", nil)
 end
 
 local function openEOC()
     integration.clickCount = integration.clickCount + 1
-    DebugError("[JKEOC][B224][DOCK_ACCESS] stage=BUTTON_CLICKED count=" .. tostring(integration.clickCount))
+    DebugError("[JKEOC][B245][DOCK_ACCESS] stage=BUTTON_CLICKED count=" .. tostring(integration.clickCount))
     if integration.menu and type(integration.menu.onCloseElement) == "function" then
         integration.menu.onCloseElement("close")
     elseif integration.menu and Helper and type(Helper.closeMenu) == "function" then
@@ -31,7 +31,7 @@ end
 
 local function addEOCAction(tableHeader)
     integration.renderCount = integration.renderCount + 1
-    DebugError("[JKEOC][B224][DOCK_ACCESS] stage=BUTTON_RENDERED count=" .. tostring(integration.renderCount))
+    DebugError("[JKEOC][B245][DOCK_ACCESS] stage=BUTTON_RENDERED count=" .. tostring(integration.renderCount))
 
     local row = tableHeader:addRow(true, { fixed = true })
     row[1]:setColSpan(11):createButton({
@@ -56,7 +56,7 @@ local function init()
             integration.callbackID
         )
         integration.registered = true
-        DebugError("[JKEOC][B224][DOCK_ACCESS] stage=CALLBACK_REGISTERED attempts=" .. tostring(integration.attempts + 1) .. " recurring_watchdog=0")
+        DebugError("[JKEOC][B245][DOCK_ACCESS] stage=CALLBACK_REGISTERED attempts=" .. tostring(integration.attempts + 1) .. " recurring_watchdog=0")
         return
     end
 
@@ -64,7 +64,7 @@ local function init()
     if integration.attempts < integration.maxAttempts and type(Helper.addDelayedOneTimeCallbackOnUpdate) == "function" then
         Helper.addDelayedOneTimeCallbackOnUpdate(init, true, getElapsedTime() + 1)
     else
-        DebugError("[JKEOC][B224][LUA_ERROR] Universal Dock Interactions callback unavailable after retries=" .. tostring(integration.attempts))
+        DebugError("[JKEOC][B245][LUA_ERROR] Universal Dock Interactions callback unavailable after retries=" .. tostring(integration.attempts))
     end
 end
 

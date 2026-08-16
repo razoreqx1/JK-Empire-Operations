@@ -1057,7 +1057,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
                 <set_value name="$warningstatus" exact="'REMEDIATION IN PROGRESS — %1 MATCHING STORAGE MODULE(S) PLANNED'.[$plannedstoragematches]" />
                 <set_value name="$warningcorrective" exact="'DO NOT DUPLICATE: %1 matching module(s) are already planned (%2), adding about %3 %4 capacity. Monitor construction until operational.'.[$plannedstoragematches, $matchingmodulenames, $plannedstoragecapacity, $storagetype]" />
               </do_if>
-                    <append_to_list name="$stationcases" exact="table[$station=$station, $stationname=$station.name, $ware=$ware.name, $wareobject=$ware, $amount=$amount, $maximum=$maximum, $target=$station.cargo.{$ware}.target, $type='STORAGE PRESSURE', $status=$warningstatus, $buildactive=$stationhasbuildingtask, $storagetype=$storagetype, $storagecapacity=$storagecapacity, $storagefree=$storagefree, $produces=0, $rootcause='%1 STORAGE PRESSURE'.[$storagetype], $corrective=$warningcorrective, $constructionitems=$constructionitems, $constructioncount=$constructionitems.count, $plannedstoragematches=$plannedstoragematches, $plannedstoragecapacity=$plannedstoragecapacity, $plannedproductionmatches=0, $matchingmodulenames=$matchingmodulenames, $recommendedmodule=$recommendedstoragemodule, $recommendedcount=$recommendedstoragecount, $suppliercount=0, $tradershipcount=$station.subordinates.{assignment.trade}.count, $productionmodulecount=0, $ownsuppliercount=0, $npcsuppliercount=0, $compatibletradercount=$station.subordinates.{assignment.trade}.count]" />
+                    <append_to_list name="$stationcases" exact="table[$station=$station, $stationname=$station.name, $ware=$ware.name, $wareobject=$ware, $amount=$amount, $maximum=$maximum, $target=$station.cargo.{$ware}.target, $type='STORAGE PRESSURE', $status=$warningstatus, $buildactive=$stationhasbuildingtask, $storagetype=$storagetype, $storagecapacity=$storagecapacity, $storagefree=$storagefree, $produces=0, $rootcause='%1 STORAGE PRESSURE'.[$storagetype], $corrective=$warningcorrective, $constructionitems=$constructionitems, $constructioncount=$constructionitems.count, $plannedstoragematches=$plannedstoragematches, $plannedstoragecapacity=$plannedstoragecapacity, $plannedproductionmatches=0, $matchingmodulenames=$matchingmodulenames, $recommendedmodule=$recommendedstoragemodule, $recommendedcount=$recommendedstoragecount, $suppliercount=0, $tradershipcount=$station.subordinates.{assignment.trade}.count, $productionmodulecount=0, $ownsuppliercount=0, $npcsuppliercount=0, $compatibletradercount=$station.subordinates.{assignment.trade}.count, $stationmoney=$station.money, $stationmoneycaptured=true]" />
               <append_to_list name="global.$JKEOC_WarningCases" exact="$stationcases.{$stationcases.count}" />
               <do_if value="not global.$JKSM_FirstFullStation?">
                 <set_value name="global.$JKSM_FirstFullStation" exact="$station.name" />
@@ -1184,8 +1184,8 @@ subordinates, storage modules, and funds. No station or ship settings are change
               <set_value name="global.$JKEOC_SelfSufficiencyGrade" exact="'CRITICAL'" />
             </do_else>
             <set_value name="global.$JKEOC_FocusCaseSummary" exact="'Case %1 | %2 completed | %3 remaining'.[global.$JKEOC_FocusEntryCaseID, global.$JKEOC_RecoveryCompletedCount, $stationempty + $stationfull]" />
-            <debug_text text="'[JKEOC][V339][FOCUS_CASE] case=%1 station=%2 score=%3 grade=%4 empty=%5 full=%6 ships=%7'.[global.$JKEOC_FocusEntryCaseID, $station.name, global.$JKEOC_SelfSufficiencyScore, global.$JKEOC_SelfSufficiencyGrade, $stationempty, $stationfull, $shipcount]" filter="general" />
-            <debug_text text="'[JKEOC][V339][FOCUS_SCAN] station=%1 empty=%2 full=%3 products=%4 resources=%5 ships=%6'.[$station.name, $stationempty, $stationfull, $products.count, $resources.count, $shipcount]" filter="general" />
+            <debug_text text="'[JKEOC][V342][FOCUS_CASE] case=%1 station=%2 score=%3 grade=%4 empty=%5 full=%6 ships=%7'.[global.$JKEOC_FocusEntryCaseID, $station.name, global.$JKEOC_SelfSufficiencyScore, global.$JKEOC_SelfSufficiencyGrade, $stationempty, $stationfull, $shipcount]" filter="general" />
+            <debug_text text="'[JKEOC][V342][FOCUS_SCAN] station=%1 empty=%2 full=%3 products=%4 resources=%5 ships=%6'.[$station.name, $stationempty, $stationfull, $products.count, $resources.count, $shipcount]" filter="general" />
           </do_if>
 
           <set_value name="$stationhealth" exact="'HEALTHY'" />
@@ -1975,7 +1975,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <set_value name="global.$JKEOC_ObjectiveCurrentAmount" exact="0" />
         <set_value name="global.$JKEOC_ObjectiveCurrentMaximum" exact="0" />
         <remove_value name="global.$JKEOC_MonitorCycleCount" />
-        <debug_text text="'[JKEOC][V340][STATE_RESET_ON_LOAD] dashboard restored; persistent case records retained'" filter="general" />
+        <debug_text text="'[JKEOC][V342][STATE_RESET_ON_LOAD] dashboard restored; persistent case records retained'" filter="general" />
         <signal_cue_instantly cue="JKSM_RunIntelligenceScan" />
         <show_notification text="'EOC Empire Analysis: %1 stations | %2 productive | %3 active cases | %4 workforce warnings'.[global.$JKSM_LastStationCount, global.$JKSM_ProductiveCount, global.$JKSM_RecommendationCount, global.$JKEOC_WorkforceIssueCount]" timeout="12s" />
         <write_to_logbook category="general"
@@ -3349,7 +3349,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
     <cue name="JKSM_SelfSufficiencyAssessment" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_SelfSufficiencyAssessment" /></conditions>
       <actions>
-        <debug_text text="'[JKEOC][V339][SELF_SUFFICIENCY] case=%1 station=%2 score=%3 grade=%4 gap=%5'.[global.$JKEOC_FocusEntryCaseID, global.$JKEOC_FocusStationDisplay, global.$JKEOC_SelfSufficiencyScore, global.$JKEOC_SelfSufficiencyGrade, global.$JKEOC_SelfSufficiencyPrimaryGap]" filter="general" />
+        <debug_text text="'[JKEOC][V342][SELF_SUFFICIENCY] case=%1 station=%2 score=%3 grade=%4 gap=%5'.[global.$JKEOC_FocusEntryCaseID, global.$JKEOC_FocusStationDisplay, global.$JKEOC_SelfSufficiencyScore, global.$JKEOC_SelfSufficiencyGrade, global.$JKEOC_SelfSufficiencyPrimaryGap]" filter="general" />
         <add_player_choice_sub text="'INFO: SELF-SUFFICIENCY ASSESSMENT — %1'.[global.$JKEOC_FocusStationDisplay]" position="top_left" section="JKSM_SelfSufficiencyAssessment" />
         <add_player_choice_sub text="'INFO: SCORE: %1%% | CONDITION: %2'.[global.$JKEOC_SelfSufficiencyScore, global.$JKEOC_SelfSufficiencyGrade]" position="left" section="JKSM_SelfSufficiencyAssessment" />
         <add_player_choice_sub text="'INFO: PRIMARY GAP: %1'.[global.$JKEOC_SelfSufficiencyPrimaryGap]" position="bottom_left" section="JKSM_SelfSufficiencyAssessment" />

@@ -81,6 +81,7 @@ local investigationNeutralColor = { r = 175, g = 185, b = 195, a = 100 }
 local navigationStoryColor = { r = 125, g = 200, b = 235, a = 100 }
 local EOC_IDENTITY_BB = "$JKEOC_CommandIntelligenceIdentity"
 local EOC_OS_BUILD = 202
+local EOC_CHECKLIST_SCHEMA = 3
 local KPI_REFRESH_SECONDS = 30
 menu.KPI_HISTORY_LIMIT = 64
 menu.KPI_REFRESH_INTERVALS = { cash = 30, shipyard = 30, construction = 60, trade = 60, storage = 120, earners = 120, drains = 120, attention = 120 }
@@ -210,11 +211,41 @@ local function text(value)
     return tostring(value)
 end
 
+local formatNumber
+
+local function managedActionForCase(caseData)
+    if not caseData then return nil end
+    local stationName = text(v(caseData, 1, ""))
+    local wareName = text(v(caseData, 4, ""))
+    for _, action in ipairs(menu.tradeOffers or {}) do
+        if text(v(action, 1, "")) == stationName and text(v(action, 3, "")) == wareName then return action end
+    end
+    return nil
+end
+
+local function managedActionText(caseData)
+    local action = managedActionForCase(caseData)
+    if not action then
+        if string.upper(text(menu.tradeMode)) == "MANAGED" then
+            return "EOC has confirmed this case, but no managed action record is available yet. Run a fresh analysis so EOC can reconcile the station action.", investigationUnknownColor
+        end
+        return "EOC is reporting this case only. Managed / Do Everything authority is not enabled, so EOC has not started a station action.", investigationUnknownColor
+    end
+    local actionType = text(v(action, 2, "ACTION"))
+    local wareName = text(v(action, 3, "WARE"))
+    local amount = tonumber(v(action, 4, 0)) or 0
+    local state = text(v(action, 6, "UNKNOWN"))
+    local reason = text(v(action, 7, "No operational explanation is available."))
+    local waiting = text(v(action, 8, "NEXT EMPIRE ANALYSIS"))
+    local line = state .. ": EOC is managing a bounded " .. actionType .. " action for up to " .. formatNumber(amount) .. " " .. wareName .. ".\n" .. reason .. "\nWAITING FOR: " .. waiting .. ". EOC will compare the next live stock reading with this action before closing or escalating the case."
+    return line, string.find(string.upper(state), "BLOCKED", 1, true) and investigationFailColor or navigationStoryColor
+end
+
 local formatGameTime
 local pair
 local captureNavigation
 
-local function formatNumber(value)
+formatNumber = function(value)
     local number = tonumber(value)
     if not number then
         return text(value)
@@ -600,6 +631,7 @@ local function actionComplete()
     end
     if action == "case.clearall" then
         menu.cases = {}
+        menu.checklistProgress = {}
         menu.observations = {}
         menu.monitoredCases = {}
         menu.diagnosticCase = nil
@@ -820,7 +852,106 @@ local function manualNextAction(caseData, rows)
             elseif check.label == "PRODUCTION INPUTS" then return "Restore the confirmed missing production input: " .. text(v(caseData, 28, "review station inputs")) .. "." end
         end
     end
-    return "No reported prerequisite requires a change. Observe one operating or delivery cycle, then run Verify Result. Do not add ships, storage, or production unless verification still shows a blocker."
+    local caseType = string.upper(text(v(caseData, 3, "")))
+    local subject = string.upper(text(v(caseData, 4, "")))
+    if caseType == "STORAGE PRESSURE" then
+        return "Do not add more of this ware. With Do Everything enabled, allow one station-manager trade cycle for EOC's bounded surplus sell offer. If stock does not fall, check for a permitted buyer, reduce the ware allocation, or increase local consumption; then run a fresh verification check."
+    elseif subject == "ALLOGRAPHYNE" then
+        return "The import path is ready, so allow one delivery cycle first. For a permanent local chain, add and operate the Allographyne Scrap Processor and its required recycling support, then verify that its inputs are supplied before changing ships or storage."
+    end
+    return "All reported prerequisites pass. With Do Everything enabled, allow one station-manager delivery cycle; EOC's buy offer and compatible assigned traders should handle the shortage. If stock remains unchanged, inspect the ware rule, price, manager range, and trader orders, then run a fresh verification check."
+end
+local function scoutRecoveryPlan(caseData, rows)
+    local ware = text(v(caseData, 4, "the affected ware"))
+    local wareUpper = string.upper(ware)
+    local station = text(v(caseData, 1, "the station"))
+    local caseType = string.upper(text(v(caseData, 3, "")))
+    local produces = tonumber(v(caseData, 15, 0)) or 0
+    local plannedProduction = tonumber(v(caseData, 34, 0)) or 0
+    local missingInputs = tonumber(v(caseData, 27, 0)) or 0
+    local suppliers = tonumber(v(caseData, 18, 0)) or 0
+    local compatible = tonumber(v(caseData, 24, 0)) or 0
+    local paused = v(caseData, 29, false)
+    local recommendation, checklist
+
+    if caseType == "STORAGE PRESSURE" then
+        recommendation = "Treat this as excess inventory, not a request for more supply. Let EOC's bounded sell action relieve the immediate pressure, then prevent recurrence by lowering unnecessary allocation or creating reliable consumption and export capacity. Add storage only when the ware has a real future demand that justifies it."
+        checklist = {
+            "Confirm the station is not still buying or mining " .. ware .. " unnecessarily.",
+            "Reduce the automatic allocation or target to the reserve the station actually needs.",
+            "Keep a permitted sell offer and at least one compatible trader available.",
+            "If another owned station consumes " .. ware .. ", give that route priority over an NPC sale.",
+            "Verify that stock and storage pressure fall during the next trade cycle."
+        }
+    elseif wareUpper == "ALLOGRAPHYNE" then
+        recommendation = "Treat Allographyne as project-driven strategic demand, not a normal station-health repair. EOC can maintain a bounded import offer, but it cannot make limited market supply permanent. Confirm the active project really needs it; then choose either a dedicated import route or the complete recycling production chain. If the project no longer needs it, remove or reduce the target instead of feeding a permanent false shortage."
+        checklist = {
+            "Confirm the active Terraforming or mission project is currently requesting Allographyne.",
+            "If importing, permit the intended suppliers and reserve compatible traders for the route.",
+            "If producing locally, complete the Allographyne recycling chain and supply every required input.",
+            "Do not add generic storage or ships unless the evidence identifies them as the blocker.",
+            "After one project-delivery cycle, verify whether stock, deliveries, or project progress changed.",
+            "If there is no active demand, lower the ware target so EOC stops treating zero stock as a fault."
+        }
+    elseif plannedProduction > 0 then
+        recommendation = "The durable fix is already under construction. Finish the planned " .. ware .. " production capacity and support its inputs; use EOC's bounded import only as temporary coverage until local output is proven."
+        checklist = {
+            "Finish the planned production module and confirm it becomes operational.",
+            "Provide the module's required inputs and matching storage.",
+            "Keep temporary imports enabled until local output begins.",
+            "Verify that " .. ware .. " stock rises during a production cycle.",
+            "Remove unnecessary emergency logistics only after stable local output is proven."
+        }
+    elseif produces > 0 then
+        if paused then
+            recommendation = "Restore the existing local production line before buying more capacity. EOC sees installed production that is not operating, so the best long-term fix is to remove its actual input, workforce, damage, allocation, or pause constraint."
+        elseif missingInputs > 0 then
+            recommendation = "Repair the existing production chain. Adding another " .. ware .. " module would multiply the same input shortage; restore " .. text(v(caseData, 28, "the missing inputs")) .. " first."
+        else
+            recommendation = "Use the production capacity already installed at " .. station .. ". The evidence does not justify another module yet; first confirm that allocation, workforce, inputs, and module operation allow the existing line to meet demand."
+        end
+        checklist = {
+            "Confirm the installed production module is enabled, undamaged, and not manually paused.",
+            "Restore every missing or critically low production input.",
+            "Check workforce supply and ware allocations for the existing line.",
+            "Allow one complete production cycle without changing capacity.",
+            "Add another production module only if proven output remains below sustained demand."
+        }
+    elseif suppliers > 0 and compatible > 0 then
+        recommendation = "Use imports for immediate recovery, but treat repeated shortages as a capacity decision. If " .. ware .. " is a recurring strategic dependency, establish an owned source or dedicated route; otherwise keep the station-manager import path and correct any rule, range, price, or ship-order constraint that prevents delivery."
+        checklist = {
+            "Let EOC's bounded buy offer run through one manager delivery cycle.",
+            "Confirm the ware buy rule, price, and manager range permit the visible suppliers.",
+            "Confirm compatible assigned traders are free and actually accepting the ware order.",
+            "For recurring demand, connect a reliable owned producer or dedicated supply route.",
+            "Consider local production only after checking the full recipe, inputs, storage, and sustained demand.",
+            "Verify that stock rises; if it does not, treat the delivery path as blocked and inspect the trader's live order."
+        }
+    elseif suppliers <= 0 then
+        recommendation = "There is no proven market source for " .. ware .. ". Build or connect a reliable owned supply chain, or widen only the specific trade rule and operating range needed to reach a supplier."
+        checklist = {
+            "Confirm the ware is permitted by the station's buy rule and blacklist settings.",
+            "Search for an owned station that can supply " .. ware .. ".",
+            "If none exists, evaluate the complete production recipe and all upstream inputs before building.",
+            "Provide matching storage and a compatible logistics route.",
+            "Verify a real offer or local production cycle before adding further capacity."
+        }
+    else
+        recommendation = "The shortage has supply but no proven delivery capacity. Restore one compatible station trader or dedicated logistics route before changing production or storage."
+        checklist = {
+            "Assign an operational ship with the correct cargo class.",
+            "Confirm its assignment, trade rules, manager range, and current orders.",
+            "Keep the bounded buy offer active for one delivery cycle.",
+            "Verify that the ship accepts a route and stock rises.",
+            "Escalate to owned production only if reliable delivery remains impossible."
+        }
+    end
+    return recommendation, checklist
+end
+local function scoutChecklistText(items)
+    local lines = {}
+    for index, item in ipairs(items or {}) do lines[#lines + 1] = "[ ] " .. tostring(index) .. ". " .. item end
+    return table.concat(lines, "\n")
 end
 local function rootCauseAssessment(caseData, rows)
     local facts, unknowns = {}, {}
@@ -1178,6 +1309,14 @@ function menu.onShowMenu()
     menu.storageRecords = v(menu.param, 28, {})
     menu.minimums = { mining = tonumber(v(menu.param, 29, 0)) or 0, trade = tonumber(v(menu.param, 30, 0)) or 0, buildstorage = tonumber(v(menu.param, 31, 0)) or 0, defence = tonumber(v(menu.param, 32, 0)) or 0, escort = tonumber(v(menu.param, 33, 0)) or 0 }
     menu.availableUnregisteredShips = v(menu.param, 34, {})
+    menu.checklistProgress = {}
+    for _, record in ipairs(v(menu.param, 35, {})) do
+        local key = text(v(record, 1, ""))
+        local step = tonumber(v(record, 2, 0)) or 0
+        if key ~= "-" and step > 0 then
+            menu.checklistProgress[key .. "|" .. tostring(step)] = text(v(record, 3, "PENDING"))
+        end
+    end
     menu.minimumDraft = menu.minimumDraft or { mining = menu.minimums.mining, trade = menu.minimums.trade, buildstorage = menu.minimums.buildstorage, defence = menu.minimums.defence, escort = menu.minimums.escort }
     local rawStartupPreference = v(menu.param, 26, 1)
     local restoredStartupPreference = tonumber(rawStartupPreference) ~= 0
@@ -1352,6 +1491,194 @@ local function section(tableWidget, label)
         font = Helper.headerFont,
         fontsize = Helper.standardFontSize + 2,
     })
+end
+
+local function checklistPlanId(caseData)
+    local caseType = string.upper(text(v(caseData, 3, "")))
+    local ware = string.upper(text(v(caseData, 4, "")))
+    local plannedProduction = tonumber(v(caseData, 34, 0)) or 0
+    local produces = tonumber(v(caseData, 15, 0)) or 0
+    local missingInputs = tonumber(v(caseData, 27, 0)) or 0
+    local suppliers = tonumber(v(caseData, 18, 0)) or 0
+    local compatible = tonumber(v(caseData, 24, 0)) or 0
+    local paused = v(caseData, 29, false)
+    if caseType == "STORAGE PRESSURE" then return "STORAGE_OVERAGE" end
+    if ware == "ALLOGRAPHYNE" then return "ALLOGRAPHYNE_PROJECT" end
+    if plannedProduction > 0 then return "PLANNED_PRODUCTION" end
+    if produces > 0 then
+        if paused then return "PAUSED_PRODUCTION" end
+        if missingInputs > 0 then return "MISSING_INPUTS" end
+        return "INSTALLED_PRODUCTION"
+    end
+    if suppliers > 0 and compatible > 0 then return "IMPORT_READY" end
+    if suppliers <= 0 then return "SUPPLY_UNAVAILABLE" end
+    return "LOGISTICS_MISSING"
+end
+
+local function checklistCaseKey(caseData)
+    return table.concat({
+        text(v(caseData, 1, "UNKNOWN STATION")),
+        text(v(caseData, 3, "STATION ISSUE")),
+        text(v(caseData, 4, "GENERAL OPERATIONS")),
+        checklistPlanId(caseData),
+        tostring(EOC_CHECKLIST_SCHEMA),
+    }, "|")
+end
+
+local function eocChecklistState(caseData, plan, step)
+    local action = managedActionForCase(caseData)
+    local actionType = action and string.upper(text(v(action, 2, ""))) or ""
+    local actionStateText = action and string.upper(text(v(action, 6, ""))) or ""
+    local movementVerified = action and v(action, 13, false) == true
+    local compatible = tonumber(v(caseData, 24, 0)) or 0
+    local suppliers = tonumber(v(caseData, 18, 0)) or 0
+    local ownedSuppliers = tonumber(v(caseData, 19, 0)) or 0
+    local produces = tonumber(v(caseData, 15, 0)) or 0
+    local plannedProduction = tonumber(v(caseData, 34, 0)) or 0
+    local missingInputs = tonumber(v(caseData, 27, 0)) or 0
+    local paused = v(caseData, 29, false) == true
+
+    local function tradeCycle(expectedType, verifyMovement)
+        if not action or actionType ~= expectedType then return "EOC WAITING", "EOC has not yet established the required bounded " .. expectedType .. " action.", true end
+        if verifyMovement then
+            if movementVerified then return "EOC VERIFIED", "Live stock moved from the action baseline after EOC created the bounded offer.", true end
+            return "EOC WAITING", "The offer is active, but EOC has not yet observed the required stock movement.", true
+        end
+        if string.find(actionStateText, "VERIFIED", 1, true) or actionStateText == "ACTION IN PROGRESS" then
+            return "EOC VERIFIED", "The bounded offer remained active across a later reconciliation cycle.", true
+        end
+        if actionStateText == "ACTION STARTED" then return "EOC STARTED", "EOC created the bounded offer and is waiting for the next reconciliation cycle.", true end
+        return "EOC WAITING", text(v(action, 7, "EOC is waiting for the managed action boundary.")), true
+    end
+
+    if plan == "IMPORT_READY" then
+        if step == 1 then return tradeCycle("BUY", false) end
+        if step == 2 then
+            if suppliers > 0 then return "EOC VERIFIED", "EOC observes " .. tostring(suppliers) .. " reachable offer(s). X4 does not expose enough evidence here to certify every ware rule, price, blacklist, or manager-range setting.", true end
+            return "EOC BLOCKED", "No reachable supplier is present in current evidence.", true
+        end
+        if step == 3 then
+            if compatible > 0 then return "EOC VERIFIED", "EOC observes " .. tostring(compatible) .. " cargo-compatible assigned trader(s). Their live order acceptance remains an X4/player inspection boundary.", true end
+            return "EOC BLOCKED", "No compatible assigned station trader is present in current evidence.", true
+        end
+        if step == 6 then return tradeCycle("BUY", true) end
+    elseif plan == "STORAGE_OVERAGE" then
+        if step == 1 then return "EOC VERIFIED", "EOC checked current station evidence for the overstocked ware and its managed action.", true end
+        if step == 3 then return tradeCycle("SELL", false) end
+        if step == 5 then return tradeCycle("SELL", true) end
+    elseif plan == "ALLOGRAPHYNE_PROJECT" then
+        if step == 1 and string.upper(text(v(menu.missionContext, 2, ""))) == "ALLOGRAPHYNE" then return "EOC VERIFIED", "EOC's mission context identifies active Allographyne demand.", true end
+        if step == 2 then
+            if suppliers > 0 and compatible > 0 then return "EOC VERIFIED", "EOC observes reachable supply and compatible assigned traders for the import path.", true end
+            return "EOC BLOCKED", "Current evidence does not show both reachable supply and compatible assigned delivery capacity.", true
+        end
+        if step == 5 and action and actionType == "BUY" then return tradeCycle("BUY", true) end
+    elseif plan == "PLANNED_PRODUCTION" and step == 1 then
+        if produces > 0 and plannedProduction <= 0 then return "EOC VERIFIED", "EOC now observes installed production capacity.", true end
+        return "EOC WAITING", "EOC still observes " .. tostring(plannedProduction) .. " planned matching production module(s).", true
+    elseif plan == "PAUSED_PRODUCTION" or plan == "MISSING_INPUTS" or plan == "INSTALLED_PRODUCTION" then
+        if step == 1 then
+            if produces > 0 and not paused then return "EOC VERIFIED", "EOC observes installed production and no reported manual pause.", true end
+            return "EOC WAITING", "EOC still observes the production line as paused or unavailable.", true
+        end
+        if step == 2 then
+            if missingInputs <= 0 then return "EOC VERIFIED", "EOC currently reports no missing production input.", true end
+            return "EOC WAITING", "EOC still reports " .. tostring(missingInputs) .. " missing production input(s).", true
+        end
+    elseif plan == "SUPPLY_UNAVAILABLE" then
+        if step == 2 then
+            return "EOC VERIFIED", ownedSuppliers > 0 and ("EOC found " .. tostring(ownedSuppliers) .. " owned supplier(s).") or "EOC searched its current evidence and found no owned supplier.", true
+        end
+        if step == 5 then
+            if suppliers > 0 or produces > 0 then return "EOC VERIFIED", "EOC now observes a real supplier or installed production source.", true end
+            return "EOC WAITING", "EOC still observes no proven supplier or local production source.", true
+        end
+    elseif plan == "LOGISTICS_MISSING" then
+        if step == 1 then
+            if compatible > 0 then return "EOC VERIFIED", "EOC observes compatible assigned delivery capacity.", true end
+            return "EOC WAITING", "EOC still observes no compatible assigned delivery ship.", true
+        end
+        if step == 3 then return tradeCycle("BUY", false) end
+        if step == 4 then return tradeCycle("BUY", true) end
+    end
+    return nil, nil, false
+end
+
+local function renderInteractiveChecklist(tableWidget, caseData, items)
+    menu.checklistProgress = menu.checklistProgress or {}
+    local key = checklistCaseKey(caseData)
+    local plan = checklistPlanId(caseData)
+    local playerComplete, playerNo, playerPending, eocVerified, eocWaiting = 0, 0, 0, 0, 0
+    local nextPlayerStep, nextWaitingStep
+    local function toggleHandler(boundCase, boundKey, boundProgressKey, boundStep, boundState, boundText)
+        return function()
+            local nextState = boundState == "COMPLETE" and "NO" or (boundState == "NO" and "PENDING" or "COMPLETE")
+            menu.checklistProgress[boundProgressKey] = nextState
+            raise("checklist.set", { key = boundKey, station = text(v(boundCase, 1, "")), subject = text(v(boundCase, 4, "")), casetype = text(v(boundCase, 3, "")), plan = checklistPlanId(boundCase), step = boundStep, state = nextState, text = boundText, schema = EOC_CHECKLIST_SCHEMA })
+            menu.refresh()
+        end
+    end
+    local function askEOCHandler(boundCase, boundKey, boundProgressKey, boundStep, boundText)
+        return function()
+            if actionState("analysis.run").running then return end
+            menu.checklistProgress[boundProgressKey] = "REQUESTED"
+            raise("checklist.set", { key = boundKey, station = text(v(boundCase, 1, "")), subject = text(v(boundCase, 4, "")), casetype = text(v(boundCase, 3, "")), plan = checklistPlanId(boundCase), step = boundStep, state = "REQUESTED", text = boundText, schema = EOC_CHECKLIST_SCHEMA })
+            if startAction("analysis.run") then menu.analysisRunning = true; raise("analysis.run", { checklist = true, station = text(v(boundCase, 1, "")), subject = text(v(boundCase, 4, "")), step = boundStep }) end
+            menu.refresh()
+        end
+    end
+    for index, item in ipairs(items or {}) do
+        local stepIndex = index
+        local stepText = tostring(item)
+        local progressKey = key .. "|" .. tostring(stepIndex)
+        local eocState, eocDetail, locked = eocChecklistState(caseData, plan, stepIndex)
+        local savedState = menu.checklistProgress[progressKey]
+        local state = (savedState == "COMPLETE" or savedState == "PLAYER CONFIRMED") and "COMPLETE" or (savedState == "NO" and "NO" or "PENDING")
+        local marker, background, handler, active
+        if locked then
+            if eocState == "EOC VERIFIED" then eocVerified = eocVerified + 1 else eocWaiting = eocWaiting + 1; nextWaitingStep = nextWaitingStep or stepIndex end
+            marker = "[" .. ((savedState == "REQUESTED" and eocState == "EOC WAITING") and "ASK EOC" or eocState) .. "] "
+            background = eocState == "EOC VERIFIED" and inactiveModeBackground or pendingChoiceBackground
+            handler = askEOCHandler(caseData, key, progressKey, stepIndex, stepText)
+            active = eocState ~= "EOC VERIFIED" and not actionState("analysis.run").running
+        else
+            if state == "COMPLETE" then playerComplete = playerComplete + 1 elseif state == "NO" then playerNo = playerNo + 1 else playerPending = playerPending + 1; nextPlayerStep = nextPlayerStep or stepIndex end
+            marker = state == "COMPLETE" and "[PLAYER: YES / DONE] " or (state == "NO" and "[PLAYER: NO / NOT DONE] " or "[PLAYER DECISION] ")
+            background = state ~= "PENDING" and inactiveModeBackground or availableModeBackground
+            handler = toggleHandler(caseData, key, progressKey, stepIndex, state, stepText)
+            active = true
+        end
+        local row = tableWidget:addRow(true)
+        row[1]:setColSpan(4)
+        local label = marker .. tostring(stepIndex) .. ". " .. stepText
+        if locked and eocDetail then label = label .. "  —  " .. eocDetail end
+        addButton(row, 1, label, handler, active, background)
+    end
+    local row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("TWO-WAY PROGRESS: " .. tostring(eocVerified) .. " EOC verified | " .. tostring(eocWaiting) .. " ask/wait EOC | " .. tostring(playerComplete) .. " player yes/done | " .. tostring(playerNo) .. " player no/not done | " .. tostring(playerPending) .. " decisions pending.", { wordwrap = true, color = navigationStoryColor })
+    row = tableWidget:addRow(false)
+    local acknowledgement
+    if nextPlayerStep then
+        acknowledgement = (playerComplete + playerNo > 0 and "EOC ACKNOWLEDGEMENT: I recorded your answers. " or "EOC STATUS: No player answer has been recorded yet. ") .. "NEXT PLAYER DECISION: " .. tostring(nextPlayerStep) .. ". " .. tostring(items[nextPlayerStep]) .. " Click once for YES/DONE, again for NO/NOT DONE, and again to clear the answer."
+    elseif nextWaitingStep then
+        acknowledgement = "EOC ACKNOWLEDGEMENT: Your required player steps are complete. I am waiting on live evidence for step " .. tostring(nextWaitingStep) .. ". Allow the relevant operating cycle, then run a fresh verification check."
+    else
+        acknowledgement = "EOC ACKNOWLEDGEMENT: Every checklist step is complete or EOC-verified. Run a fresh verification check so I can resolve, improve, or escalate the case from current evidence."
+    end
+    if playerNo > 0 then
+        acknowledgement = acknowledgement .. " BRANCH ACTIVE: A NO / NOT DONE answer prevents EOC from treating that prerequisite as satisfied. EOC will keep the case open, avoid claiming success, and direct the next verification toward the unresolved branch. It will not cancel or mutate an existing managed action from the answer alone."
+    end
+    row[1]:setColSpan(4):createText(acknowledgement, { wordwrap = true, color = navigationStoryColor })
+    if not nextPlayerStep then
+        row = tableWidget:addRow(true)
+        row[1]:setColSpan(4)
+        addButton(row, 1, actionLabel("analysis.run", "RUN FRESH VERIFICATION CHECK", "VERIFYING WITH FRESH ANALYSIS"), function()
+            if startAction("analysis.run") then
+                menu.analysisRunning = true
+                raise("analysis.run", { verify = true, station = text(v(caseData, 1, "")), subject = text(v(caseData, 4, "")), severity = text(v(caseData, 2, "UNKNOWN")), amount = tonumber(v(caseData, 8, 0)) or 0 })
+            end
+        end, not actionState("analysis.run").running, currentChoiceBackground)
+    end
 end
 
 pair = function(tableWidget, leftLabel, leftValue, rightLabel, rightValue)
@@ -1957,6 +2284,12 @@ local function casesCenter(tableWidget)
         row[1]:setColSpan(2)
         addModeButton(row, 1, "OPEN CASE: " .. text(v(caseData, 1, "Unknown station")), caseIndex == menu.selectedCase, true, function()
             menu.selectedCase = caseIndex
+            menu.caseDuplicateNotice = nil
+            for _, actionNameToClear in ipairs({ "case.create", "case.monitor", "case.close" }) do
+                local transientState = actionState(actionNameToClear)
+                transientState.result = nil
+                transientState.lastRun = nil
+            end
             focusCaseStation(caseData)
             menu.diagnosticCase = caseData
             captureNavigation("CASE - " .. text(v(caseData, 4, "SELECTED CASE")))
@@ -2004,9 +2337,20 @@ local function casesCenter(tableWidget)
     section(tableWidget, firstProblem and (firstProblem.state == "FAIL" and "WHAT EOC FOUND" or "WHAT EOC STILL NEEDS TO LEARN") or "WHAT EOC FOUND")
     row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText(firstProblem and (firstProblem.state .. " - " .. firstProblem.label .. ": " .. firstProblem.evidence) or "PASS - NO VERIFIED BLOCKER: all reported prerequisites pass or do not apply.", { wordwrap = true, color = firstProblem and resultColor(firstProblem.state) or investigationPassColor })
-    section(tableWidget, "WHAT YOU NEED TO DO NOW")
+    section(tableWidget, "WHAT EOC IS DOING")
     row = tableWidget:addRow(false)
-    row[1]:setColSpan(4):createText(manualNextAction(selected, checks), { wordwrap = true })
+    local actionText, actionColor = managedActionText(selected)
+    row[1]:setColSpan(4):createText(actionText, { wordwrap = true, color = actionColor })
+    if string.find(string.upper(actionText), "BLOCKED", 1, true) then
+        row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText("PLAYER ACTION REQUIRED: " .. manualNextAction(selected, checks), { wordwrap = true, color = investigationFailColor })
+    end
+    local scoutRecommendation, scoutChecklist = scoutRecoveryPlan(selected, checks)
+    section(tableWidget, "SCOUT'S BEST LONG-TERM RECOMMENDATION")
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText(scoutRecommendation, { wordwrap = true, color = navigationStoryColor })
+    section(tableWidget, "EOC / PLAYER COMMAND CHECKLIST - SELECT EACH STEP TO ANSWER OR ASK EOC")
+    renderInteractiveChecklist(tableWidget, selected, scoutChecklist)
     row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText("EOC CHECKED " .. tostring(#checks) .. " CONDITION(S): " .. passCount .. " passed | " .. notApplicableCount .. " did not apply. Guided Recovery explains the result in order.", { wordwrap = true })
     row = tableWidget:addRow(false)
@@ -2753,11 +3097,21 @@ local function diagnosticsCenter(tableWidget)
         row = tableWidget:addRow(false)
         row[1]:setColSpan(4):createText(firstProblem and ("EVIDENCE: " .. firstProblem.evidence) or "EVIDENCE: No failed or unknown prerequisite was returned.", { wordwrap = true, color = firstProblem and resultColor(firstProblem.state) or investigationPassColor })
 
-        section(tableWidget, "STEP 2 OF 3 - WHAT YOU NEED TO DO NOW")
+        section(tableWidget, "STEP 2 OF 3 - WHAT EOC IS DOING")
         row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText(nextAction, { wordwrap = true })
-        row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText(evidenceMissing and "DO NOT CHANGE THE STATION YET. EOC needs fresh evidence before it can safely recommend funding, storage, trade, production, or ship changes." or "PLAYER CONTROL: EOC will not cancel or replace trader orders, move credits, or alter station configuration. Complete this one action manually.", { wordwrap = true, color = evidenceMissing and investigationUnknownColor or nil })
+        local actionText, actionColor = managedActionText(diagnosticCase)
+        row[1]:setColSpan(4):createText(evidenceMissing and "EOC is collecting fresh evidence and has not started a station action." or actionText, { wordwrap = true, color = evidenceMissing and investigationUnknownColor or actionColor })
+        if not evidenceMissing and string.find(string.upper(actionText), "BLOCKED", 1, true) then
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText("PLAYER ACTION REQUIRED: " .. nextAction, { wordwrap = true, color = investigationFailColor })
+        end
+        if not evidenceMissing then
+            local scoutRecommendation, scoutChecklist = scoutRecoveryPlan(diagnosticCase, diagnosticChecks)
+            section(tableWidget, "STEP 3 OF 3 - SCOUT'S BEST LONG-TERM PLAN")
+            row = tableWidget:addRow(false)
+            row[1]:setColSpan(4):createText(scoutRecommendation, { wordwrap = true, color = navigationStoryColor })
+            renderInteractiveChecklist(tableWidget, diagnosticCase, scoutChecklist)
+        end
 
         if evidenceMissing then
             row = tableWidget:addRow(true); row[1]:setColSpan(4)
@@ -2777,11 +3131,11 @@ local function diagnosticsCenter(tableWidget)
         row[1]:setColSpan(2)
         addButton(row, 1, "VIEW SUPPORTING EVIDENCE", function() menu.diagnosticView = "supplier"; menu.refresh() end, true)
         row[3]:setColSpan(2)
-        addButton(row, 3, evidenceMissing and "VERIFICATION WAITS FOR A SUPPORTED ACTION" or "I COMPLETED THE ACTION - VERIFY IT", function() menu.diagnosticView = "stabilization"; menu.refresh() end, not evidenceMissing)
+        addButton(row, 3, evidenceMissing and "VERIFICATION WAITS FOR A SUPPORTED ACTION" or "RUN A FRESH VERIFICATION CHECK", function() menu.diagnosticView = "stabilization"; menu.refresh() end, not evidenceMissing)
 
         section(tableWidget, "STEP 3 OF 3 - VERIFY AFTER THE ACTION")
         row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText(evidenceMissing and "EOC must identify a supported action before there is anything to verify." or "After completing the action above, select I COMPLETED THE ACTION - VERIFY IT. EOC will run a fresh comparison and explain whether the case is resolved, improving, unchanged, or worsening.", { wordwrap = true })
+        row[1]:setColSpan(4):createText(evidenceMissing and "EOC must identify a supported action before there is anything to verify." or "After one meaningful operating or delivery cycle, run a fresh verification check. EOC will compare current evidence and explain whether the case is resolved, improving, unchanged, or worsening.", { wordwrap = true })
     elseif menu.diagnosticView == "options" then
         if not diagnosticCase then section(tableWidget, "NO ACTIVE CASE"); row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("Return to Guided Recovery and select an active case.", { wordwrap = true }); return end
         local optionChecks = prerequisiteRows(diagnosticCase)
@@ -2858,20 +3212,31 @@ local function diagnosticsCenter(tableWidget)
             row = tableWidget:addRow(false)
             row[1]:setColSpan(4):createText("CURRENT " .. text(v(diagnosticCase, 4, "WARE")) .. " STOCK: " .. formatNumber(currentStock), { wordwrap = true })
             row = tableWidget:addRow(false)
-            row[1]:setColSpan(4):createText("STORAGE TARGET: " .. (targetStock > 0 and formatNumber(targetStock) or "UNAVAILABLE OR NOT SET") .. " | STORAGE CAPACITY: " .. (maximumStock > 0 and formatNumber(maximumStock) or "UNAVAILABLE IN THE LAST SCAN"), { wordwrap = true, color = (targetStock <= 0 or maximumStock <= 0) and investigationUnknownColor or nil })
-            local accountBalance = tonumber(v(diagnosticCase, 32, 0)) or 0
+            row[1]:setColSpan(4):createText("WARE TARGET: " .. (targetStock > 0 and formatNumber(targetStock) or "UNAVAILABLE OR NOT SET") .. " | WARE ALLOCATION LIMIT: " .. (maximumStock > 0 and formatNumber(maximumStock) or "UNAVAILABLE IN THE LAST SCAN") .. ". Physical cargo storage is shown separately in Evidence Checks.", { wordwrap = true, color = (targetStock <= 0 or maximumStock <= 0) and investigationUnknownColor or nil })
+            local accountBalance = tonumber(v(diagnosticCase, 32, -1)) or -1
             row = tableWidget:addRow(false)
-            row[1]:setColSpan(4):createText("STATION OPERATING ACCOUNT BALANCE: " .. formatNumber(accountBalance) .. " Cr" .. (accountBalance <= 0 and " - X4 reports no available operating funds at the last analysis." or " - available to this station at the last analysis."), { wordwrap = true, color = accountBalance <= 0 and investigationFailColor or investigationPassColor })
-            section(tableWidget, "WHAT THIS MEANS FOR YOU")
+            if accountBalance < 0 then
+                row[1]:setColSpan(4):createText("STATION OPERATING ACCOUNT BALANCE: NOT CAPTURED IN THIS CASE SNAPSHOT. Run a fresh analysis before making a funding decision.", { wordwrap = true, color = investigationUnknownColor })
+            else
+                row[1]:setColSpan(4):createText("STATION OPERATING ACCOUNT BALANCE: " .. formatNumber(accountBalance) .. " Cr" .. (accountBalance == 0 and " - X4 explicitly reported zero available operating funds at the last analysis." or " - available to this station at the last analysis."), { wordwrap = true, color = accountBalance == 0 and investigationFailColor or investigationPassColor })
+            end
+            section(tableWidget, "WHAT EOC IS DOING")
             row = tableWidget:addRow(false)
             if workingCaseEvidenceMissing then
                 row[1]:setColSpan(4):createText("EOC completed the requested analysis and found no matching confirmed case. That does not prove the station is healthy, but repeating the same analysis will not create evidence. Continue normal play and let EOC watch for a supported change.", { wordwrap = true, color = investigationUnknownColor })
-            elseif storagePressure and not awaitingEvidence then
-                row[1]:setColSpan(4):createText(text(v(diagnosticCase, 4, "This ware")) .. " storage is effectively full. Incoming deliveries, mining, production, or trade may stall. Reduce the ware target or allocation, add matching storage, or improve outbound use and sales; then run Verify Result.", { wordwrap = true, color = investigationUnknownColor })
             elseif awaitingEvidence then
                 row[1]:setColSpan(4):createText("EOC does not have enough evidence to recommend a safe station change. " .. detailRecommendation, { wordwrap = true, color = investigationUnknownColor })
             else
-                row[1]:setColSpan(4):createText(intelligenceName() .. " has isolated the immediate blocker. The colored checks below show what is working and what needs attention.", { wordwrap = true, color = navigationStoryColor })
+                local actionText, actionColor = managedActionText(diagnosticCase)
+                row[1]:setColSpan(4):createText(actionText, { wordwrap = true, color = actionColor })
+            end
+            if not workingCaseEvidenceMissing and not awaitingEvidence then
+                local scoutRecommendation, scoutChecklist = scoutRecoveryPlan(diagnosticCase, detailChecks)
+                section(tableWidget, "SCOUT'S BEST LONG-TERM RECOMMENDATION")
+                row = tableWidget:addRow(false)
+                row[1]:setColSpan(4):createText(scoutRecommendation, { wordwrap = true, color = navigationStoryColor })
+                section(tableWidget, "PLAYER CHECKLIST - COMPLETE ONLY THE STEPS THAT APPLY")
+                renderInteractiveChecklist(tableWidget, diagnosticCase, scoutChecklist)
             end
             section(tableWidget, "EVIDENCE CHECKS - GREEN CONFIRMED | RED FAILED | AMBER NOT YET KNOWN")
             for _, check in ipairs(detailChecks) do
@@ -2904,7 +3269,7 @@ local function diagnosticsCenter(tableWidget)
         if string.upper(text(v(diagnosticCase, 2, ""))) == "PLAYER" then row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("VERIFICATION LOCKED: This player-requested incident is NOT YET TESTED. Collect supported focused evidence before claiming recovery.", { wordwrap = true, color = investigationUnknownColor }) end
         row = tableWidget:addRow(true)
         row[1]:setColSpan(2)
-        addButton(row, 1, actionLabel("analysis.run", workingEvidenceMissing and "RETURN TO NEXT ACTION - EVIDENCE IS MISSING" or "I COMPLETED THE ACTION - VERIFY IT NOW", "VERIFYING WITH FRESH ANALYSIS"), function()
+        addButton(row, 1, actionLabel("analysis.run", workingEvidenceMissing and "RETURN TO NEXT ACTION - EVIDENCE IS MISSING" or "RUN A FRESH VERIFICATION CHECK", "VERIFYING WITH FRESH ANALYSIS"), function()
             if workingEvidenceMissing then menu.diagnosticView = "recovery"; menu.refresh(); return end
             if startAction("analysis.run") then
                 menu.analysisRunning = true
@@ -2933,26 +3298,10 @@ local function diagnosticsCenter(tableWidget)
     end
 
     if diagnosticCase and menu.diagnosticView ~= "recovery" and menu.diagnosticView ~= "options" then
-        section(tableWidget, "WHERE WOULD YOU LIKE TO GO NEXT?")
-        row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("These choices do not change the diagnosis. Pick where " .. intelligenceName() .. " should take you next.", { wordwrap = true, color = navigationStoryColor })
-        row = tableWidget:addRow(true)
-        row[1]:setColSpan(2)
-        addButton(row, 1, "OPEN EOC STATIONS - RETURN TO THIS CASE", function()
-            captureNavigation("DIAGNOSTICS - " .. text(v(diagnosticCase, 4, "SELECTED CASE")))
-            menu.page = "stations"
-            menu.activeTab = "stations"
-            menu.refresh()
-        end, true)
-        row[3]:setColSpan(2)
-        addButton(row, 3, "OPEN EOC FLEET & LOGISTICS - RETURN TO THIS CASE", function()
-            captureNavigation("DIAGNOSTICS - " .. text(v(diagnosticCase, 4, "SELECTED CASE")))
-            menu.fleetScope = "station"
-            menu.fleetView = "stations"
-            menu.fleetPage = 1
-            menu.page = "fleet"
-            menu.activeTab = "fleet"
-            menu.refresh()
-        end, true)
+        section(tableWidget, "EOC OPERATIONAL STATUS")
+        row = tableWidget:addRow(false)
+        local actionText, actionColor = managedActionText(diagnosticCase)
+        row[1]:setColSpan(4):createText(actionText, { wordwrap = true, color = actionColor })
         row = tableWidget:addRow(true)
         row[1]:setColSpan(2)
         addButton(row, 1, menu.diagnosticView == "supplier" and "RETURN TO NEXT ACTION" or "VIEW SUPPORTING EVIDENCE", function()
@@ -2960,7 +3309,7 @@ local function diagnosticsCenter(tableWidget)
             menu.refresh()
         end, true)
         row[3]:setColSpan(2)
-        addButton(row, 3, actionLabel("analysis.run", workingCaseEvidenceMissing and "NO CONFIRMED MATCH - RETURN TO NEXT ACTION" or (workingEvidenceMissing and "RUN FRESH ANALYSIS - IDENTIFY THE CAUSE" or "I COMPLETED THE ACTION - VERIFY IT"), "RUNNING FRESH ANALYSIS"), function()
+        addButton(row, 3, actionLabel("analysis.run", workingCaseEvidenceMissing and "NO CONFIRMED MATCH - RETURN TO NEXT ACTION" or (workingEvidenceMissing and "RUN FRESH ANALYSIS - IDENTIFY THE CAUSE" or "RUN A FRESH VERIFICATION CHECK"), "RUNNING FRESH ANALYSIS"), function()
             if workingCaseEvidenceMissing then menu.diagnosticView = "recovery"; menu.refresh(); return end
             if startAction("analysis.run") then
                 menu.analysisRunning = true
@@ -4002,7 +4351,7 @@ local function stationWorkspace(tableWidget)
     section(tableWidget, "STATION ACTIONS")
     row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addButton(row, 1, actionLabel("analysis.run", "RUN FRESH STATUS CHECK", "STATUS CHECK RUNNING"), function()
+    addButton(row, 1, actionLabel("analysis.run", "RUN FRESH EMPIRE ANALYSIS", "EMPIRE ANALYSIS RUNNING"), function()
         if startAction("analysis.run") then
             menu.analysisRunning = true
             raise("analysis.run", {})
@@ -4068,11 +4417,11 @@ local function stationWorkspace(tableWidget)
     local analysisState = actionState("analysis.run")
     if roleState.running then status = "WORKING: Applying the selected station role..."
     elseif roleState.result then status = "RESULT: " .. text(roleState.result)
-    elseif analysisState.running then status = "WORKING: Refreshing this station's status evidence through a fresh empire analysis..."
-    elseif analysisState.result then status = "RESULT: " .. text(v(station, 1, "Selected station")) .. " is " .. health .. " / " .. trend .. " with " .. #cases .. " active case(s) and " .. #observations .. " retained issue(s)."
+    elseif analysisState.running then status = "WORKING: Running a fresh empire analysis. The selected station result will follow when it completes..."
+    elseif analysisState.result then status = "EMPIRE ANALYSIS COMPLETE: " .. tostring(#(menu.stations or {})) .. " stations analyzed. SELECTED STATION RESULT: " .. text(v(station, 1, "Selected station")) .. " is " .. health .. " / " .. trend .. " with " .. #cases .. " active case(s) and " .. #observations .. " retained issue(s)."
     elseif menu.reportStatus then status = text(menu.reportStatus) end
     row = tableWidget:addRow(false)
-    row[1]:setColSpan(4):createText(status or "READY: Run a fresh status check, generate a station report, open focused evidence, or preview a role change.", { wordwrap = true, color = menu.pendingRole and investigationUnknownColor or navigationStoryColor })
+    row[1]:setColSpan(4):createText(status or "READY: Run a fresh empire analysis, generate a station report, open focused evidence, or preview a role change.", { wordwrap = true, color = menu.pendingRole and investigationUnknownColor or navigationStoryColor })
 end
 
 local function commandIdentitySetup(tableWidget, firstRun)

@@ -5,21 +5,20 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current release
 
 - Version: 3.2 GA
-- Engineering build: 239
+- Engineering build: 245
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-## What is new in EOC 3.2
+## What is new in EOC 3.2 Build 245
 
-- Adds native Player Wealth, Case Trends, and Empire Growth graphs with 5, 10, and 30-minute ranges.
-- Redesigns KPI detail views as bounded five-row pages covering cash flow, profit, construction, shortages, attention, trade, logistics, storage, workforce, shipyards, earners, and drains.
-- Reports actual shipyard ship workload without counting station-module construction as ships.
-- Reduces shipyard polling to five minutes and construction/remediation matching to two minutes.
-- Shows compatible available player ships without silently registering or controlling them.
-- Adds zero-default global minimum policies for mining, trade, build-storage trade, defence, and escorts.
-- Adds two-step Clear All EOC Cases with an immediate MONITORING / STABLE reset and one fresh analysis.
-- Requires visible supporting cases or retained evidence for non-healthy station classifications.
-- Improves player-case evidence handoff and terminal no-match diagnostics.
+- Adds bounded managed BUY actions for confirmed shortages and SELL actions for storage pressure.
+- Adds Scout's long-term recommendations and ordered recovery playbooks across every supported issue family.
+- Adds persistent two-way EOC/player command checklists with EOC-owned evidence, player decisions, and automatic verification.
+- Preserves managed-action baselines so later stock movement can resolve, improve, or escalate a case.
+- Makes Clear All reset cases, evidence, managed trade actions, checklist answers, and command requests before one fresh analysis.
+- Isolates Docked-menu callbacks so one failing UI addon callback cannot suppress EOC access.
+- Adds bounded Dock lifecycle diagnostics without a watcher, polling loop, or per-frame repair.
+- Clarifies empire-analysis scope, storage evidence, and transient case-result ownership.
 
 ## Existing EOC capabilities
 
@@ -40,6 +39,7 @@ Transform your X4 empire from reactive management into intelligent operations.
 
 - [EOC 3.2 GA User and Support Guide](docs/EOC_3.2_GA_USER_SUPPORT_GUIDE.md)
 - [EOC 3.2 GA Release Notes](docs/RELEASE_NOTES_3.2_GA.md)
+- [Report an EOC issue](https://github.com/razoreqx1/JK-Empire-Operations/issues)
 
 Older release documents remain available in `docs/`.
 
