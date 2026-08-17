@@ -5,7 +5,19 @@
       <do_if value="not global.$JKEOC_B73TradeMode?"><set_value name="global.$JKEOC_B73TradeMode" exact="'ADVISOR'" /></do_if>
       <do_if value="not global.$JKEOC_B73Offers?"><set_value name="global.$JKEOC_B73Offers" exact="[]" /></do_if>
       <do_if value="not global.$JKEOC_B241ActionStatus?"><set_value name="global.$JKEOC_B241ActionStatus" exact="[]" /></do_if>
-      <debug_text text="'[JKEOC][B73][READY] mode=%1 offers=%2'.[global.$JKEOC_B73TradeMode, global.$JKEOC_B73Offers.count]" filter="general" />
+      <!-- Build 251 one-time bounded Raw Scrap retirement. Player-created
+           investigations are stored separately and are deliberately untouched. -->
+      <do_if value="not global.$JKEOC_B251RawScrapCleanup?">
+        <set_value name="$retainedoffers" exact="[]" /><set_value name="$retainedactions" exact="[]" /><set_value name="$retainedchecks" exact="[]" /><set_value name="$retainedevidence" exact="[]" /><set_value name="$retainedcritical" exact="[]" /><set_value name="$retainedwarning" exact="[]" /><set_value name="$removed" exact="0" />
+        <do_for_each name="$o" in="global.$JKEOC_B73Offers"><do_if value="$o.$ware? and $o.$ware == ware.rawscrap"><do_if value="$o.$offer? and $o.$offer.exists and $o.$station? and $o.$station.exists"><remove_trade_offer object="$o.$station" tradeoffer="$o.$offer" /></do_if><set_value name="$removed" exact="$removed + 1" /></do_if><do_else><append_to_list name="$retainedoffers" exact="$o" /></do_else></do_for_each><set_value name="global.$JKEOC_B73Offers" exact="$retainedoffers" />
+        <do_for_each name="$a" in="global.$JKEOC_B241ActionStatus"><do_if value="$a.$ware? and $a.$ware == ware.rawscrap"><set_value name="$removed" exact="$removed + 1" /></do_if><do_else><append_to_list name="$retainedactions" exact="$a" /></do_else></do_for_each><set_value name="global.$JKEOC_B241ActionStatus" exact="$retainedactions" />
+        <do_if value="global.$JKEOC_B243ChecklistProgress?"><do_for_each name="$c" in="global.$JKEOC_B243ChecklistProgress"><do_if value="$c.$subject? and $c.$subject == ware.rawscrap.name"><set_value name="$removed" exact="$removed + 1" /></do_if><do_else><append_to_list name="$retainedchecks" exact="$c" /></do_else></do_for_each><set_value name="global.$JKEOC_B243ChecklistProgress" exact="$retainedchecks" /></do_if>
+        <do_if value="global.$JKEOC_SPOSRecords?"><do_for_each name="$e" in="global.$JKEOC_SPOSRecords"><do_if value="($e.$subjectkey? and $e.$subjectkey == ware.rawscrap) or ($e.$subject? and $e.$subject == ware.rawscrap.name)"><set_value name="$removed" exact="$removed + 1" /></do_if><do_else><append_to_list name="$retainedevidence" exact="$e" /></do_else></do_for_each><set_value name="global.$JKEOC_SPOSRecords" exact="$retainedevidence" /></do_if>
+        <do_if value="global.$JKEOC_CriticalCases?"><do_for_each name="$c" in="global.$JKEOC_CriticalCases"><do_if value="$c.$wareobject? and $c.$wareobject == ware.rawscrap"><set_value name="$removed" exact="$removed + 1" /></do_if><do_else><append_to_list name="$retainedcritical" exact="$c" /></do_else></do_for_each><set_value name="global.$JKEOC_CriticalCases" exact="$retainedcritical" /></do_if>
+        <do_if value="global.$JKEOC_WarningCases?"><do_for_each name="$c" in="global.$JKEOC_WarningCases"><do_if value="$c.$wareobject? and $c.$wareobject == ware.rawscrap"><set_value name="$removed" exact="$removed + 1" /></do_if><do_else><append_to_list name="$retainedwarning" exact="$c" /></do_else></do_for_each><set_value name="global.$JKEOC_WarningCases" exact="$retainedwarning" /></do_if>
+        <set_value name="global.$JKEOC_B251RawScrapCleanup" exact="true" /><debug_text text="'[JKEOC][B251][RAW_SCRAP_CLEANUP] removed=%1 player_cases=PRESERVED recurring_work=0'.[$removed]" filter="general" />
+      </do_if>
+      <debug_text text="'[JKEOC][B251][READY] mode=%1 offers=%2 raw_scrap_excluded=1'.[global.$JKEOC_B73TradeMode, global.$JKEOC_B73Offers.count]" filter="general" />
     </actions></cue>
     <cue name="JKEOC_B73_Scheduler" instantiate="true" namespace="this" checktime="player.age + 5min" checkinterval="5min"><conditions><check_value value="global.$JKEOC_B73TradeMode? and global.$JKEOC_B73TradeMode == 'MANAGED'" /></conditions><actions><signal_cue_instantly cue="JKEOC_B73_Reconcile" /></actions></cue>
 
@@ -39,8 +51,8 @@
     <cue name="JKEOC_B73_Reconcile" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
       <set_value name="$created" exact="0" /><set_value name="$blocked" exact="0" /><set_value name="$surplus" exact="0" /><set_value name="$removed" exact="0" />
       <set_value name="$cases" exact="[]" />
-      <do_if value="global.$JKEOC_CriticalCases?"><do_for_each name="$case" in="global.$JKEOC_CriticalCases"><do_if value="$case.$type? and ($case.$type == 'CRITICAL SHORTAGE' or $case.$type == 'STORAGE PRESSURE' or $case.$type == 'WORKFORCE SUPPLY RISK')"><append_to_list name="$cases" exact="$case" /></do_if></do_for_each></do_if>
-      <do_if value="global.$JKEOC_WarningCases?"><do_for_each name="$case" in="global.$JKEOC_WarningCases"><do_if value="$case.$type? and ($case.$type == 'CRITICAL SHORTAGE' or $case.$type == 'STORAGE PRESSURE' or $case.$type == 'WORKFORCE SUPPLY RISK')"><append_to_list name="$cases" exact="$case" /></do_if></do_for_each></do_if>
+      <do_if value="global.$JKEOC_CriticalCases?"><do_for_each name="$case" in="global.$JKEOC_CriticalCases"><do_if value="$case.$wareobject? and $case.$wareobject != ware.rawscrap and $case.$type? and ($case.$type == 'CRITICAL SHORTAGE' or $case.$type == 'STORAGE PRESSURE' or $case.$type == 'WORKFORCE SUPPLY RISK')"><append_to_list name="$cases" exact="$case" /></do_if></do_for_each></do_if>
+      <do_if value="global.$JKEOC_WarningCases?"><do_for_each name="$case" in="global.$JKEOC_WarningCases"><do_if value="$case.$wareobject? and $case.$wareobject != ware.rawscrap and $case.$type? and ($case.$type == 'CRITICAL SHORTAGE' or $case.$type == 'STORAGE PRESSURE' or $case.$type == 'WORKFORCE SUPPLY RISK')"><append_to_list name="$cases" exact="$case" /></do_if></do_for_each></do_if>
 
       <!-- Remove an automatic EOC offer when its live station-and-ware case no longer exists. Manual market tests remain separately player controlled. -->
       <set_value name="$retained" exact="[]" />
@@ -94,7 +106,7 @@
 
     <cue name="JKEOC_B160_CreateMarketTest" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
       <set_value name="$case" exact="global.$JKEOC_B160TestCase" /><set_value name="$type" exact="global.$JKEOC_B160TestType" /><set_value name="$result" exact="'Market test cancelled: EOC could not resolve the selected station or ware. Nothing changed.'" />
-      <do_if value="$case? and $case.$station? and $case.$station.exists and $case.$station.owner == faction.player and $case.$wareobject?">
+      <do_if value="$case? and $case.$station? and $case.$station.exists and $case.$station.owner == faction.player and $case.$wareobject? and $case.$wareobject != ware.rawscrap">
         <set_value name="$duplicate" exact="false" /><do_for_each name="$o" in="global.$JKEOC_B73Offers"><do_if value="$o.$station == $case.$station and $o.$ware == $case.$wareobject and $o.$type == $type and $o.$offer? and $o.$offer.exists"><set_value name="$duplicate" exact="true" /></do_if></do_for_each>
         <do_if value="$duplicate"><set_value name="$result" exact="'No duplicate created. An EOC-owned %1 offer already exists for %2 at %3.'.[$type, $case.$ware, $case.$stationname]" /></do_if>
         <do_else>

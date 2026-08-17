@@ -2,7 +2,7 @@
 
 ## Starting EOC
 
-After loading a game, wait approximately 10 seconds for EOC to complete its initial station scan. Open Dock Interactions and select **OPEN EXECUTIVE OPERATIONS CENTER**, or use the EOC pinwheel.
+After loading a game, wait approximately 10 seconds for EOC to complete its initial station scan. Open Dock Interactions and select **OPEN EXECUTIVE OPERATIONS CENTER**. The obsolete conversation pinwheel was retired in Build 253.
 
 ## KPI Center
 

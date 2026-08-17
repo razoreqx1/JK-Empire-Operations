@@ -2,7 +2,7 @@
 
 EOC 3.2 delivers a faster, clearer Executive Operations Center with redesigned KPI intelligence, safer case management, stronger evidence consistency, and expanded fleet visibility.
 
-## Build 250 recovery intelligence update
+## Build 253 recovery intelligence update
 
 - Bounded managed BUY actions for confirmed shortages and SELL actions for storage pressure.
 - Scout long-term recommendations and ordered recovery playbooks for shortages, overages, production, missing inputs, unavailable supply, missing logistics, and Allographyne/project demand.
@@ -13,6 +13,9 @@ EOC 3.2 delivers a faster, clearer Executive Operations Center with redesigned K
 - Bounded Dock lifecycle diagnostics with no recurring watcher, periodic polling, or per-frame repair.
 - Clearer empire-analysis scope, storage-allocation labels, and transient case-result ownership.
 - Same-page buttons, forced verification, and automatic refreshes preserve the player's visible scroll position.
+- Raw Scrap is excluded from conventional shortages, managed BUY actions, supplier/local-production advice, and EOC checklists because native X4 treats it as an infinite sink.
+- One bounded cleanup retires prior Raw Scrap EOC state without deleting player-created investigations; recycling stations and every other ware remain monitored.
+- The obsolete EOC conversation pinwheel is retired. Dock Interactions remains the authoritative EOC access path.
 
 ## KPI Center
 

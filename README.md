@@ -5,11 +5,11 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current release
 
 - Version: 3.2 GA
-- Engineering build: 250
+- Engineering build: 253
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-## What is new in EOC 3.2 Build 250
+## What is new in EOC 3.2 Build 253
 
 - Adds bounded managed BUY actions for confirmed shortages and SELL actions for storage pressure.
 - Adds Scout's long-term recommendations and ordered recovery playbooks across every supported issue family.
@@ -20,10 +20,13 @@ Transform your X4 empire from reactive management into intelligent operations.
 - Adds bounded Dock lifecycle diagnostics without a watcher, polling loop, or per-frame repair.
 - Clarifies empire-analysis scope, storage evidence, and transient case-result ownership.
 - Same-page buttons, forced verification, and automatic refreshes preserve the player's visible scroll position.
+- Excludes Raw Scrap from conventional shortage cases, managed BUY actions, supplier/local-production advice, and EOC checklists because native X4 treats it as an infinite sink.
+- Retires prior Raw Scrap EOC state through one bounded cleanup while preserving player-created investigations and continuing to monitor recycling stations and every other ware.
+- Removes the obsolete EOC conversation pinwheel. Dock Interactions is now the authoritative access path, and closing EOC returns directly to normal play.
 
 ## Existing EOC capabilities
 
-- Standalone EOC access from **Dock Interactions > OPEN EXECUTIVE OPERATIONS CENTER**, plus the EOC pinwheel.
+- Standalone EOC access from **Dock Interactions > OPEN EXECUTIVE OPERATIONS CENTER**.
 - Persistent station roles and role-aware operational recommendations.
 - Guided Recovery, evidence-backed cases, verification, bounded market tests, Managed Trade, shipping control, fleet templates, and reports.
 - Mission-aware analysis, including intentional Terraforming-related activity.

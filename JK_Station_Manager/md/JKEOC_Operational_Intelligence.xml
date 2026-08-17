@@ -445,7 +445,7 @@
 
         <set_value name="$retainedrecords" exact="[]" />
         <do_for_each name="$retentionrecord" in="global.$JKEOC_SPOSRecords">
-          <set_value name="$retain" exact="$retentionrecord.$station.exists and $retentionrecord.$station.owner == faction.player" />
+          <set_value name="$retain" exact="$retentionrecord.$station.exists and $retentionrecord.$station.owner == faction.player and (not $retentionrecord.$subjectkey? or $retentionrecord.$subjectkey != ware.rawscrap)" />
           <set_value name="$categoryenabled" exact="true" />
           <do_if value="$retentionrecord.$category == 'PRODUCTION SHORTAGE'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c1" /></do_if>
           <do_elseif value="$retentionrecord.$category == 'STORAGE PRESSURE'"><set_value name="$categoryenabled" exact="global.$JKEOC_ObservationConfig.$c2" /></do_elseif>

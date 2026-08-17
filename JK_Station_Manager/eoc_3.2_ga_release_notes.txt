@@ -1,23 +1,21 @@
 EOC 3.2 GA
-Build 250 | Version 350
+Build 253 | Version 353 | 2026-08-17
 
-COMMAND CHECKLISTS, RESILIENT DOCK ACCESS, AND PRESERVED SCROLL POSITION
+COMMAND CHECKLISTS, RESILIENT ACCESS, RAW SCRAP ACCURACY, AND PRESERVED SCROLL POSITION
 
-Build 250 retains the complete Build 245 recovery-intelligence release and adds the proven Build 249 scroll-position correction without adding a watcher, recurring scan, or per-frame repair.
+Build 253 retains the complete Build 250 recovery-intelligence release and promotes the live-tested Build 251 Raw Scrap correction and Build 252 legacy-access cleanup.
 
 Highlights
-- Docked-menu callbacks are isolated. One failing third-party callback can no longer prevent later callbacks, including EOC's access button, from rendering.
-- Bounded Dock lifecycle diagnostics identify menu dispatch, EOC callback presence, callback errors, button rendering, and clicks. Only the first eight menu-display samples are logged.
-- EOC-owned checklist steps can request one bounded fresh evidence review. Supported facts remain EOC-verified; blocked evidence is reported rather than guessed.
-- Player decision steps cycle through Yes/Done, No/Not Done, and unanswered. A No branch keeps the prerequisite unresolved without independently cancelling or mutating managed actions.
-- The command/decision model applies to shortages, overages, production, missing inputs, unavailable supply, missing logistics, and project-driven demand.
-- EOC-known supplier and compatible-trader facts are not assigned back to the player. Unsupported rules, prices, blacklists, live orders, and manager range remain clear inspection boundaries.
-- Clear All resets checklist answers and command requests with cases and managed actions.
-- Stations says Run Fresh Empire Analysis and reports empire completion before the selected-station result.
-- Diagnostics distinguishes ware allocation limits from physical cargo-storage capacity and fixes the 90 percent display.
-- Transient case-action messages are cleared when another case opens.
+- Docked-menu callbacks are isolated so one failing third-party callback cannot prevent EOC access.
+- EOC-owned checklist steps use bounded fresh evidence; player decision steps retain explicit Yes/No state.
+- Bounded managed BUY and SELL actions remain connected to live cases and stock baselines.
+- Scout long-term recommendations cover shortages, overages, production, missing inputs, supply, logistics, and Allographyne.
 - Same-page buttons, forced verification, and automatic refreshes preserve the player's visible scroll position.
-- Player issues: https://github.com/razoreqx1/JK-Empire-Operations/issues. Include EOC build/version, X4 version, reproduction steps, relevant mods, and a fresh debug log.
+- Raw Scrap is excluded from conventional shortage cases, bounded BUY actions, supplier/local-production advice, and EOC checklists because native X4 treats it as an infinite sink.
+- One-time bounded cleanup retires prior Raw Scrap EOC evidence, checklist/action state, cases, and EOC-created offers while preserving player-created investigations.
+- Recycling stations, outputs, Energy Cells, Scrap Metal, and every other ware remain monitored normally.
+- The obsolete EOC conversation pinwheel is retired. The Docked-menu OPEN EXECUTIVE OPERATIONS CENTER button is the authoritative access path, and closing EOC returns directly to normal play.
+- No watcher, polling, per-frame work, or extra recurring scan was added.
 
 Player support and issue tracking:
 https://github.com/razoreqx1/JK-Empire-Operations/issues

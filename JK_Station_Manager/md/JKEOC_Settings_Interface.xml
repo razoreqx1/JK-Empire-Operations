@@ -577,7 +577,7 @@
         <do_elseif value="event.param2 == 'report.station'"><set_value name="global.$JKEOC_LuaReportIndex" exact="event.param3.$index" /><signal_cue_instantly cue="JKEOC_Settings_ReportStation" /></do_elseif>
         <do_elseif value="event.param2 == 'report.remediation'"><signal_cue_instantly cue="JKEOC_Settings_ReportRemediation" /></do_elseif>
         <do_elseif value="event.param2 == 'report.trade'"><signal_cue_instantly cue="JKEOC_Settings_ReportTrade" /></do_elseif>
-        <do_elseif value="event.param2 == 'closed'"><set_value name="global.$JKEOC_SettingsReturnReason" exact="if event.param3.$reason? then event.param3.$reason else 'close'" /><do_if value="global.$JKEOC_SettingsReturnReason != 'shared'"><signal_cue_instantly cue="JKEOC_Settings_ReturnToEOC" /></do_if></do_elseif>
+        <do_elseif value="event.param2 == 'closed'"><set_value name="global.$JKEOC_SettingsReturnReason" exact="if event.param3.$reason? then event.param3.$reason else 'close'" /><debug_text text="'[JKEOC][B253][WINDOW_CLOSED] reason=%1 legacy_pinwheel=0'.[global.$JKEOC_SettingsReturnReason]" filter="general" /></do_elseif>
       </actions>
     </cue>
 
@@ -993,7 +993,6 @@
         <debug_text text="'[JKEOC][B224][REPORT_FEED] title=%1 retained=%2'.[event.param.{1}, global.$JKEOC_LuaReports.count]" filter="general" />
       </actions>
     </cue>
-    <cue name="JKEOC_Settings_ReturnToEOC" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="1s" /><actions><start_conversation actor="player.computer" conversation="JKSM_EmpireOperations" type="unqueued" /></actions></cue>
     <cue name="JKEOC_Settings_ClearBackgroundConversation" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="1s" /><actions><cancel_conversation actor="player.computer" /><debug_text text="'[JKEOC][B224][BACKGROUND_CLOSED]'" filter="general" /></actions></cue>
   </cues>
 </mdscript>
