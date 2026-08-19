@@ -1,0 +1,14 @@
+EOC 3.2 TEST
+Build 254 | Version 354 | 2026-08-19
+
+DEVELOPER DOCUMENTATION PASS
+
+Build 254 preserves the exact Build 253 runtime behavior and adds maintainability documentation for new programmers.
+
+- Adds module headers and docblock-style comments to the Lua entry points.
+- Documents Mission Director subsystem ownership, inputs, outputs, authority boundaries, persistent globals, and safety invariants.
+- Adds a developer architecture guide with a file map, schema dictionary, MD/Lua ABI rules, historical-identifier explanation, and validation workflow.
+- Does not narrate obvious individual statements or change operational logic.
+- Adds no watcher, polling, per-frame work, recurring scan, gameplay authority, or save migration.
+
+TEST only. Build 253 / version 353 remains the published GA until this documentation-only source receives normal validation.

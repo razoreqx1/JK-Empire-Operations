@@ -1,5 +1,29 @@
 ---@diagnostic disable: undefined-global, undefined-field
 
+--- EOC full-window controller and presentation layer.
+-- @module eoc_settings
+-- @architecture X4 Lua owns rendering, navigation, transient selection, and
+-- button callbacks. Mission Director XML remains authoritative for persistent
+-- game state, station scans, cases, evidence, and bounded gameplay actions.
+-- @transport JKEOC_Settings_Interface.xml serializes MD records into positional
+-- Lua arrays. The v(record, index, default) helper is the compatibility boundary;
+-- changing a field position requires synchronized MD and Lua updates.
+-- @state menu contains transient UI state only. Persistent state must live in
+-- documented global.$JKEOC_* MD globals and return through the interface.
+-- @refresh Same-page rebuilds must capture and restore live table IDs, top rows,
+-- and selected rows. Button wrappers must never rebuild before their handlers.
+-- @performance Do not add per-frame scans, unbounded tables, or background
+-- polling. Existing timed data collection is page-scoped or MD-owned and bounded.
+-- @authority A UI click is a request, not proof. Only fresh MD evidence may mark
+-- an EOC-owned checklist step verified or resolve an operational case.
+
+-- Major regions in this file:
+--   1. X4 FFI declarations and menu state
+--   2. transport/event decoders from Mission Director
+--   3. reusable table, button, formatting, and scroll helpers
+--   4. Cases / Diagnostics / Reports / Fleet / Construction / KPI renderers
+--   5. Docked full-window lifecycle and refresh orchestration
+
 local ffi = require("ffi")
 local C = ffi.C
 
@@ -80,7 +104,7 @@ local investigationUnknownColor = { r = 255, g = 190, b = 72, a = 100 }
 local investigationNeutralColor = { r = 175, g = 185, b = 195, a = 100 }
 local navigationStoryColor = { r = 125, g = 200, b = 235, a = 100 }
 local EOC_IDENTITY_BB = "$JKEOC_CommandIntelligenceIdentity"
-local EOC_OS_BUILD = 253
+local EOC_OS_BUILD = 254
 local EOC_CHECKLIST_SCHEMA = 3
 local KPI_REFRESH_SECONDS = 30
 menu.KPI_HISTORY_LIMIT = 64
@@ -2958,12 +2982,12 @@ local function captureForcedVerificationScroll()
         menu.forcedVerificationTopRow = topRow
         menu.forcedVerificationPage = menu.page
         menu.forcedVerificationScrollLocked = true
-        DebugError("[JKEOC][B253][FORCED_VERIFY_SCROLL_CAPTURE] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
+        DebugError("[JKEOC][B254][FORCED_VERIFY_SCROLL_CAPTURE] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
     else
         menu.forcedVerificationTopRow = nil
         menu.forcedVerificationPage = nil
         menu.forcedVerificationScrollLocked = nil
-        DebugError("[JKEOC][B253][FORCED_VERIFY_SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
+        DebugError("[JKEOC][B254][FORCED_VERIFY_SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
     end
 end
 
@@ -4920,11 +4944,11 @@ function menu.refresh(preserveScroll)
         if ok then
             menu.restoreTableTopRow = topRow
             if not menu.scrollCaptureConfirmed then
-                DebugError("[JKEOC][B253][SCROLL_CAPTURE_CONFIRMED] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
+                DebugError("[JKEOC][B254][SCROLL_CAPTURE_CONFIRMED] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
                 menu.scrollCaptureConfirmed = true
             end
         elseif not menu.scrollCaptureFailureLogged then
-            DebugError("[JKEOC][B253][SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
+            DebugError("[JKEOC][B254][SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
             menu.scrollCaptureFailureLogged = true
         end
         if Helper.currentTableRow and tableId then menu.restoreTableSelectedRow = Helper.currentTableRow[tableId] end

@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <mdscript name="JKEOC_Trade_Order_Manager" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!--
+    SUBSYSTEM: EOC-owned bounded BUY/SELL offer lifecycle.
+    PRIMARY SCHEMAS:
+      global.$JKEOC_B73Offers: offer handle, station, ware, direction, amount,
+        creation time, baseline, target, verification, and optional market-test flag.
+      global.$JKEOC_B241ActionStatus: UI-facing state/reason/waiting/baseline/current.
+    OWNERSHIP: Remove only offers represented in B73Offers. Never alter ordinary
+    station offers, player trade rules, ship orders, prices, or budgets.
+    RECONCILIATION: Live EOC cases are authority; stale EOC offers are removed.
+    RAW SCRAP: ware.rawscrap is an X4 infinite sink and is excluded from cases,
+    actions, advice, and checklists. The B251 cleanup is one-time and preserves
+    global.$JKEOC_PlayerCases.
+  -->
   <cues>
     <cue name="JKEOC_B73_Init" instantiate="true" namespace="this"><conditions><event_game_loaded /></conditions><delay exact="40s" /><actions>
       <do_if value="not global.$JKEOC_B73TradeMode?"><set_value name="global.$JKEOC_B73TradeMode" exact="'ADVISOR'" /></do_if>

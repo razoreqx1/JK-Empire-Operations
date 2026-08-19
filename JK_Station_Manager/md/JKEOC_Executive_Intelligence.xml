@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <mdscript name="JKEOC_Executive_Intelligence" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!--
+    SUBSYSTEM: Bounded executive-health aggregation.
+    Reads existing station profiles and case/evidence counts; it does not rescan
+    stations or mutate gameplay. Results feed the EOC dashboard and inbox.
+    INVARIANT: Never infer a critical/chronic label without visible supporting
+    cases or retained evidence from the authoritative lower layers.
+  -->
   <cues>
     <!-- Build 83 derives every executive value from existing bounded station profiles. -->
     <cue name="JKEOC_B83_Initialize" instantiate="true" namespace="this">

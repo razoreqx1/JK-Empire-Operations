@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <mdscript name="JKEOC_Settings_Interface" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!--
+    SUBSYSTEM: Mission Director <-> Lua transport and command dispatcher.
+    OPEN PATH: consumes JKEOC_PersonalOfficeAccess from eoc_personal_office.lua.
+    READ PATH: serializes profiles, cases, observations, managed offers, checklist
+    state, fleets, construction, and KPI data into positional arrays for Lua.
+    WRITE PATH: validates named Lua commands before changing MD globals or signaling
+    bounded action cues. A click never becomes evidence by itself.
+    COMPATIBILITY: Positional array indexes are a public internal ABI with
+    eoc_settings.lua. Append fields where possible; coordinate every index change.
+    ACCESS: Build 253 retired the legacy pinwheel. Closing the Lua window returns
+    to play and must not start JKSM_EmpireOperations.
+  -->
   <cues>
     <cue name="JKEOC_Settings_Open" instantiate="true" namespace="this">
       <conditions><check_any><event_conversation_next_section actor="player.computer" section="JKEOC_Settings_Open" /><event_ui_triggered screen="'JKEOC_PersonalOfficeAccess'" /></check_any></conditions>

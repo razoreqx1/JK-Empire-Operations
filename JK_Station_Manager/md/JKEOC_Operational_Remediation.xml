@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <mdscript name="JKEOC_Operational_Remediation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!--
+    SUBSYSTEM: Convert repeated evidence into bounded remediation records.
+    INPUT: global.$JKEOC_SPOSRecords. OUTPUT: global.$JKEOC_B70Remediations.
+    Records explain diagnosis, teaching, proposed assignment capability, and
+    verification state. Recommendations are automatic; gameplay mutation remains
+    behind the established mailbox/authority gates.
+  -->
   <!-- Build 70: repeated-evidence remediation. Recommendations and teaching are
        automatic; gameplay mutations remain behind the existing proof/authority gate. -->
   <cues>

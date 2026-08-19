@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<mdscript name="JKEOC_Shipping_Control" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><cues>
+<mdscript name="JKEOC_Shipping_Control" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<!--
+  SUBSYSTEM: Registered-ship discovery, compatibility matching, and assignment.
+  PERSISTENCE: global.$JKEOC_B76EligibleShips and bounded pending proposal globals.
+  AUTHORITY: Honors Disabled / Approval Required / Auto-Assign Registered.
+  ELIGIBILITY: Real operational player ships only; excludes units, XS craft,
+  commanded ships, and ships with subordinates. No ship is invented or duplicated.
+  SCHEDULER: Existing five-minute bounded reconciliation; do not add another loop.
+-->
+<cues>
   <cue name="JKEOC_B76_Init" instantiate="true" namespace="this"><conditions><event_game_loaded /></conditions><delay exact="45s" /><actions><do_if value="not global.$JKEOC_B76AssignmentMode?"><set_value name="global.$JKEOC_B76AssignmentMode" exact="'APPROVAL REQUIRED'" /></do_if><do_if value="not global.$JKEOC_B76EligibleShips?"><set_value name="global.$JKEOC_B76EligibleShips" exact="[]" /></do_if><set_value name="$eligible" exact="[]" /><do_for_each name="$ship" in="global.$JKEOC_B76EligibleShips"><do_if value="$ship.exists and $ship.owner == faction.player and $ship.isclass.ship and $ship.isoperational and ($ship.primarypurpose == purpose.trade or $ship.primarypurpose == purpose.mine or $ship.primarypurpose == purpose.fight) and not $ship.isunit and not $ship.isclass.ship_xs and not $ship.commander and not $ship.subordinates.count"><append_to_list name="$eligible" exact="$ship" /></do_if></do_for_each><set_value name="global.$JKEOC_B76EligibleShips" exact="$eligible" /><do_if value="global.$JKEOC_B74PendingShip? and (not global.$JKEOC_B74PendingShip.exists or not global.$JKEOC_B74PendingShip.isclass.ship or global.$JKEOC_B74PendingShip.isunit or global.$JKEOC_B74PendingShip.isclass.ship_xs or global.$JKEOC_B74PendingShip.commander or global.$JKEOC_B74PendingShip.subordinates.count)"><remove_value name="global.$JKEOC_B74PendingRemediation" /><remove_value name="global.$JKEOC_B74PendingShip" /></do_if><debug_text text="'[JKEOC][B83E][SHIPPING_READY] mode=%1 registered=%2'.[global.$JKEOC_B76AssignmentMode, global.$JKEOC_B76EligibleShips.count]" filter="general" /><signal_cue_instantly cue="JKEOC_B76_ScanBuildStorage" /></actions></cue>
   <cue name="JKEOC_B76_Scheduler" instantiate="true" namespace="this" checktime="player.age + 5min" checkinterval="5min"><conditions><check_value value="global.$JKEOC_B76AssignmentMode?" /></conditions><actions><signal_cue_instantly cue="JKEOC_B76_ScanBuildStorage" /></actions></cue>
   <cue name="JKEOC_B76_Menu" instantiate="true" namespace="this"><conditions><event_conversation_next_section actor="player.computer" section="JKEOC_B76_Menu" /></conditions><actions>

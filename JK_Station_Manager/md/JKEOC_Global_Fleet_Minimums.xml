@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <mdscript name="JKEOC_Global_Fleet_Minimums" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!--
+    SUBSYSTEM: Player-configured global minimum assignment policy.
+    PERSISTENCE: global.$JKEOC_MinMining/MinTrade/MinBuildStorage/MinDefence/
+    MinEscort plus one bounded pending-build record.
+    AUTHORITY: Zero disables a category. Assignment/build behavior must respect
+    Disabled, Approval Required, and Auto-Assign Registered modes.
+    SAFETY: At most one compatible idle registered ship or one normal player-wharf
+    request per scan; no free ships, resource bypass, or competing escort control.
+  -->
   <cues>
     <cue name="JKEOC_B219_MinimumInit" instantiate="true" namespace="this"><conditions><event_game_loaded /></conditions><delay exact="50s" /><actions>
       <do_if value="not global.$JKEOC_MinMining?"><set_value name="global.$JKEOC_MinMining" exact="0" /></do_if><do_if value="not global.$JKEOC_MinTrade?"><set_value name="global.$JKEOC_MinTrade" exact="0" /></do_if><do_if value="not global.$JKEOC_MinBuildStorage?"><set_value name="global.$JKEOC_MinBuildStorage" exact="0" /></do_if><do_if value="not global.$JKEOC_MinDefence?"><set_value name="global.$JKEOC_MinDefence" exact="0" /></do_if><do_if value="not global.$JKEOC_MinEscort?"><set_value name="global.$JKEOC_MinEscort" exact="0" /></do_if>

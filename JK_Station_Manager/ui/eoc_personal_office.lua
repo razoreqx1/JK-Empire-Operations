@@ -1,3 +1,13 @@
+--- EOC Docked-menu integration adapter.
+-- @module eoc_personal_office
+-- @responsibility Register exactly one bounded callback with X4's DockedMenu and
+-- raise JKEOC_PersonalOfficeAccess when the player clicks the EOC button.
+-- @lifecycle init() retries registration for at most 60 seconds at startup; after
+-- registration there is no watcher, polling loop, or per-frame repair.
+-- @boundary This file opens EOC only. It does not scan stations, mutate ships,
+-- create trade offers, or own persistent game state.
+-- @contract JKEOC_Settings_Interface.xml consumes the raised UI event.
+
 local integration = {
     callbackID = "jk_eoc_b218_universal_access",
     menu = nil,
@@ -8,11 +18,17 @@ local integration = {
     clickCount = 0,
 }
 
+--- Raise the Lua-to-Mission-Director event that requests the full EOC window.
+-- Kept separate from the click handler so the DockedMenu can close before MD
+-- starts transporting current state into eoc_settings.lua.
 local function signalEOC()
     DebugError("[JKEOC][B245][DOCK_ACCESS] stage=OPEN_EVENT_RAISED event=JKEOC_PersonalOfficeAccess")
     AddUITriggeredEvent("JKEOC_PersonalOfficeAccess", "open", nil)
 end
 
+--- Handle the player-facing Docked-menu button.
+-- Closes DockedMenu first, then schedules one delayed open event to avoid two
+-- overlapping X4 menus competing for focus.
 local function openEOC()
     integration.clickCount = integration.clickCount + 1
     DebugError("[JKEOC][B245][DOCK_ACCESS] stage=BUTTON_CLICKED count=" .. tostring(integration.clickCount))
@@ -29,6 +45,8 @@ local function openEOC()
     end
 end
 
+--- Render the EOC access row into X4's existing Docked-menu table.
+-- @param tableHeader X4 UI table supplied by the registered callback surface.
 local function addEOCAction(tableHeader)
     integration.renderCount = integration.renderCount + 1
     DebugError("[JKEOC][B245][DOCK_ACCESS] stage=BUTTON_RENDERED count=" .. tostring(integration.renderCount))
@@ -43,6 +61,8 @@ local function addEOCAction(tableHeader)
     row[1].handlers.onClick = openEOC
 end
 
+--- Register the bounded Docked-menu callback.
+-- Registration is idempotent; callbackID prevents duplicate ownership.
 local function init()
     if integration.registered then
         return

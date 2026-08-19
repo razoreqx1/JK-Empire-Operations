@@ -3,6 +3,18 @@
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
   <!--
+    SUBSYSTEM: Station Performance Observation System (SPOS).
+    STORE: global.$JKEOC_SPOSRecords, capped at 256 records with explicit rotation.
+    RECORD IDENTITY: station + category + subjectkey. subjectkey should be the ware
+    object when available; display names are not stable identifiers.
+    LIFECYCLE: baseline -> candidate -> recurring/systemic -> recovering/resolved.
+    BLANK SAMPLES: Never erase retained history or falsely advance recovery.
+    PERFORMANCE: One existing bounded scheduler only; no watcher or per-frame work.
+    RAW SCRAP: retention and new conventional shortage admission exclude
+    ware.rawscrap while all recycling outputs and other wares remain observable.
+  -->
+
+  <!--
     EOC v6.0.0 Build 64 - Autonomous Station Stabilization
 
     Read-only boundary:
