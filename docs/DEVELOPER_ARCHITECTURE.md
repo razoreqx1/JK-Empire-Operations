@@ -11,7 +11,7 @@ This guide is the entry point for programmers working on EOC. It describes owner
 3. Advisor/remediation/trade/shipping/fleet XML files derive recommendations and execute only authority-bounded actions.
 4. `md/JKEOC_Settings_Interface.xml` is the ABI between Mission Director and Lua. It serializes persistent records into positional arrays and validates commands returning from Lua.
 5. `ui/eoc_settings.lua` renders the full window and owns transient navigation only.
-6. `ui/eoc_personal_office.lua` registers the access button through the declared UI Extensions and HUD Docked-menu callback and raises the one-shot open event. EOC does not own a private Docked-menu copy.
+6. `subst_01.cat/.dat` provides EOC's self-contained Docked-menu owner. `ui/eoc_personal_office.lua` registers the access button through its callback table and raises the one-shot open event.
 
 ## File ownership map
 
@@ -27,7 +27,8 @@ This guide is the entry point for programmers working on EOC. It describes owner
 - `JKEOC_Autonomous_Stabilization.xml`: bounded advisory stabilization presentation.
 - `JKEOC_Settings_Interface.xml`: MD/Lua transport, command validation, Clear All, reports, and refresh events.
 - `eoc_settings.lua`: rendering, UI events, page state, scroll preservation, and player command submission.
-- `eoc_personal_office.lua`: callback-only Docked-menu integration. UI Extensions and HUD owns `DockedMenu`; never reintroduce a private `menu_docked.xpl` into EOC.
+- `eoc_personal_office.lua`: bounded callback registration and one-shot EOC open-event bridge.
+- `subst_01.cat/.dat`: native X4 substitution catalog containing EOC's Docked-menu owner. It preserves an existing callback table when another compatible UI owner loaded first, isolates callback failures, and does not add polling or per-frame repair.
 
 ## Principal persistent schemas
 

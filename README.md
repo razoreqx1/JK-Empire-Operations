@@ -4,19 +4,20 @@ Transform your X4 empire from reactive management into intelligent operations.
 
 ## Current release
 
-- Version: 3.2 TEST
-- Engineering build: 255
+- Version: 3.2 GA
+- Engineering build: 259
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-## What is new in EOC 3.2 Build 255
+## What is new in EOC 3.2 GA Build 259
 
-- Restores **UI Extensions and HUD** as the declared shared UI dependency so EOC registers after the authoritative Docked menu loads.
-- Removes EOC's competing private Docked-menu copy and uses the upstream `display_on_after_main_interactions` callback exclusively.
-- Fixes the missing EOC access button demonstrated by GitHub issue #2 while retaining bounded startup registration with no watcher, polling, or per-frame work.
+- Makes Dock Interactions access self-contained within EOC, so a separate UI framework installation is not required for the EOC button.
+- Packages the Docked-menu integration through X4's native substitution catalog and safely preserves compatible callbacks when another UI addon loaded first.
+- Uses EOC-owned fallback colors throughout the interface so every tab renders with or without optional shared UI helpers.
+- Remains compatible with UI Extensions and HUD when players keep it installed for other mods.
 - Adds high-level Lua docblocks, Mission Director subsystem headers, and a developer architecture guide covering ownership, persistent schemas, authority boundaries, and invariants.
 
-Build 255 also preserves the complete EOC 3.2 feature set:
+Build 259 also preserves the complete EOC 3.2 feature set:
 
 - Adds bounded managed BUY actions for confirmed shortages and SELL actions for storage pressure.
 - Adds Scout's long-term recommendations and ordered recovery playbooks across every supported issue family.
@@ -33,7 +34,7 @@ Build 255 also preserves the complete EOC 3.2 feature set:
 
 ## Existing EOC capabilities
 
-- Shared UI Extensions access from **Dock Interactions > OPEN EXECUTIVE OPERATIONS CENTER**.
+- Self-contained access from **Dock Interactions > OPEN EXECUTIVE OPERATIONS CENTER**.
 - Persistent station roles and role-aware operational recommendations.
 - Guided Recovery, evidence-backed cases, verification, bounded market tests, Managed Trade, shipping control, fleet templates, and reports.
 - Mission-aware analysis, including intentional Terraforming-related activity.
@@ -56,7 +57,7 @@ Older release documents remain available in `docs/`.
 
 ## Installation
 
-Install and enable [UI Extensions and HUD](https://steamcommunity.com/sharedfiles/filedetails/?id=3477279743), then copy `JK_Station_Manager` into the X4 `extensions` directory or subscribe through Steam Workshop. Do not add another folder between `extensions` and `JK_Station_Manager`.
+Copy `JK_Station_Manager` into the X4 `extensions` directory or subscribe through Steam Workshop. Do not add another folder between `extensions` and `JK_Station_Manager`. No separate UI framework is required for EOC; optional UI mods may remain installed for other extensions.
 
 EOC is designed not to make a save dependent on the mod. It adds no permanent custom ships, stations, wares, sectors, or other assets required for the save to load. Players do not need to uninstall EOC before updating, and removing it later does not corrupt the save.
 

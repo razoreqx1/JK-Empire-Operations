@@ -21,8 +21,8 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-      <show_notification text="'EOC 3.2 TEST Build 255 | Shared UI Dock Access'" timeout="12s" />
-      <debug_text text="'[JKEOC][B255][STARTUP] version=355 build=255 test=1 shared_ui_dependency=1 embedded_dock_menu=0 legacy_pinwheel=0 dock_access=1 raw_scrap_excluded=1 recurring_watchdog=0 notification=shown'" filter="general" />
+      <show_notification text="'EOC 3.2 GA Build 259 | Standalone Dock Access'" timeout="12s" />
+      <debug_text text="'[JKEOC][B259][STARTUP] version=359 build=259 ga=1 test=0 standalone_dock_access=1 subst_catalog=1 callback_preservation=1 standalone_ui_colors=1 legacy_pinwheel=0 dock_access=1 raw_scrap_excluded=1 recurring_watchdog=0 notification=shown'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>

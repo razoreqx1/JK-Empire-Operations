@@ -104,7 +104,10 @@ local investigationUnknownColor = { r = 255, g = 190, b = 72, a = 100 }
 local investigationNeutralColor = { r = 175, g = 185, b = 195, a = 100 }
 local navigationStoryColor = { r = 125, g = 200, b = 235, a = 100 }
 local EOC_IDENTITY_BB = "$JKEOC_CommandIntelligenceIdentity"
-local EOC_OS_BUILD = 255
+-- EOC owns every color used by this window. Do not read an optional shared
+-- helper color table: some UI frameworks supply it, but it is absent in a
+-- standalone X4 session, which would abort page rendering on access.
+local EOC_OS_BUILD = 259
 local EOC_CHECKLIST_SCHEMA = 3
 local KPI_REFRESH_SECONDS = 30
 menu.KPI_HISTORY_LIMIT = 64
@@ -2002,7 +2005,7 @@ local function constructionCenter(tableWidget)
     local row
     section(tableWidget, "STATION CONSTRUCTION - " .. stationName)
     row = tableWidget:addRow(false)
-    row[1]:setColSpan(4):createText(total > 0 and "ONGOING CONSTRUCTION DETECTED" or "NO ONGOING CONSTRUCTION DETECTED", { color = total > 0 and Helper.color.green or Helper.color.white })
+    row[1]:setColSpan(4):createText(total > 0 and "ONGOING CONSTRUCTION DETECTED" or "NO ONGOING CONSTRUCTION DETECTED", { color = total > 0 and investigationPassColor or investigationNeutralColor })
     row = tableWidget:addRow(false)
     row[1]:createText("QUEUE") row[2]:createText(tostring(total)) row[3]:createText("UNDERWAY / PLANNED") row[4]:createText(tostring(building) .. " / " .. tostring(planned))
     row = tableWidget:addRow(true)
@@ -2016,14 +2019,14 @@ local function constructionCenter(tableWidget)
     local function check(label, state, detail, stateColor)
         local r = tableWidget:addRow(false); r[1]:createText(state, { color = stateColor }); r[2]:createText(label); r[3]:setColSpan(2):createText(detail, { wordwrap = true })
     end
-    check("BUILD PLAN / QUEUE", total > 0 and "MET" or "NOT MET", total > 0 and (tostring(total) .. " planned or active module(s) detected.") or "No planned or active modules were found.", total > 0 and Helper.color.green or resultColor("UNKNOWN"))
-    check("BUILDER ASSIGNED", builders > 0 and "MET" or (total > 0 and "STALLED - CHECK BUILDER" or "NOT REQUIRED"), builders > 0 and "X4 reports a construction vessel assigned to this station build." or (total > 0 and "No construction vessel is currently assigned. Assign a builder, then refresh Construction Status." or "No construction plan requires a builder."), builders > 0 and Helper.color.green or (total > 0 and resultColor("FAILED") or resultColor("UNKNOWN")))
-    check("BUILD-STORAGE SHIP", buildStorage > 0 and "MET" or "OPTIONAL", buildStorage > 0 and (tostring(buildStorage) .. " assigned build-storage trader(s) detected.") or "No player build-storage trader is assigned. NPC deliveries may still satisfy construction, so this is not treated as a failure.", buildStorage > 0 and Helper.color.green or resultColor("UNKNOWN"))
-    check("CONSTRUCTION PROGRESS", building > 0 and "MET" or "WAITING", building > 0 and (tostring(building) .. " module(s) currently under construction.") or (planned > 0 and "Modules are queued but none is currently building." or "No construction progress to measure."), building > 0 and Helper.color.green or resultColor("UNKNOWN"))
+    check("BUILD PLAN / QUEUE", total > 0 and "MET" or "NOT MET", total > 0 and (tostring(total) .. " planned or active module(s) detected.") or "No planned or active modules were found.", total > 0 and investigationPassColor or resultColor("UNKNOWN"))
+    check("BUILDER ASSIGNED", builders > 0 and "MET" or (total > 0 and "STALLED - CHECK BUILDER" or "NOT REQUIRED"), builders > 0 and "X4 reports a construction vessel assigned to this station build." or (total > 0 and "No construction vessel is currently assigned. Assign a builder, then refresh Construction Status." or "No construction plan requires a builder."), builders > 0 and investigationPassColor or (total > 0 and resultColor("FAILED") or resultColor("UNKNOWN")))
+    check("BUILD-STORAGE SHIP", buildStorage > 0 and "MET" or "OPTIONAL", buildStorage > 0 and (tostring(buildStorage) .. " assigned build-storage trader(s) detected.") or "No player build-storage trader is assigned. NPC deliveries may still satisfy construction, so this is not treated as a failure.", buildStorage > 0 and investigationPassColor or resultColor("UNKNOWN"))
+    check("CONSTRUCTION PROGRESS", building > 0 and "MET" or "WAITING", building > 0 and (tostring(building) .. " module(s) currently under construction.") or (planned > 0 and "Modules are queued but none is currently building." or "No construction progress to measure."), building > 0 and investigationPassColor or resultColor("UNKNOWN"))
     local budgetMet = wantedBudget <= 0 or budget >= wantedBudget
     local shortfall = math.max(0, wantedBudget - budget)
     row = tableWidget:addRow(shortfall > 0)
-    row[1]:createText(budgetMet and "MET" or "NOT FUNDED", { color = budgetMet and Helper.color.green or resultColor("FAILED") })
+    row[1]:createText(budgetMet and "MET" or "NOT FUNDED", { color = budgetMet and investigationPassColor or resultColor("FAILED") })
     row[2]:createText("CONSTRUCTION BUDGET")
     row[3]:createText(string.format("Available now: %d Cr | X4 currently requests: %d Cr%s", budget, wantedBudget, budgetMet and "." or (" | add " .. tostring(shortfall) .. " Cr now.")), { wordwrap = true })
     if lastFunding > 0 then
@@ -2058,7 +2061,7 @@ local function constructionCenter(tableWidget)
             menu.refresh()
         end, true)
     end
-    check("BUILD WARES", #missingWares == 0 and "MET" or "MISSING", #missingWares == 0 and "No remaining construction-ware deficit is reported." or (tostring(#missingWares) .. " construction ware type(s) are still required; see the list below."), #missingWares == 0 and Helper.color.green or resultColor("FAILED"))
+    check("BUILD WARES", #missingWares == 0 and "MET" or "MISSING", #missingWares == 0 and "No remaining construction-ware deficit is reported." or (tostring(#missingWares) .. " construction ware type(s) are still required; see the list below."), #missingWares == 0 and investigationPassColor or resultColor("FAILED"))
     if #missingWares > 0 then
         section(tableWidget, "MISSING CONSTRUCTION WARES")
         for _, ware in ipairs(missingWares) do
@@ -2073,7 +2076,7 @@ local function constructionCenter(tableWidget)
         row = tableWidget:addRow(false)
         row[1]:createText("#" .. tostring(v(item, 8, queueIndex)))
         row[2]:createText(text(v(item, 1, "Unknown module")), { wordwrap = true })
-        row[3]:createText(text(v(item, 3, "PLANNED")), { color = progress > 0 and Helper.color.green or resultColor("UNKNOWN") })
+        row[3]:createText(text(v(item, 3, "PLANNED")), { color = progress > 0 and investigationPassColor or resultColor("UNKNOWN") })
         row[4]:createText(string.format("%.1f%%", progress))
     end
 end
@@ -2982,12 +2985,12 @@ local function captureForcedVerificationScroll()
         menu.forcedVerificationTopRow = topRow
         menu.forcedVerificationPage = menu.page
         menu.forcedVerificationScrollLocked = true
-        DebugError("[JKEOC][B255][FORCED_VERIFY_SCROLL_CAPTURE] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
+        DebugError("[JKEOC][B259][FORCED_VERIFY_SCROLL_CAPTURE] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
     else
         menu.forcedVerificationTopRow = nil
         menu.forcedVerificationPage = nil
         menu.forcedVerificationScrollLocked = nil
-        DebugError("[JKEOC][B255][FORCED_VERIFY_SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
+        DebugError("[JKEOC][B259][FORCED_VERIFY_SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
     end
 end
 
@@ -3918,7 +3921,7 @@ local function dashboard(tableWidget)
     row[1]:setColSpan(4):createText("A station-by-station recap of what EOC observed, how the evidence developed, what it means, and where attention is most useful.", {wordwrap=true})
     local choices={{"review","SINCE REVIEW"},{"30m","LAST 30 MIN"},{"1h","LAST HOUR"},{"session","THIS SESSION"}}
     row=tableWidget:addRow(true)
-    for col,choice in ipairs(choices) do local c=choice; addButton(row,col,(menu.narrativeScope==c[1] and "ACTIVE: " or "")..c[2],function() menu.narrativeScope=c[1]; menu.refresh() end,true,menu.narrativeScope==c[1] and Helper.color.green or nil) end
+    for col,choice in ipairs(choices) do local c=choice; addButton(row,col,(menu.narrativeScope==c[1] and "ACTIVE: " or "")..c[2],function() menu.narrativeScope=c[1]; menu.refresh() end,true,menu.narrativeScope==c[1] and investigationPassColor or nil) end
     row=tableWidget:addRow(true); row[1]:setColSpan(2); addButton(row,1,(menu.narrativeScope=="history" and "ACTIVE: " or "").."RETAINED HISTORY",function() menu.narrativeScope="history"; menu.refresh() end,true); row[3]:setColSpan(2); addButton(row,3,"MARK STORY REVIEWED",function() local store=narrativeStore(); store.lastReview=now; saveNarrativeStore(store); menu.narrativeScope="review"; menu.refresh() end,true)
     local shown=0
     for stationIndex,station in ipairs(menu.stations or {}) do
@@ -4352,7 +4355,7 @@ local function stationWorkspace(tableWidget)
         local waiting = tonumber(v(constructionRecord, 4, 0)) or 0
         section(tableWidget, "ONGOING CONSTRUCTION DETECTED - " .. tostring(constructionCount) .. " MODULE(S)")
         row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText(tostring(underway) .. " UNDERWAY / " .. tostring(waiting) .. " WAITING", { color = underway > 0 and Helper.color.green or resultColor("UNKNOWN"), font = Helper.headerFont })
+        row[1]:setColSpan(4):createText(tostring(underway) .. " UNDERWAY / " .. tostring(waiting) .. " WAITING", { color = underway > 0 and investigationPassColor or resultColor("UNKNOWN"), font = Helper.headerFont })
         row = tableWidget:addRow(true)
         row[1]:setColSpan(4)
         addButton(row, 1, "ONGOING CONSTRUCTION - OPEN CONSTRUCTION CONTROL", function()
@@ -4569,7 +4572,7 @@ local function globalSettings(tableWidget)
         menu.pendingStartupPreference = not menu.pendingStartupPreference
         menu.settingsStatus = "UNSAVED GLOBAL SETTINGS: Select SAVE GLOBAL SETTINGS to commit this change."
         menu.refresh()
-    end, true, startupDirty and investigationUnknownColor or Helper.color.green)
+    end, true, startupDirty and investigationUnknownColor or investigationPassColor)
     local startupInfo = tableWidget:addRow(false)
     startupInfo[1]:setColSpan(4):createText("This changes only the visual startup sequence. Analysis, evidence collection, and station scanning always continue.", { wordwrap = true })
     local saveRow = tableWidget:addRow(true)
@@ -4584,7 +4587,7 @@ local function globalSettings(tableWidget)
         raise(menu.startupPreference and "startup.sequence.on" or "startup.sequence.off", {})
         menu.settingsStatus = "GLOBAL SETTINGS SAVED. The startup preference will be restored from the save on the next load."
         menu.refresh()
-    end, startupDirty, startupDirty and investigationUnknownColor or Helper.color.green)
+    end, startupDirty, startupDirty and investigationUnknownColor or investigationPassColor)
 
     section(tableWidget, "GLOBAL SHIP MINIMUMS")
     local minimumHelp = tableWidget:addRow(false)
@@ -4615,7 +4618,7 @@ local function globalSettings(tableWidget)
         raise("minimums.save", { mining=d.mining, trade=d.trade, buildstorage=d.buildstorage, defence=d.defence, escort=d.escort })
         menu.settingsStatus = "GLOBAL SHIP MINIMUMS SAVED. Zero-valued categories are disabled."
         menu.refresh(true)
-    end, true, Helper.color.green)
+    end, true, investigationPassColor)
     section(tableWidget, "GLOBAL EOC SETTINGS")
     local brief = tableWidget:addRow(false)
     brief[1]:setColSpan(4):createText("CHANGE ONLY WHAT YOU INTEND: EOC acts only within the authorities selected below. Construction funding uses the exact X4-reported shortfall; it does not alter the station plan or cancel ordinary player orders.", { wordwrap = true })
@@ -4944,11 +4947,11 @@ function menu.refresh(preserveScroll)
         if ok then
             menu.restoreTableTopRow = topRow
             if not menu.scrollCaptureConfirmed then
-                DebugError("[JKEOC][B255][SCROLL_CAPTURE_CONFIRMED] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
+                DebugError("[JKEOC][B259][SCROLL_CAPTURE_CONFIRMED] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
                 menu.scrollCaptureConfirmed = true
             end
         elseif not menu.scrollCaptureFailureLogged then
-            DebugError("[JKEOC][B255][SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
+            DebugError("[JKEOC][B259][SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
             menu.scrollCaptureFailureLogged = true
         end
         if Helper.currentTableRow and tableId then menu.restoreTableSelectedRow = Helper.currentTableRow[tableId] end
