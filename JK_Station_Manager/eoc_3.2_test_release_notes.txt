@@ -1,14 +1,14 @@
 EOC 3.2 TEST
-Build 254 | Version 354 | 2026-08-19
+Build 255 | Version 355 | 2026-08-21
 
-DEVELOPER DOCUMENTATION PASS
+SHARED UI DOCK ACCESS
 
-Build 254 preserves the exact Build 253 runtime behavior and adds maintainability documentation for new programmers.
+Build 255 corrects the Docked-menu ownership conflict confirmed by GitHub issue #2 while preserving every prior EOC feature and the Build 254 developer documentation.
 
-- Adds module headers and docblock-style comments to the Lua entry points.
-- Documents Mission Director subsystem ownership, inputs, outputs, authority boundaries, persistent globals, and safety invariants.
-- Adds a developer architecture guide with a file map, schema dictionary, MD/Lua ABI rules, historical-identifier explanation, and validation workflow.
-- Does not narrate obvious individual statements or change operational logic.
-- Adds no watcher, polling, per-frame work, recurring scan, gameplay authority, or save migration.
+- Restores UI Extensions and HUD Workshop item 3477279743 as a required shared UI dependency.
+- Removes EOC's embedded private copy of menu_docked.xpl so only the upstream UI layer owns DockedMenu.
+- Registers the EOC access row through the upstream display_on_after_main_interactions callback after dependency ordering is satisfied.
+- Retains a bounded startup retry only; adds no watcher, polling, per-frame work, recurring scan, gameplay authority, or save migration.
+- Preserves Raw Scrap exclusion, the retired pinwheel, all Build 253 runtime features, and all Build 254 documentation.
 
-TEST only. Build 253 / version 353 remains the published GA until this documentation-only source receives normal validation.
+TEST only. Build 253 / version 353 remains the Steam GA. Build 254 / version 354 remains the GitHub-only documentation TEST baseline until this candidate is explicitly promoted.

@@ -104,7 +104,7 @@ local investigationUnknownColor = { r = 255, g = 190, b = 72, a = 100 }
 local investigationNeutralColor = { r = 175, g = 185, b = 195, a = 100 }
 local navigationStoryColor = { r = 125, g = 200, b = 235, a = 100 }
 local EOC_IDENTITY_BB = "$JKEOC_CommandIntelligenceIdentity"
-local EOC_OS_BUILD = 254
+local EOC_OS_BUILD = 255
 local EOC_CHECKLIST_SCHEMA = 3
 local KPI_REFRESH_SECONDS = 30
 menu.KPI_HISTORY_LIMIT = 64
@@ -2982,12 +2982,12 @@ local function captureForcedVerificationScroll()
         menu.forcedVerificationTopRow = topRow
         menu.forcedVerificationPage = menu.page
         menu.forcedVerificationScrollLocked = true
-        DebugError("[JKEOC][B254][FORCED_VERIFY_SCROLL_CAPTURE] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
+        DebugError("[JKEOC][B255][FORCED_VERIFY_SCROLL_CAPTURE] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
     else
         menu.forcedVerificationTopRow = nil
         menu.forcedVerificationPage = nil
         menu.forcedVerificationScrollLocked = nil
-        DebugError("[JKEOC][B254][FORCED_VERIFY_SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
+        DebugError("[JKEOC][B255][FORCED_VERIFY_SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
     end
 end
 
@@ -4944,11 +4944,11 @@ function menu.refresh(preserveScroll)
         if ok then
             menu.restoreTableTopRow = topRow
             if not menu.scrollCaptureConfirmed then
-                DebugError("[JKEOC][B254][SCROLL_CAPTURE_CONFIRMED] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
+                DebugError("[JKEOC][B255][SCROLL_CAPTURE_CONFIRMED] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
                 menu.scrollCaptureConfirmed = true
             end
         elseif not menu.scrollCaptureFailureLogged then
-            DebugError("[JKEOC][B254][SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
+            DebugError("[JKEOC][B255][SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
             menu.scrollCaptureFailureLogged = true
         end
         if Helper.currentTableRow and tableId then menu.restoreTableSelectedRow = Helper.currentTableRow[tableId] end
