@@ -176,6 +176,9 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <remove_value name="global.$JKEOC_TerraformingMissionContext" />
         <debug_text text="'[JKEOC][V333] INTELLIGENCE SCAN START | Stations: %1'.[$stations.count]" filter="general" />
 
+        <!-- Build 286: production blueprint and recipe lookup is performed only
+             when the player opens the Solution Planner, through X4's native UI
+             blueprint/library APIs. Empire analysis performs no blueprint scan. -->
         <do_all exact="$stations.count" counter="$i">
           <set_value name="$station" exact="$stations.{$i}" />
           <set_value name="$products" exact="$station.products.list" />
@@ -811,6 +814,12 @@ subordinates, storage modules, and funds. No station or ship settings are change
               <!-- Build 50: an import attempt must target the confirmed missing input
                    when local production exists, not the empty output ware. -->
               <set_value name="$supplyware" exact="if $missinginputcount gt 0 then $missinginputwares.{1} else $ware" />
+              <set_value name="$supplyamount" exact="$station.cargo.{$supplyware}.count" />
+              <set_value name="$supplytarget" exact="$station.cargo.{$supplyware}.target" />
+              <set_value name="$supplymaximum" exact="$station.cargo.{$supplyware}.max" />
+              <set_value name="$supplyimmediatethreshold" exact="if $supplytarget gt 0 then (($supplytarget + 3) / 4)i else 1" />
+              <set_value name="$supplyimmediateneed" exact="[$supplyimmediatethreshold - $supplyamount, 0].max" />
+              <set_value name="$supplytargetshortfall" exact="[$supplytarget - $supplyamount, 0].max" />
               <set_value name="$tradershipcount" exact="$station.subordinates.{assignment.trade}.count" />
               <set_value name="$compatibletradercount" exact="0" />
               <do_for_each name="$assessmenttrader" in="$station.subordinates.{assignment.trade}">
@@ -845,7 +854,15 @@ subordinates, storage modules, and funds. No station or ship settings are change
               <set_value name="$immediatethreshold" exact="if $targetamount gt 0 then (($targetamount + 3) / 4)i else 1" />
               <set_value name="$immediateneed" exact="[$immediatethreshold - $amount, 0].max" />
               <set_value name="$targetshortfall" exact="[$targetamount - $amount, 0].max" />
+              <!-- Build 286: blueprint/module/recipe authority is the same native Lua
+                   path used by X4's Station Build Plan: GetBlueprints plus
+                   GetLibraryEntry. MD retains the ware object and exact HQ identity;
+                   it no longer attempts the disproven module-ware inference. -->
+              <set_value name="$productionblueprintstate" exact="'CHECK IN NATIVE PLANNER'" />
+              <set_value name="$productionblueprintmodulename" exact="''" />
+              <set_value name="$istrueplayerhq" exact="player.headquarters.exists and $station == player.headquarters" />
               <set_value name="$recommendedproductionname" exact="'%1 PRODUCTION MODULE'.[$ware.name]" />
+              <debug_text text="'[JKEOC][B286][PLANNER_HANDOFF] station=%1 ware=%2 ware_id=%3 blueprint_authority=NATIVE_UI true_hq=%4'.[$station.name, $ware.name, $ware.id, $istrueplayerhq]" filter="general" />
               <do_if value="global.$JKEOC_FocusActive == true and global.$JKEOC_FocusStationObject? and global.$JKEOC_RecoveryObjectiveWare? and $station == global.$JKEOC_FocusStationObject and $ware.name == global.$JKEOC_RecoveryObjectiveWare">
                 <set_value name="global.$JKEOC_FocusPlannedStorageMatches" exact="$plannedstoragematches" />
                 <set_value name="global.$JKEOC_FocusPlannedStorageCapacity" exact="$plannedstoragecapacity" />
@@ -926,7 +943,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
               </do_else>
               <debug_text text="'[JKEOC][V450][CASE_DIAGNOSIS] station=%1 case_ware=%2 supply_target=%3 produces=%4 paused=%5 inputs_checked=%6 missing_inputs=%7 offers=%8 traders=%9'.[$station.name, $ware.name, $supplyware.name, $producesware, $productionpaused, $productioninputcount, $missinginputnames, $suppliercount, $tradershipcount]" filter="general" />
               <debug_text text="'[JKEOC][V450][CASE_DIAGNOSIS_RESULT] station=%1 root=%2 status=%3'.[$station.name, $rootcause, $casestatus]" filter="general" />
-              <append_to_list name="$stationcases" exact="table[$station=$station, $stationname=$station.name, $ware=$ware.name, $wareobject=$ware, $supplywarename=$supplyware.name, $supplywareobject=$supplyware, $amount=$amount, $maximum=$maximum, $target=$targetamount, $immediatethreshold=$immediatethreshold, $immediateneed=$immediateneed, $targetshortfall=$targetshortfall, $type='CRITICAL SHORTAGE', $status=$casestatus, $buildactive=if $constructionitems.count gt 0 then 1 else $stationhasbuildingtask, $storagetype=$storagetype, $storagecapacity=$storagecapacity, $storagefree=$storagefree, $produces=$producesware, $productionmodulecount=$productionmodulecount, $rootcause=$rootcause, $corrective=$corrective, $constructionitems=$constructionitems, $constructioncount=$constructionitems.count, $plannedstoragematches=$plannedstoragematches, $plannedstoragecapacity=$plannedstoragecapacity, $plannedproductionmatches=$plannedproductionmatches, $matchingmodulenames=$matchingmodulenames, $recommendedmodule=$recommendedstoragemodule, $recommendedcount=$recommendedstoragecount, $recommendedproductionmodule=$recommendedproductionname, $suppliercount=$suppliercount, $ownsuppliercount=$ownsuppliercount, $npcsuppliercount=$npcsuppliercount, $npcminunitprice=$npcminunitprice, $npcmaxunitprice=$npcmaxunitprice, $tradershipcount=$tradershipcount, $compatibletradercount=$compatibletradercount, $stationmoney=$station.money, $inputcount=$productioninputcount, $inputnames=$productioninputnames, $missinginputcount=$missinginputcount, $missinginputnames=$missinginputnames, $productionpaused=$productionpaused]" />
+              <append_to_list name="$stationcases" exact="table[$station=$station, $stationname=$station.name, $ware=$ware.name, $wareobject=$ware, $supplywarename=$supplyware.name, $supplywareobject=$supplyware, $supplyamount=$supplyamount, $supplymaximum=$supplymaximum, $supplytarget=$supplytarget, $supplyimmediateneed=$supplyimmediateneed, $supplytargetshortfall=$supplytargetshortfall, $amount=$amount, $maximum=$maximum, $target=$targetamount, $immediatethreshold=$immediatethreshold, $immediateneed=$immediateneed, $targetshortfall=$targetshortfall, $type='CRITICAL SHORTAGE', $status=$casestatus, $buildactive=if $constructionitems.count gt 0 then 1 else $stationhasbuildingtask, $storagetype=$storagetype, $storagecapacity=$storagecapacity, $storagefree=$storagefree, $produces=$producesware, $productionmodulecount=$productionmodulecount, $rootcause=$rootcause, $corrective=$corrective, $constructionitems=$constructionitems, $constructioncount=$constructionitems.count, $plannedstoragematches=$plannedstoragematches, $plannedstoragecapacity=$plannedstoragecapacity, $plannedproductionmatches=$plannedproductionmatches, $matchingmodulenames=$matchingmodulenames, $recommendedmodule=$recommendedstoragemodule, $recommendedcount=$recommendedstoragecount, $recommendedproductionmodule=$recommendedproductionname, $suppliercount=$suppliercount, $ownsuppliercount=$ownsuppliercount, $npcsuppliercount=$npcsuppliercount, $npcminunitprice=$npcminunitprice, $npcmaxunitprice=$npcmaxunitprice, $tradershipcount=$tradershipcount, $compatibletradercount=$compatibletradercount, $stationmoney=$station.money, $inputcount=$productioninputcount, $inputnames=$productioninputnames, $missinginputcount=$missinginputcount, $missinginputnames=$missinginputnames, $productionpaused=$productionpaused, $productionblueprintstate=$productionblueprintstate, $productionblueprintmodulename=$productionblueprintmodulename, $istrueplayerhq=$istrueplayerhq]" />
               <append_to_list name="global.$JKEOC_CriticalCases" exact="$stationcases.{$stationcases.count}" />
               <do_if value="not global.$JKSM_FirstEmptyStation?">
                 <set_value name="global.$JKSM_FirstEmptyStation" exact="$station.name" />

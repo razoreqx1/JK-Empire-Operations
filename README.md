@@ -4,25 +4,26 @@ Transform your X4 empire from reactive management into intelligent operations.
 
 ## Current public test
 
-- Version: 3.4 TEST
-- Engineering build: 265
-- Status: **WORK IN PROGRESS** — the Supply Model and Advisory Expansion Planner are under active development
+- Version: 3.5 TEST
+- Engineering build: 286
+- Status: **WORK IN PROGRESS PUBLIC TEST** — the Supply Model and native Station Solution Planner are under active testing
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 259 remains the last GA-qualified runtime. Build 265 is available for public testing.
+Build 259 remains the last GA-qualified runtime. Build 286 is available for public testing on Steam and GitHub.
 
-## What is new in EOC 3.4 TEST Build 265
+## What is new in EOC 3.5 TEST Build 286
 
-- Adds a separate, on-demand Supply Model tab with previous-refresh deltas.
-- Adds an advisory Expansion Planner and selected-station resource filters.
-- Adds player-editable price and storage proposals with preview, separate confirmation, native application, and immediate read-back.
-- Performs exactly one bounded final DockedMenu owner reconciliation during startup for compatibility testing.
+- Adds a native Station Solution Planner that uses X4's owned-blueprint and library data for the exact module, blueprint ware, production method, cycle output, complete primary-input recipe, workforce, and storage classes.
+- Calculates recommended additional modules as the live non-negative hourly deficit divided by exact one-module hourly output, rounded up.
+- Keeps permanent planning locked behind explicit recovery-exhaustion and expansion-readiness evidence.
+- Adds selected-station Supply navigation, persistent two-snapshot Supply-to-Case handling, centralized duplicate-case prevention, and selected-station batch price confirmation with immediate read-back.
+- Uses bounded native scrolling across EOC pages and preserves the same-page top and selected row.
 - Keeps Supply analysis player-triggered: no Supply watcher, polling loop, per-frame analysis, or recurring Supply scan.
-- Does not place plots, alter construction plans, create resources, move cargo, or move credits.
+- Does not add modules, place plots, alter build plans, create resources, or move cargo or credits.
 - Continues to exclude Raw Scrap from conventional Supply recommendations.
 
-The standalone EOC button and all menus passed a local isolation test with every other mod disabled. A reported missing-button case involves a larger mod environment; the exact conflicting extension has not been identified. Players investigating that problem should first test with only EOC enabled, then re-enable other UI/menu mods in small groups.
+Build 286 passed its targeted live test at 3840x2160 with X4 UI scale 2.00. The complete planner rendered with native scrolling, and the fresh log contained no EOC widget-height rejection, Lua error, Mission Director failure, stack trace, or invalid argument in the tested workflow. This is still a public TEST across wider resolutions, UI scales, saves, and mod combinations.
 
 ## Preserved EOC 3.2 foundation
 
@@ -64,7 +65,7 @@ Build 259 also preserves the complete EOC 3.2 feature set:
 
 ## Documentation and support
 
-- [EOC 3.4 TEST Public Test Guide](docs/EOC_3.4_TEST_PUBLIC_TEST_GUIDE.md)
+- [EOC 3.5 TEST Public Test Guide](docs/EOC_3.5_TEST_PUBLIC_TEST_GUIDE.md)
 - [EOC 3.2 GA User and Support Guide](docs/EOC_3.2_GA_USER_SUPPORT_GUIDE.md)
 - [EOC 3.2 GA Release Notes](docs/RELEASE_NOTES_3.2_GA.md)
 - [Report an EOC issue](https://github.com/razoreqx1/JK-Empire-Operations/issues)

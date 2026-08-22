@@ -9,7 +9,7 @@
 -- @boundary This file opens EOC only. It does not scan stations, mutate ships,
 -- create trade offers, or own persistent game state.
 -- @contract JKEOC_Settings_Interface.xml consumes the raised UI event.
--- @invariant Build 265's self-contained DockedMenu preserves pre-existing
+-- @invariant Build 281's self-contained DockedMenu preserves pre-existing
 -- callback tables before it becomes active, so integrations registered on an
 -- earlier owner are not stranded.
 
@@ -28,7 +28,7 @@ local integration = {
 -- Kept separate from the click handler so the DockedMenu can close before MD
 -- starts transporting current state into eoc_settings.lua.
 local function signalEOC()
-    DebugError("[JKEOC][B265][DOCK_ACCESS] stage=OPEN_EVENT_RAISED event=JKEOC_PersonalOfficeAccess")
+    DebugError("[JKEOC][B277][DOCK_ACCESS] stage=OPEN_EVENT_RAISED event=JKEOC_PersonalOfficeAccess")
     AddUITriggeredEvent("JKEOC_PersonalOfficeAccess", "open", nil)
 end
 
@@ -37,7 +37,7 @@ end
 -- overlapping X4 menus competing for focus.
 local function openEOC()
     integration.clickCount = integration.clickCount + 1
-    DebugError("[JKEOC][B265][DOCK_ACCESS] stage=BUTTON_CLICKED count=" .. tostring(integration.clickCount))
+    DebugError("[JKEOC][B277][DOCK_ACCESS] stage=BUTTON_CLICKED count=" .. tostring(integration.clickCount))
     if integration.menu and type(integration.menu.onCloseElement) == "function" then
         integration.menu.onCloseElement("close")
     elseif integration.menu and Helper and type(Helper.closeMenu) == "function" then
@@ -55,7 +55,7 @@ end
 -- @param tableHeader X4 UI table supplied by the registered callback surface.
 local function addEOCAction(tableHeader)
     integration.renderCount = integration.renderCount + 1
-    DebugError("[JKEOC][B265][DOCK_ACCESS] stage=BUTTON_RENDERED count=" .. tostring(integration.renderCount))
+    DebugError("[JKEOC][B277][DOCK_ACCESS] stage=BUTTON_RENDERED count=" .. tostring(integration.renderCount))
 
     local row = tableHeader:addRow(true, { fixed = true })
     row[1]:setColSpan(11):createButton({
@@ -85,7 +85,7 @@ local function registerOnMenu(targetMenu, owner)
     )
     integration.registeredMenus[targetMenu] = true
     integration.menu = targetMenu
-    DebugError("[JKEOC][B265][DOCK_ACCESS] stage=CALLBACK_REGISTERED owner=" .. tostring(owner) .. " attempts=" .. tostring(integration.attempts + 1) .. " recurring_watchdog=0")
+    DebugError("[JKEOC][B277][DOCK_ACCESS] stage=CALLBACK_REGISTERED owner=" .. tostring(owner) .. " attempts=" .. tostring(integration.attempts + 1) .. " recurring_watchdog=0")
     return true
 end
 
@@ -97,7 +97,7 @@ local function reconcileFinalOwner()
     local finalMenu = Helper.getMenu("DockedMenu")
     local changed = finalMenu ~= previousMenu
     local registered = registerOnMenu(finalMenu, "FINAL_ACTIVE_MENU")
-    DebugError("[JKEOC][B265][DOCK_ACCESS] stage=FINAL_OWNER_RECONCILED changed=" .. tostring(changed) .. " registered=" .. tostring(registered) .. " recurring_watchdog=0")
+    DebugError("[JKEOC][B277][DOCK_ACCESS] stage=FINAL_OWNER_RECONCILED changed=" .. tostring(changed) .. " registered=" .. tostring(registered) .. " recurring_watchdog=0")
 end
 
 local function scheduleFinalReconcile()
@@ -124,7 +124,7 @@ local function init()
     if integration.attempts < integration.maxAttempts and type(Helper.addDelayedOneTimeCallbackOnUpdate) == "function" then
         Helper.addDelayedOneTimeCallbackOnUpdate(init, true, getElapsedTime() + 1)
     else
-        DebugError("[JKEOC][B265][LUA_ERROR] DockedMenu callback unavailable after retries=" .. tostring(integration.attempts))
+        DebugError("[JKEOC][B277][LUA_ERROR] DockedMenu callback unavailable after retries=" .. tostring(integration.attempts))
     end
 end
 

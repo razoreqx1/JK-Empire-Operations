@@ -2,12 +2,12 @@
 <content
   id="ws_3778882957"
   name="EOC - Executive Operations Center"
-  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.4 TEST - Build 265&#xA;&#xA;Preserves the advisory Expansion Planner and selected-station Supply filters from Build 264, and adds one bounded final DockedMenu owner reconciliation for mod compatibility.&#xA;&#xA;- Registers immediately on the available Dock Interactions menu, then checks exactly once after UI startup settles.&#xA;- If another UI mod replaced DockedMenu, EOC registers once on that final active owner.&#xA;- Adds no watcher, polling loop, per-frame hook, recurring scan, plot placement, construction authority, hidden resources, or unauthorized credit movement.&#xA;- Supply analysis remains explicit Run/Refresh only and Raw Scrap remains excluded.&#xA;&#xA;Build 265 requires complete live proof before promotion.&#xA;&#xA;Compatible with X4 8.x and 9.x."
+  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.5 TEST - Build 286&#xA;&#xA;Expanded-frame correction for the native Solution Planner.&#xA;&#xA;- Removes Build 285's disproven table reservation.&#xA;- Expands the bounded EOC frame from 78% to 80% of the viewport, providing approximately 1552 pixels beneath the header against X4's proven 1518-pixel planner requirement.&#xA;- Preserves native blueprint, recipe, dependency, hourly-rate, and module-count evidence without truncation.&#xA;- Preserves explicit/on-demand Supply, native scrolling, same-page position, Raw Scrap exclusion, and every prior authority boundary.&#xA;&#xA;Build 286 is TEST-only and requires live proof before promotion.&#xA;&#xA;Compatible with X4 8.x and 9.x."
   author="RazorEQX"
-  version="365"
-  date="2026-08-21"
+  version="386"
+  date="2026-08-22"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.4 TEST Build 265" description="Bounded final DockedMenu owner reconciliation plus the Build 264 advisory Expansion Planner." />
+  <text language="44" name="EOC 3.5 TEST Build 286" description="Expanded-frame native Solution Planner correction." />
   <dependency id="ws_3477279743" optional="true" />
 </content>
