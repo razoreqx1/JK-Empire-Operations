@@ -1,0 +1,21 @@
+EOC 3.4 TEST - Build 265
+
+FINAL DOCK OWNER RECONCILIATION
+
+Build 265 preserves the complete Build 264 advisory Expansion Planner and adds a narrow compatibility correction for Dock Interactions ownership.
+
+- EOC registers immediately on the available DockedMenu and performs exactly one delayed startup reconciliation after UI addons have settled.
+- If another UI mod replaced DockedMenu after the first registration, EOC registers once on that final active owner.
+- The reconciliation never reschedules itself. It is not a watcher, polling loop, per-frame hook, or recurring scan.
+
+- Adds an on-demand Expansion Planner inside the Supply Model tab.
+- Ranks selected-station resources as NEW OWNED CAPACITY CANDIDATE, EXPANSION CANDIDATE, RECOVER INPUT SUPPORT FIRST, RESTORE EXISTING CAPACITY FIRST, or NO EXPANSION SUPPORTED.
+- Displays installed, supported, effective, and demand bars plus deficit, coverage, producing/consuming station counts, and previous-refresh delta.
+- Never claims an exact module macro, module count, plot location, construction cost, or complete upstream recipe unless those facts are proven. This baseline deliberately directs the player to the vanilla Station Build Plan at that evidence boundary.
+- Capacity choices now include only wares present at the selected station. Producer choices include only wares produced by the selected station. The underlying empire-level measurements remain labeled and unchanged.
+- Selector changes redraw cached data only. Only the visible Run/Refresh action performs an on-demand collection.
+- Price/storage changes retain preview, separate confirmation, native apply, immediate read-back, and bounded audit.
+- No plot placement, module construction, hidden resources, cargo movement, unauthorized credit movement, watcher, polling loop, per-frame analysis, recurring Supply scan, or duplicate scheduler was added.
+- Raw Scrap remains excluded.
+
+Build 265 is TEST-only and requires complete live X4 proof before promotion.

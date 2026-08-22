@@ -54,6 +54,8 @@ ffi.cdef[[
     uint32_t GetPlayerShipBuildTasks(BuildTaskInfo* result, uint32_t resultlen, bool isinprogress, bool includeupgrade);
     uint32_t GetNumBuildTasks(UniverseID containerid, UniverseID buildmoduleid, bool isinprogress, bool includeupgrade);
     UniverseID GetPlayerID(void);
+    double GetContainerWareConsumption(UniverseID containerid, const char* wareid, bool ignorestate);
+    double GetContainerWareProduction(UniverseID containerid, const char* wareid, bool ignorestate);
 ]]
 
 local menu = {
@@ -72,7 +74,9 @@ local config = {
     widthRatio = 0.76,
     heightRatio = 0.78,
     minWidth = 1060,
-    minHeight = 650,
+    -- 600 logical pixels remains below the 1508 physical-pixel budget observed
+    -- at Razor's current UI scale; 650 scaled to 1558 and X4 rejected the table.
+    minHeight = 600,
     maxWidth = 1840,
     maxHeight = 1100,
 }
@@ -107,7 +111,9 @@ local EOC_IDENTITY_BB = "$JKEOC_CommandIntelligenceIdentity"
 -- EOC owns every color used by this window. Do not read an optional shared
 -- helper color table: some UI frameworks supply it, but it is absent in a
 -- standalone X4 session, which would abort page rendering on access.
-local EOC_OS_BUILD = 259
+local EOC_OS_BUILD = 262
+menu.supplyBlackboardKey = "$JKEOC_B265SupplyModel"
+menu.supplyPages = {}
 local EOC_CHECKLIST_SCHEMA = 3
 local KPI_REFRESH_SECONDS = 30
 menu.KPI_HISTORY_LIMIT = 64
@@ -1912,19 +1918,683 @@ local function captureReportOrigin(page, label)
     menu.refresh()
 end
 
+-- Build 260 Supply Model is deliberately isolated from every recurring EOC
+-- scheduler. These helpers are called only from the Supply Model page after a
+-- deliberate player click. Snapshots are advisory and never become case/SPOS
+-- evidence or managed-trade authority.
+function menu.supplyModelStore()
+    if type(menu.supplyModelCache) == "table" then return menu.supplyModelCache end
+    local store
+    pcall(function()
+        store = GetNPCBlackboard(ConvertStringTo64Bit(tostring(C.GetPlayerID())), menu.supplyBlackboardKey)
+    end)
+    if type(store) ~= "table" then store = { views = {}, audit = {} } end
+    if type(store.views) ~= "table" then store.views = {} end
+    if type(store.audit) ~= "table" then store.audit = {} end
+    menu.supplyModelCache = store
+    return store
+end
+
+function menu.saveSupplyModelStore(store)
+    menu.supplyModelCache = store
+    pcall(function()
+        SetNPCBlackboard(ConvertStringTo64Bit(tostring(C.GetPlayerID())), menu.supplyBlackboardKey, store)
+    end)
+end
+
+function menu.supplyStationId(profile)
+    local raw = v(profile, 24, nil)
+    if raw == nil or tostring(raw) == "" then return nil end
+    local ok, result = pcall(ConvertStringTo64Bit, tostring(raw))
+    if not ok or result == 0 then return nil end
+    return result
+end
+
+function menu.supplyWareId(value)
+    local result = tostring(value or "")
+    result = result:gsub("^ware%.", "")
+    return result
+end
+
+function menu.supplyIsExcludedWare(ware)
+    return menu.supplyWareId(ware):lower() == "rawscrap"
+end
+
+function menu.supplyList(source)
+    local result, seen = {}, {}
+    if type(source) ~= "table" then return result end
+    for _, value in pairs(source) do
+        local ware = menu.supplyWareId(value)
+        if ware ~= "" and not seen[ware] and not menu.supplyIsExcludedWare(ware) then
+            seen[ware] = true
+            result[#result + 1] = ware
+        end
+    end
+    table.sort(result)
+    return result
+end
+
+function menu.supplySafeRate(station, ware, production, ignorestate)
+    local ok, value = pcall(function()
+        if production then return C.GetContainerWareProduction(station, ware, ignorestate) end
+        return C.GetContainerWareConsumption(station, ware, ignorestate)
+    end)
+    if not ok then return 0 end
+    value = tonumber(value) or 0
+    if value < 0 then return 0 end
+    return value
+end
+
+function menu.supplyWareMetadata(ware)
+    local name, minprice, maxprice, averageprice, volume, transport
+    local ok = pcall(function()
+        name, minprice, maxprice, averageprice, volume, transport = GetWareData(ware, "name", "minprice", "maxprice", "avgprice", "volume", "transport")
+    end)
+    if not ok then name = ware end
+    minprice = tonumber(minprice) or 0
+    maxprice = tonumber(maxprice) or minprice
+    averageprice = tonumber(averageprice) or ((minprice + maxprice) / 2)
+    return {
+        id = ware,
+        name = tostring(name or ware),
+        minprice = minprice,
+        maxprice = math.max(minprice, maxprice),
+        averageprice = math.max(minprice, math.min(math.max(minprice, maxprice), averageprice)),
+        volume = math.max(1, tonumber(volume) or 1),
+        transport = tostring(transport or "UNKNOWN"),
+    }
+end
+
+function menu.supplyStationSnapshot(profile, includeSettings)
+    local station = menu.supplyStationId(profile)
+    if not station then return nil end
+    local isplayerowned, stationname, products, resources, tradewares, cargo
+    local ok = pcall(function()
+        isplayerowned, stationname, products, resources, tradewares, cargo = GetComponentData(station, "isplayerowned", "name", "products", "allresources", "tradewares", "cargo")
+    end)
+    if not ok or not isplayerowned then return nil end
+    products, resources, tradewares = menu.supplyList(products), menu.supplyList(resources), menu.supplyList(tradewares)
+    cargo = type(cargo) == "table" and cargo or {}
+    local wares, seen = {}, {}
+    local function include(list)
+        for _, ware in ipairs(list) do
+            if not seen[ware] then seen[ware] = true; wares[#wares + 1] = ware end
+        end
+    end
+    include(products); include(resources); include(tradewares)
+    table.sort(wares)
+    local productSet, resourceSet = {}, {}
+    for _, ware in ipairs(products) do productSet[ware] = true end
+    for _, ware in ipairs(resources) do resourceSet[ware] = true end
+    local records = {}
+    for _, ware in ipairs(wares) do
+        local metadata = menu.supplyWareMetadata(ware)
+        local record = {
+            ware = ware,
+            name = metadata.name,
+            product = productSet[ware] == true,
+            resource = resourceSet[ware] == true,
+            installedProduction = menu.supplySafeRate(station, ware, true, true),
+            effectiveProduction = menu.supplySafeRate(station, ware, true, false),
+            installedConsumption = menu.supplySafeRate(station, ware, false, true),
+            effectiveConsumption = menu.supplySafeRate(station, ware, false, false),
+            stock = math.max(0, tonumber(cargo[ware]) or 0),
+            minprice = metadata.minprice,
+            maxprice = metadata.maxprice,
+            averageprice = metadata.averageprice,
+            volume = metadata.volume,
+            transport = metadata.transport,
+        }
+        if includeSettings then
+            pcall(function()
+                record.storage = math.max(0, tonumber(GetWareProductionLimit(station, ware)) or 0)
+                record.storageOverride = HasContainerStockLimitOverride(station, ware) and true or false
+                record.buyprice = tonumber(GetContainerWarePrice(station, ware, true)) or metadata.averageprice
+                record.sellprice = tonumber(GetContainerWarePrice(station, ware, false)) or metadata.averageprice
+                record.buypriceOverride = HasContainerWarePriceOverride(station, ware, true) and true or false
+                record.sellpriceOverride = HasContainerWarePriceOverride(station, ware, false) and true or false
+            end)
+        end
+        records[#records + 1] = record
+    end
+    return {
+        id = tostring(v(profile, 24, "")),
+        name = tostring(stationname or v(profile, 1, "Unknown station")),
+        role = text(v(profile, 2, "UNDEFINED")),
+        storageCapacity = math.max(0, tonumber(v(profile, 15, 0)) or 0),
+        products = products,
+        resources = resources,
+        wares = records,
+    }
+end
+
+function menu.supplyCollect(view)
+    local snapshot = { view = view, captured = getElapsedTime(), rows = {}, stations = {}, excluded = "Raw Scrap" }
+    local stationOnly = view == "station" or view == "settings"
+    if stationOnly then
+        local profile = menu.stations and menu.stations[menu.selected]
+        local record = profile and menu.supplyStationSnapshot(profile, view == "settings") or nil
+        if record then snapshot.stations[1] = record end
+    else
+        for _, profile in ipairs(menu.stations or {}) do
+            local record = menu.supplyStationSnapshot(profile, false)
+            if record then snapshot.stations[#snapshot.stations + 1] = record end
+        end
+    end
+
+    local wareMap = {}
+    for _, station in ipairs(snapshot.stations) do
+        for _, record in ipairs(station.wares) do
+            local aggregate = wareMap[record.ware]
+            if not aggregate then
+                aggregate = {
+                    ware = record.ware, name = record.name, installed = 0, effective = 0,
+                    demand = 0, currentDemand = 0, supported = 0, producers = 0,
+                    consumers = 0, producerStations = {}, consumerStations = {},
+                }
+                wareMap[record.ware] = aggregate
+            end
+            aggregate.installed = aggregate.installed + record.installedProduction
+            aggregate.effective = aggregate.effective + record.effectiveProduction
+            aggregate.demand = aggregate.demand + record.installedConsumption
+            aggregate.currentDemand = aggregate.currentDemand + record.effectiveConsumption
+            if record.installedProduction > 0 then
+                aggregate.producers = aggregate.producers + 1
+                aggregate.producerStations[#aggregate.producerStations + 1] = { name = station.name, installed = record.installedProduction, effective = record.effectiveProduction }
+            end
+            if record.installedConsumption > 0 then
+                aggregate.consumers = aggregate.consumers + 1
+                aggregate.consumerStations[#aggregate.consumerStations + 1] = { name = station.name, demand = record.installedConsumption, current = record.effectiveConsumption }
+            end
+        end
+    end
+
+    for _, station in ipairs(snapshot.stations) do
+        local supportFactor = 1
+        local hasMeasuredInput = false
+        for _, ware in ipairs(station.resources or {}) do
+            local input = wareMap[ware]
+            if input and input.demand > 0 then
+                hasMeasuredInput = true
+                supportFactor = math.min(supportFactor, math.max(0, math.min(1, input.installed / input.demand)))
+            end
+        end
+        station.supportFactor = hasMeasuredInput and supportFactor or 1
+        for _, record in ipairs(station.wares) do
+            if record.installedProduction > 0 and wareMap[record.ware] then
+                wareMap[record.ware].supported = wareMap[record.ware].supported + record.installedProduction * station.supportFactor
+            end
+        end
+    end
+
+    for _, aggregate in pairs(wareMap) do
+        aggregate.coverage = aggregate.demand > 0 and (aggregate.installed * 100 / aggregate.demand) or (aggregate.installed > 0 and 100 or 0)
+        aggregate.deficit = math.max(0, aggregate.demand - aggregate.installed)
+        aggregate.surplus = math.max(0, aggregate.installed - aggregate.demand)
+        table.sort(aggregate.producerStations, function(a, b) return a.installed > b.installed end)
+        table.sort(aggregate.consumerStations, function(a, b) return a.demand > b.demand end)
+        snapshot.rows[#snapshot.rows + 1] = aggregate
+    end
+    table.sort(snapshot.rows, function(a, b)
+        if view == "bottlenecks" or view == "expansion" then
+            if a.deficit == b.deficit then return a.name < b.name end
+            return a.deficit > b.deficit
+        elseif view == "capacity" then
+            if a.installed == b.installed then return a.name < b.name end
+            return a.installed > b.installed
+        end
+        if a.coverage == b.coverage then return a.name < b.name end
+        return a.coverage < b.coverage
+    end)
+    return snapshot
+end
+
+function menu.supplyRun(view)
+    DebugError("[JKEOC][B265][SUPPLY_RUN] stage=START view=" .. tostring(view) .. " trigger=PLAYER_EXPLICIT recurring_supply_scan=0")
+    local store = menu.supplyModelStore()
+    local current = menu.supplyCollect(view)
+    local prior = store.views[view] and store.views[view].current or nil
+    store.views[view] = { previous = prior, current = current }
+    menu.saveSupplyModelStore(store)
+    menu.supplyStatus = "ON-DEMAND ANALYSIS COMPLETE: " .. string.upper(view)
+    menu.supplySelectedWare = 1
+    menu.supplySelectedCapacityWare = nil
+    menu.supplySelectedExpansionWare = nil
+    DebugError("[JKEOC][B265][SUPPLY_RUN] stage=COMPLETE view=" .. tostring(view) .. " stations=" .. tostring(#(current.stations or {})) .. " wares=" .. tostring(#(current.rows or {})) .. " recurring_supply_scan=0")
+end
+
+function menu.supplyViewSnapshots(view)
+    local state = menu.supplyModelStore().views[view]
+    if type(state) ~= "table" then return nil, nil end
+    return state.current, state.previous
+end
+
+function menu.supplyPreviousRow(previous, ware)
+    if not previous then return nil end
+    for _, row in ipairs(previous.rows or {}) do if row.ware == ware then return row end end
+    return nil
+end
+
+function menu.supplySelectedStationRecord(snapshot)
+    if type(snapshot) ~= "table" then return nil end
+    local profile = menu.stations and menu.stations[menu.selected]
+    local selectedId = profile and tostring(v(profile, 24, "")) or ""
+    if selectedId ~= "" then
+        for _, station in ipairs(snapshot.stations or {}) do
+            if tostring(station.id or "") == selectedId then return station end
+        end
+    end
+    return nil
+end
+
+function menu.supplySelectedStationWareSet(snapshot, productsOnly)
+    local station = menu.supplySelectedStationRecord(snapshot)
+    local result = {}
+    if not station then return result, nil end
+    if productsOnly then
+        for _, ware in ipairs(station.products or {}) do result[ware] = true end
+    else
+        for _, record in ipairs(station.wares or {}) do result[record.ware] = true end
+    end
+    return result, station
+end
+
+function menu.supplyDelta(value, previous)
+    if previous == nil then return "NO PREVIOUS SNAPSHOT" end
+    local delta = (tonumber(value) or 0) - (tonumber(previous) or 0)
+    if math.abs(delta) < 0.005 then return "NO CHANGE" end
+    return (delta > 0 and "+" or "") .. formatNumber(delta)
+end
+
+function menu.supplyElapsedLabel(value)
+    local seconds = math.max(0, math.floor(tonumber(value) or 0))
+    local hours = math.floor(seconds / 3600)
+    local minutes = math.floor((seconds % 3600) / 60)
+    local remainder = seconds % 60
+    return string.format("%02d:%02d:%02d game time", hours, minutes, remainder)
+end
+
+function menu.supplyPageBounds(view, total, pageSize)
+    total = math.max(0, tonumber(total) or 0)
+    pageSize = math.max(1, tonumber(pageSize) or 1)
+    local pages = math.max(1, math.ceil(total / pageSize))
+    local page = clamp(tonumber(menu.supplyPages[view]) or 1, 1, pages)
+    menu.supplyPages[view] = page
+    local first = total > 0 and ((page - 1) * pageSize + 1) or 0
+    local last = total > 0 and math.min(total, first + pageSize - 1) or 0
+    return first, last, page, pages
+end
+
+function menu.supplyPageControls(tableWidget, view, total, pageSize)
+    local first, last, page, pages = menu.supplyPageBounds(view, total, pageSize)
+    local row = tableWidget:addRow(true)
+    addButton(row, 1, "PREVIOUS", function() menu.supplyPages[view] = math.max(1, page - 1); menu.refresh(false) end, page > 1)
+    row[2]:setColSpan(2):createText(total > 0 and ("SHOWING " .. first .. "-" .. last .. " OF " .. total .. " | PAGE " .. page .. " OF " .. pages) or "NO RESULTS", { halign = "center" })
+    addButton(row, 4, "NEXT", function() menu.supplyPages[view] = math.min(pages, page + 1); menu.refresh(false) end, page < pages)
+    return first, last
+end
+
+function menu.supplyBar(tableWidget, label, value, maximum, suffix, color)
+    local row = tableWidget:addRow(false)
+    row[1]:createText(label, { wordwrap = true })
+    local safeMaximum = math.max(1, tonumber(maximum) or 1)
+    local safeValue = math.max(0, math.min(safeMaximum, tonumber(value) or 0))
+    row[2]:setColSpan(2):createSliderCell({
+        height = Helper.standardTextHeight,
+        bgColor = availableModeBackground,
+        valueColor = color or navigationStoryColor,
+        min = 0, max = safeMaximum, start = safeValue,
+        hideMaxValue = true, suffix = suffix or "", readOnly = true,
+    })
+    row[4]:createText(formatNumber(value) .. (suffix or ""), { halign = "right" })
+end
+
+function menu.supplyNavigation(tableWidget)
+    section(tableWidget, "ON-DEMAND SUPPLY MODEL")
+    local row = tableWidget:addRow(true)
+    row[1]:setColSpan(2)
+    addButton(row, 1, "EMPIRE SUPPLY BALANCE", function() menu.supplyView = "balance"; menu.supplyPages.balance = menu.supplyPages.balance or 1; menu.refresh() end, true)
+    row[3]:setColSpan(2)
+    addButton(row, 3, "INSTALLED / SUPPORTED / EFFECTIVE", function() menu.supplyView = "capacity"; menu.supplyPages.capacity = menu.supplyPages.capacity or 1; menu.refresh() end, true)
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(2)
+    addButton(row, 1, "TOP SUPPLY BOTTLENECKS", function() menu.supplyView = "bottlenecks"; menu.supplyPages.bottlenecks = menu.supplyPages.bottlenecks or 1; menu.refresh() end, true)
+    row[3]:setColSpan(2)
+    addButton(row, 3, "WARES BY PRODUCING STATION", function() menu.supplyView = "producers"; menu.supplyPages.producers = menu.supplyPages.producers or 1; menu.refresh() end, true)
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(2)
+    addButton(row, 1, "SELECTED STATION SUPPLY PROFILE", function() menu.supplyView = "station"; menu.supplyPages.station = menu.supplyPages.station or 1; menu.refresh() end, true)
+    row[3]:setColSpan(2)
+    addButton(row, 3, "STATION PRICE & STORAGE PLAN", function() menu.supplyView = "settings"; menu.refresh() end, true)
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(4)
+    addButton(row, 1, "ADVISORY EXPANSION PLANNER", function() menu.supplyView = "expansion"; menu.refresh() end, true)
+    local explanation = tableWidget:addRow(false)
+    explanation[1]:setColSpan(4):createText("This tab performs no analysis while idle. Enter a view and explicitly run it. Each view retains only its previous and current snapshots so EOC can show the change since that view's last refresh.", { wordwrap = true })
+end
+
+function menu.supplyRefreshControls(tableWidget, view, current)
+    local row = tableWidget:addRow(true)
+    row[1]:setColSpan(2)
+    addButton(row, 1, "BACK TO SUPPLY MODEL CHOICES", function() menu.supplyView = "home"; menu.supplyPreview = nil; menu.refresh() end, true)
+    row[3]:setColSpan(2)
+    addButton(row, 3, current and "REFRESH THIS ANALYSIS" or "RUN THIS ANALYSIS", function() menu.supplyRun(view); menu.refresh() end, true)
+    local status = tableWidget:addRow(false)
+    status[1]:setColSpan(4):createText(current and ("LAST ON-DEMAND REFRESH: " .. menu.supplyElapsedLabel(current.captured) .. " | " .. #(current.stations or {}) .. " station(s) measured | Raw Scrap excluded") or "NOT ANALYZED: No station or ware data has been read for this view.", { wordwrap = true, color = current and investigationNeutralColor or investigationUnknownColor })
+end
+
+function menu.supplyExpansionView(tableWidget, current, previous)
+    local wareSet, station = menu.supplySelectedStationWareSet(current, false)
+    if not station then
+        local empty = tableWidget:addRow(false)
+        empty[1]:setColSpan(4):createText("The selected station is not present in this snapshot. Return to Stations, select a valid player station, then run the Expansion Planner again.", { wordwrap = true, color = investigationUnknownColor })
+        return
+    end
+    local candidates = {}
+    for index, record in ipairs(current.rows or {}) do
+        if wareSet[record.ware] then
+            local state, priority, reason
+            if record.deficit > 0 and record.installed <= 0 then
+                state, priority = "NEW OWNED CAPACITY CANDIDATE", 1
+                reason = "Empire demand exceeds installed owned production and this snapshot measured no owned production capacity."
+            elseif record.deficit > 0 and record.installed > 0 and record.supported < record.installed * 0.9 then
+                state, priority = "RECOVER INPUT SUPPORT FIRST", 2
+                reason = "Installed capacity exists, but the advisory supported ceiling is materially lower. Adding output capacity before restoring inputs is not supported."
+            elseif record.deficit > 0 and record.effective < math.min(record.installed, record.supported) * 0.9 then
+                state, priority = "RESTORE EXISTING CAPACITY FIRST", 3
+                reason = "Existing capacity is not currently effective. Recover the present line before considering another module."
+            elseif record.deficit > 0 then
+                state, priority = "EXPANSION CANDIDATE", 4
+                reason = "Measured empire demand exceeds installed owned production after the current capacity and support checks."
+            else
+                state, priority = "NO EXPANSION SUPPORTED", 5
+                reason = "This on-demand snapshot does not show an owned production deficit for the selected resource."
+            end
+            candidates[#candidates + 1] = { index = index, record = record, state = state, priority = priority, reason = reason }
+        end
+    end
+    table.sort(candidates, function(a, b)
+        if a.priority == b.priority then
+            if a.record.deficit == b.record.deficit then return a.record.name < b.record.name end
+            return a.record.deficit > b.record.deficit
+        end
+        return a.priority < b.priority
+    end)
+    if #candidates == 0 then
+        local empty = tableWidget:addRow(false)
+        empty[1]:setColSpan(4):createText("No station-relevant resource with a measurable production or consumption rate was returned for " .. station.name .. ".", { wordwrap = true })
+        return
+    end
+    local options = {}
+    for index, candidate in ipairs(candidates) do
+        options[#options + 1] = { id = index, text = candidate.state .. " | " .. candidate.record.name, icon = "", displayremoveoption = false }
+    end
+    local selected = clamp(tonumber(menu.supplySelectedExpansionWare) or 1, 1, #candidates)
+    menu.supplySelectedExpansionWare = selected
+    local selectRow = tableWidget:addRow(true)
+    local dropdown = selectRow[1]:setColSpan(4):createDropDown(options, { active = true, startOption = selected, height = Helper.standardButtonHeight })
+    dropdown:setTextProperties({ fontsize = Helper.standardFontSize })
+    selectRow[1].handlers.onDropDownConfirmed = function(_, value)
+        menu.supplySelectedExpansionWare = clamp(tonumber(value) or selected, 1, #candidates)
+        menu.refresh(false)
+    end
+    local candidate = candidates[selected]
+    local record = candidate.record
+    local prior = menu.supplyPreviousRow(previous, record.ware)
+    section(tableWidget, station.name .. " | " .. record.name)
+    local maximum = math.max(1, record.installed, record.supported, record.effective, record.demand)
+    menu.supplyBar(tableWidget, "INSTALLED OWNED CAPACITY", record.installed, maximum, "/h", navigationStoryColor)
+    menu.supplyBar(tableWidget, "SUPPORTED CEILING", record.supported, maximum, "/h", investigationUnknownColor)
+    menu.supplyBar(tableWidget, "EFFECTIVE NOW", record.effective, maximum, "/h", investigationPassColor)
+    menu.supplyBar(tableWidget, "EMPIRE DEMAND", record.demand, maximum, "/h", investigationFailColor)
+    local decision = tableWidget:addRow(false)
+    decision[1]:setColSpan(4):createText("PLANNER RESULT: " .. candidate.state .. "\n" .. candidate.reason, { wordwrap = true, color = candidate.priority <= 4 and investigationUnknownColor or investigationPassColor })
+    local evidence = tableWidget:addRow(false)
+    evidence[1]:setColSpan(4):createText("DEFICIT " .. formatNumber(record.deficit) .. "/h | COVERAGE " .. string.format("%.1f%%", record.coverage) .. " | " .. record.producers .. " producing station(s) | " .. record.consumers .. " consuming station(s) | deficit delta " .. menu.supplyDelta(record.deficit, prior and prior.deficit or nil), { wordwrap = true })
+    local boundary = tableWidget:addRow(false)
+    boundary[1]:setColSpan(4):createText("ADVISORY BOUNDARY: EOC has not proven an exact module macro, module count, plot location, construction cost, or complete upstream recipe for this recommendation. Review the named ware in the vanilla Station Build Plan before committing construction. EOC will not place or build anything.", { wordwrap = true, color = investigationNeutralColor })
+end
+
+function menu.supplyOverviewView(tableWidget, view, current, previous)
+    local titles = {
+        balance = "EMPIRE SUPPLY BALANCE",
+        capacity = "INSTALLED / SUPPORTED / EFFECTIVE CAPACITY",
+        bottlenecks = "TOP SUPPLY BOTTLENECKS",
+        producers = "WARES BY PRODUCING STATION",
+        expansion = "ADVISORY EXPANSION PLANNER",
+    }
+    section(tableWidget, titles[view] or "SUPPLY MODEL")
+    menu.supplyRefreshControls(tableWidget, view, current)
+    if not current then return end
+    local rows = current.rows or {}
+    if #rows == 0 then
+        local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("The selected on-demand pass returned no supported production or consumption records.", { wordwrap = true }); return
+    end
+    if view == "expansion" then
+        menu.supplyExpansionView(tableWidget, current, previous)
+        return
+    end
+    if view == "producers" then
+        local productSet, selectedStation = menu.supplySelectedStationWareSet(current, true)
+        if not selectedStation then local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("The selected station is not present in this snapshot. Select a valid player station and refresh this analysis.", { wordwrap = true }); return end
+        local options = {}
+        for index, record in ipairs(rows) do
+            if record.installed > 0 and productSet[record.ware] then options[#options + 1] = { id = index, text = record.name, icon = "", displayremoveoption = false } end
+        end
+        if #options == 0 then local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("No measured production ware is present at " .. selectedStation.name .. "."); return end
+        local selected = tonumber(menu.supplySelectedWare) or options[1].id
+        local chosen = rows[selected]
+        if not chosen or chosen.installed <= 0 or not productSet[chosen.ware] then selected = options[1].id; chosen = rows[selected] end
+        menu.supplySelectedWare = selected
+        local selectRow = tableWidget:addRow(true)
+        local dropdown = selectRow[1]:setColSpan(4):createDropDown(options, { active = true, startOption = selected, height = Helper.standardButtonHeight })
+        dropdown:setTextProperties({ fontsize = Helper.standardFontSize })
+        selectRow[1].handlers.onDropDownConfirmed = function(_, value) menu.supplySelectedWare = tonumber(value) or selected; menu.refresh() end
+        section(tableWidget, selectedStation.name .. " RESOURCE | " .. chosen.name .. " - PRODUCING STATIONS")
+        local maximum = chosen.producerStations[1] and chosen.producerStations[1].installed or 1
+        local first, last = menu.supplyPageControls(tableWidget, "producers", #chosen.producerStations, 5)
+        for index = first, last do
+            local producer = chosen.producerStations[index]
+            menu.supplyBar(tableWidget, producer.name, producer.installed, maximum, "/h", navigationStoryColor)
+            local prior = menu.supplyPreviousRow(previous, chosen.ware)
+            local priorStation
+            if prior then for _, entry in ipairs(prior.producerStations or {}) do if entry.name == producer.name then priorStation = entry; break end end end
+            local delta = tableWidget:addRow(false); delta[1]:setColSpan(4):createText("Effective " .. formatNumber(producer.effective) .. "/h | installed delta " .. menu.supplyDelta(producer.installed, priorStation and priorStation.installed or nil), { wordwrap = true })
+        end
+        return
+    end
+
+    local displayRows = {}
+    local maximumDeficit = 1
+    for _, record in ipairs(rows) do maximumDeficit = math.max(maximumDeficit, record.deficit) end
+    for _, record in ipairs(rows) do
+        local show = view ~= "bottlenecks" or record.deficit > 0
+        if show then displayRows[#displayRows + 1] = record end
+    end
+    if view == "capacity" then
+        local wareSet, selectedStation = menu.supplySelectedStationWareSet(current, false)
+        if not selectedStation then local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("The selected station is not present in this snapshot. Select a valid player station and refresh this analysis.", { wordwrap = true }); return end
+        local options = {}
+        for index, record in ipairs(displayRows) do
+            if wareSet[record.ware] then options[#options + 1] = { id = index, text = record.name, icon = "", displayremoveoption = false } end
+        end
+        if #options == 0 then local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("No measured Supply resource is present at " .. selectedStation.name .. "."); return end
+        local selected = tonumber(menu.supplySelectedCapacityWare) or options[1].id
+        if not displayRows[selected] or not wareSet[displayRows[selected].ware] then selected = options[1].id end
+        menu.supplySelectedCapacityWare = selected
+        local selectRow = tableWidget:addRow(true)
+        local dropdown = selectRow[1]:setColSpan(4):createDropDown(options, { active = true, startOption = selected, height = Helper.standardButtonHeight })
+        dropdown:setTextProperties({ fontsize = Helper.standardFontSize })
+        selectRow[1].handlers.onDropDownConfirmed = function(_, value)
+            menu.supplySelectedCapacityWare = tonumber(value) or selected
+            menu.refresh(false)
+        end
+        local record = displayRows[selected]
+        local prior = menu.supplyPreviousRow(previous, record.ware)
+        section(tableWidget, selectedStation.name .. " RESOURCE | " .. record.name)
+        local maximum = math.max(1, record.installed, record.supported, record.effective, record.demand)
+        menu.supplyBar(tableWidget, "INSTALLED", record.installed, maximum, "/h", navigationStoryColor)
+        menu.supplyBar(tableWidget, "SUPPORTED CEILING", record.supported, maximum, "/h", investigationUnknownColor)
+        menu.supplyBar(tableWidget, "EFFECTIVE NOW", record.effective, maximum, "/h", investigationPassColor)
+        local detail = tableWidget:addRow(false)
+        detail[1]:setColSpan(4):createText("Demand " .. formatNumber(record.demand) .. "/h | coverage " .. string.format("%.1f%%", record.coverage) .. " | " .. record.consumers .. " consuming station(s)", { wordwrap = true })
+        local delta = tableWidget:addRow(false)
+        delta[1]:setColSpan(4):createText("Installed delta " .. menu.supplyDelta(record.installed, prior and prior.installed or nil) .. " | effective delta " .. menu.supplyDelta(record.effective, prior and prior.effective or nil), { wordwrap = true })
+        local position = tableWidget:addRow(false)
+        position[1]:setColSpan(4):createText("SELECTED-STATION RESOURCE LIST: " .. #options .. " choice(s) | Values retain the empire-wide Capacity scope for the chosen ware.", { wordwrap = true, color = investigationNeutralColor })
+        return
+    end
+    local pageSize = 6
+    local first, last = menu.supplyPageControls(tableWidget, view, #displayRows, pageSize)
+    for index = first, last do
+            local record = displayRows[index]
+            local prior = menu.supplyPreviousRow(previous, record.ware)
+            if view == "bottlenecks" then
+                menu.supplyBar(tableWidget, record.name, record.deficit, maximumDeficit, "/h deficit", investigationFailColor)
+                local delta = tableWidget:addRow(false); delta[1]:setColSpan(4):createText(record.consumers .. " consuming station(s) | coverage " .. string.format("%.1f%%", record.coverage) .. " | deficit delta " .. menu.supplyDelta(record.deficit, prior and prior.deficit or nil), { wordwrap = true })
+            else
+                local coverage = math.max(0, math.min(100, record.coverage))
+                menu.supplyBar(tableWidget, record.name, coverage, 100, "%", coverage >= 100 and investigationPassColor or coverage >= 75 and investigationUnknownColor or investigationFailColor)
+                local delta = tableWidget:addRow(false); delta[1]:setColSpan(4):createText("Supply " .. formatNumber(record.installed) .. "/h | demand " .. formatNumber(record.demand) .. "/h | coverage delta " .. menu.supplyDelta(record.coverage, prior and prior.coverage or nil) .. " percentage points", { wordwrap = true })
+            end
+    end
+    if #displayRows == 0 then local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("No measured deficit appears in this snapshot.") end
+end
+
+function menu.supplySelectedStationView(tableWidget, view, current, previous)
+    section(tableWidget, view == "settings" and "STATION PRICE & STORAGE PLAN" or "SELECTED STATION SUPPLY PROFILE")
+    menu.supplyRefreshControls(tableWidget, view, current)
+    if not current then return end
+    local station = current.stations and current.stations[1]
+    if not station then local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("The selected station is unavailable. Select a valid player station on the Stations tab and run this view again.", { wordwrap = true }); return end
+    section(tableWidget, station.name .. " | " .. station.role)
+    if view == "station" then
+        local priorStation = previous and previous.stations and previous.stations[1]
+        local previousMap = {}
+        if priorStation then for _, record in ipairs(priorStation.wares or {}) do previousMap[record.ware] = record end end
+        local displayWares = {}
+        for _, record in ipairs(station.wares or {}) do
+            if record.installedProduction > 0 or record.installedConsumption > 0 then displayWares[#displayWares + 1] = record end
+        end
+        local first, last = menu.supplyPageControls(tableWidget, "station", #displayWares, 3)
+        for index = first, last do
+                local record = displayWares[index]
+                local maximum = math.max(1, record.installedProduction, record.installedConsumption)
+                menu.supplyBar(tableWidget, record.name .. " OUTPUT", record.installedProduction, maximum, "/h", navigationStoryColor)
+                menu.supplyBar(tableWidget, record.name .. " INPUT", record.installedConsumption, maximum, "/h", investigationUnknownColor)
+                local prior = previousMap[record.ware]
+                local delta = tableWidget:addRow(false); delta[1]:setColSpan(4):createText("Effective output " .. formatNumber(record.effectiveProduction) .. "/h | stock " .. formatNumber(record.stock) .. " | effective delta " .. menu.supplyDelta(record.effectiveProduction, prior and prior.effectiveProduction or nil), { wordwrap = true })
+        end
+        if #displayWares == 0 then local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("No measurable production or consumption rate was returned for this station.") end
+        return
+    end
+
+    local wares = station.wares or {}
+    if #wares == 0 then local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("No configurable production, resource, or trade ware was returned for this station."); return end
+    local options = {}
+    for index, record in ipairs(wares) do options[#options + 1] = { id = index, text = record.name, icon = "", displayremoveoption = false } end
+    menu.supplySelectedWare = clamp(tonumber(menu.supplySelectedWare) or 1, 1, #wares)
+    local selectRow = tableWidget:addRow(true)
+    local dropdown = selectRow[1]:setColSpan(4):createDropDown(options, { active = true, startOption = menu.supplySelectedWare, height = Helper.standardButtonHeight })
+    dropdown:setTextProperties({ fontsize = Helper.standardFontSize })
+    selectRow[1].handlers.onDropDownConfirmed = function(_, value) menu.supplySelectedWare = clamp(tonumber(value) or 1, 1, #wares); menu.supplyDraft = nil; menu.supplyPreview = nil; menu.refresh() end
+    local record = wares[menu.supplySelectedWare]
+    local coverageRow
+    for _, aggregate in ipairs(current.rows or {}) do if aggregate.ware == record.ware then coverageRow = aggregate; break end end
+    local coverage = coverageRow and coverageRow.coverage or 100
+    local range = math.max(0, record.maxprice - record.minprice)
+    local suggestedBuy = math.floor(math.max(record.minprice, math.min(record.maxprice, coverage < 75 and record.maxprice or coverage < 100 and (record.averageprice + range * 0.25) or record.averageprice)) + 0.5)
+    local suggestedSell = math.floor(math.max(record.minprice, math.min(record.maxprice, coverage > 125 and record.minprice or coverage > 100 and (record.averageprice - range * 0.25) or record.averageprice)) + 0.5)
+    local throughput = math.max(record.installedProduction, record.installedConsumption)
+    local suggestedStorage = math.max(1, math.floor(math.max(record.stock, throughput * 2) + 0.5))
+    if record.storage and record.storage > 0 then suggestedStorage = math.min(math.max(record.storage * 2, 1), suggestedStorage) end
+    local physicalWareLimit = station.storageCapacity > 0 and math.max(1, math.floor(station.storageCapacity / math.max(1, record.volume))) or nil
+    if physicalWareLimit then suggestedStorage = math.min(suggestedStorage, physicalWareLimit) end
+    local draftKey = station.id .. "|" .. record.ware
+    if not menu.supplyDraft or menu.supplyDraft.key ~= draftKey then
+        menu.supplyDraft = { key = draftKey, buy = suggestedBuy, sell = suggestedSell, storage = suggestedStorage }
+        menu.supplyPreview = nil
+    end
+    local draft = menu.supplyDraft
+    pair(tableWidget, "CURRENT BUY PRICE", formatNumber(record.buyprice) .. " Cr", "EOC SUGGESTED", formatNumber(suggestedBuy) .. " Cr")
+    pair(tableWidget, "CURRENT SELL PRICE", formatNumber(record.sellprice) .. " Cr", "EOC SUGGESTED", formatNumber(suggestedSell) .. " Cr")
+    pair(tableWidget, "CURRENT STORAGE ALLOCATION", formatNumber(record.storage), "EOC SUGGESTED", formatNumber(suggestedStorage))
+    local function editRow(label, field)
+        local row = tableWidget:addRow(true)
+        row[1]:createText(label)
+        row[2]:setColSpan(3):createEditBox({ height = Helper.standardButtonHeight }):setText(tostring(draft[field] or 0))
+        row[2].handlers.onEditBoxDeactivated = function(_, entered) draft[field] = tostring(entered or ""); menu.supplyPreview = nil end
+    end
+    editRow("PROPOSED BUY PRICE", "buy")
+    editRow("PROPOSED SELL PRICE", "sell")
+    editRow("PROPOSED STORAGE", "storage")
+    local buy, sell, storage = tonumber(draft.buy), tonumber(draft.sell), tonumber(draft.storage)
+    local valid = buy and sell and storage and buy >= record.minprice and buy <= record.maxprice and sell >= record.minprice and sell <= record.maxprice and storage >= 1 and (not physicalWareLimit or storage <= physicalWareLimit)
+    local bounds = tableWidget:addRow(false)
+    bounds[1]:setColSpan(4):createText("VALID PRICE RANGE: " .. formatNumber(record.minprice) .. "-" .. formatNumber(record.maxprice) .. " Cr. Storage is whole ware units" .. (physicalWareLimit and (" and is capped at " .. formatNumber(physicalWareLimit) .. " by measured station capacity") or "") .. ". Changing allocation can reduce shared storage available to other wares.", { wordwrap = true, color = valid and investigationNeutralColor or investigationFailColor })
+    local action = tableWidget:addRow(true); action[1]:setColSpan(4)
+    if not menu.supplyPreview then
+        addButton(action, 1, "PREVIEW EXACT STATION CHANGES", function() menu.supplyPreview = valid and draftKey or nil; menu.refresh() end, valid)
+    else
+        addButton(action, 1, "CONFIRM: APPLY PRICE & STORAGE OVERRIDES", function()
+            local station64 = ConvertStringTo64Bit(station.id)
+            local before = { buy = record.buyprice, sell = record.sellprice, storage = record.storage, buyoverride = record.buypriceOverride, selloverride = record.sellpriceOverride, storageoverride = record.storageOverride }
+            local applyOk, applyError = pcall(function()
+                SetContainerWarePriceOverride(station64, record.ware, true, math.floor(buy + 0.5))
+                SetContainerWarePriceOverride(station64, record.ware, false, math.floor(sell + 0.5))
+                SetContainerStockLimitOverride(station64, record.ware, math.floor(storage + 0.5))
+            end)
+            local verified, after = false, {}
+            if applyOk then
+                local readOk = pcall(function()
+                    after.buy = tonumber(GetContainerWarePrice(station64, record.ware, true)) or -1
+                    after.sell = tonumber(GetContainerWarePrice(station64, record.ware, false)) or -1
+                    after.storage = tonumber(GetWareProductionLimit(station64, record.ware)) or -1
+                    after.buyoverride = HasContainerWarePriceOverride(station64, record.ware, true) and true or false
+                    after.selloverride = HasContainerWarePriceOverride(station64, record.ware, false) and true or false
+                    after.storageoverride = HasContainerStockLimitOverride(station64, record.ware) and true or false
+                end)
+                verified = readOk and after.buyoverride and after.selloverride and after.storageoverride and math.floor(after.buy + 0.5) == math.floor(buy + 0.5) and math.floor(after.sell + 0.5) == math.floor(sell + 0.5) and math.floor(after.storage + 0.5) == math.floor(storage + 0.5)
+            end
+            local store = menu.supplyModelStore()
+            table.insert(store.audit, 1, { station = station.name, stationid = station.id, ware = record.ware, warename = record.name, time = getElapsedTime(), before = before, requested = { buy = math.floor(buy + 0.5), sell = math.floor(sell + 0.5), storage = math.floor(storage + 0.5) }, after = after, verified = verified, error = applyOk and "" or tostring(applyError) })
+            while #store.audit > 64 do table.remove(store.audit) end
+            menu.saveSupplyModelStore(store)
+            menu.supplyApplyResult = verified and "APPLIED - EOC VERIFIED BY IMMEDIATE READ-BACK" or "NOT VERIFIED - X4 DID NOT REPORT THE COMPLETE REQUESTED STATE"
+            menu.supplyPreview = nil
+            menu.supplyRun("settings")
+            menu.refresh()
+        end, valid, pendingChoiceBackground)
+        local preview = tableWidget:addRow(false)
+        preview[1]:setColSpan(4):createText("PENDING CONFIRMATION: " .. record.name .. " at " .. station.name .. ". Buy " .. formatNumber(record.buyprice) .. " -> " .. formatNumber(buy) .. " Cr; sell " .. formatNumber(record.sellprice) .. " -> " .. formatNumber(sell) .. " Cr; storage " .. formatNumber(record.storage) .. " -> " .. formatNumber(storage) .. ". This explicitly enables manual price and storage overrides for this ware. No credits or cargo are moved by this click.", { wordwrap = true, color = investigationUnknownColor })
+    end
+    if menu.supplyApplyResult then local result = tableWidget:addRow(false); result[1]:setColSpan(4):createText(menu.supplyApplyResult, { wordwrap = true, color = menu.supplyApplyResult:find("APPLIED", 1, true) == 1 and investigationPassColor or investigationFailColor }) end
+end
+
+function menu.supplyModelCenter(tableWidget)
+    menu.supplyView = menu.supplyView or "home"
+    if menu.supplyView == "home" then menu.supplyNavigation(tableWidget); return end
+    local current, previous = menu.supplyViewSnapshots(menu.supplyView)
+    if menu.supplyView == "station" or menu.supplyView == "settings" then
+        menu.supplySelectedStationView(tableWidget, menu.supplyView, current, previous)
+    else
+        menu.supplyOverviewView(tableWidget, menu.supplyView, current, previous)
+    end
+end
+
 local function createHeader(frame, parentWidth)
     local titleHeight = Helper.scaleY(42)
     local tabHeight = Helper.scaleY(38)
     local headerHeight = titleHeight + tabHeight
     local usableWidth = parentWidth - 2 * Helper.borderSize
-    local tableWidget = frame:addTable(9, {
+    local tableWidget = frame:addTable(10, {
         tabOrder = 1,
         x = Helper.borderSize,
         y = Helper.borderSize,
         width = usableWidth,
         borderEnabled = true,
     })
-    local columnWidth = math.floor(usableWidth / 9)
+    local columnWidth = math.floor(usableWidth / 10)
 
     tableWidget:setColWidth(1, columnWidth, false)
     tableWidget:setColWidth(2, columnWidth, false)
@@ -1934,9 +2604,10 @@ local function createHeader(frame, parentWidth)
     tableWidget:setColWidth(6, columnWidth, false)
     tableWidget:setColWidth(7, columnWidth, false)
     tableWidget:setColWidth(8, columnWidth, false)
+    tableWidget:setColWidth(9, columnWidth, false)
 
     local row = tableWidget:addRow(false, { fixed = true })
-    row[1]:setColSpan(9):createText(menu.title, {
+    row[1]:setColSpan(10):createText(menu.title, {
         halign = "center",
         font = Helper.titleFont,
         fontsize = Helper.standardFontSize + 4,
@@ -1946,23 +2617,25 @@ local function createHeader(frame, parentWidth)
     addTabButton(row, 1, "STATIONS", "stations")
     addTabButton(row, 2, "OVERVIEW", "dashboard")
     addTabButton(row, 3, "KPI CENTER", "kpi")
-    addTabButton(row, 4, "FLEET & LOGISTICS", "fleet")
-    addTabButton(row, 5, "DIAGNOSTICS", "diagnostics")
-    addTabButton(row, 6, "CONSTRUCTION", "construction")
-    addTabButton(row, 7, "CASES", "cases")
-    addTabButton(row, 8, "REPORTS", "reports")
-    addTabButton(row, 9, "GLOBAL SETTINGS", "settings")
+    addTabButton(row, 4, "SUPPLY MODEL", "supply")
+    addTabButton(row, 5, "FLEET & LOGISTICS", "fleet")
+    addTabButton(row, 6, "DIAGNOSTICS", "diagnostics")
+    addTabButton(row, 7, "CONSTRUCTION", "construction")
+    addTabButton(row, 8, "CASES", "cases")
+    addTabButton(row, 9, "REPORTS", "reports")
+    addTabButton(row, 10, "GLOBAL SETTINGS", "settings")
 
     local activeColumns = {
         stations = 1,
         dashboard = 2,
         kpi = 3,
-        fleet = 4,
-        diagnostics = 5,
-        construction = 6,
-        cases = 7,
-        reports = 8,
-        settings = 9,
+        supply = 4,
+        fleet = 5,
+        diagnostics = 6,
+        construction = 7,
+        cases = 8,
+        reports = 9,
+        settings = 10,
     }
     tableWidget:setSelectedRow(2)
     tableWidget:setSelectedCol(activeColumns[menu.activeTab or menu.page] or 2)
@@ -2985,12 +3658,12 @@ local function captureForcedVerificationScroll()
         menu.forcedVerificationTopRow = topRow
         menu.forcedVerificationPage = menu.page
         menu.forcedVerificationScrollLocked = true
-        DebugError("[JKEOC][B259][FORCED_VERIFY_SCROLL_CAPTURE] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
+    DebugError("[JKEOC][B265][FORCED_VERIFY_SCROLL_CAPTURE] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
     else
         menu.forcedVerificationTopRow = nil
         menu.forcedVerificationPage = nil
         menu.forcedVerificationScrollLocked = nil
-        DebugError("[JKEOC][B259][FORCED_VERIFY_SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
+        DebugError("[JKEOC][B265][FORCED_VERIFY_SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
     end
 end
 
@@ -4893,6 +5566,8 @@ function menu.create()
             commandOSBoot(tableWidget)
         elseif menu.page == "dashboard" then
             dashboard(tableWidget)
+        elseif menu.page == "supply" then
+            menu.supplyModelCenter(tableWidget)
         elseif menu.page == "construction" then
             constructionCenter(tableWidget)
         elseif menu.page == "cases" then
@@ -4947,11 +5622,11 @@ function menu.refresh(preserveScroll)
         if ok then
             menu.restoreTableTopRow = topRow
             if not menu.scrollCaptureConfirmed then
-                DebugError("[JKEOC][B259][SCROLL_CAPTURE_CONFIRMED] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
+                DebugError("[JKEOC][B265][SCROLL_CAPTURE_CONFIRMED] page=" .. tostring(menu.page) .. " top=" .. tostring(topRow))
                 menu.scrollCaptureConfirmed = true
             end
         elseif not menu.scrollCaptureFailureLogged then
-            DebugError("[JKEOC][B259][SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
+            DebugError("[JKEOC][B265][SCROLL_CAPTURE_FAILED] page=" .. tostring(menu.page) .. " tableid=" .. tostring(tableId))
             menu.scrollCaptureFailureLogged = true
         end
         if Helper.currentTableRow and tableId then menu.restoreTableSelectedRow = Helper.currentTableRow[tableId] end

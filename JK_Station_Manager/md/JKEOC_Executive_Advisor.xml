@@ -21,8 +21,8 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-      <show_notification text="'EOC 3.2 GA Build 259 | Standalone Dock Access'" timeout="12s" />
-      <debug_text text="'[JKEOC][B259][STARTUP] version=359 build=259 ga=1 test=0 standalone_dock_access=1 subst_catalog=1 callback_preservation=1 standalone_ui_colors=1 legacy_pinwheel=0 dock_access=1 raw_scrap_excluded=1 recurring_watchdog=0 notification=shown'" filter="general" />
+      <show_notification text="'EOC 3.4 TEST Build 265 | Dock Access Compatibility'" timeout="12s" />
+      <debug_text text="'[JKEOC][B265][STARTUP] version=365 build=265 ga=0 test=1 final_dock_owner_reconcile=one_shot supply_model=on_demand expansion_planner=advisory selected_station_resource_filters=1 supply_results=bounded cached_selection_redraw=1 ware_key=avgprice window_min_height=600 price_storage_apply=player_confirmed plot_placement=0 construction_authority=0 recurring_supply_scan=0 standalone_dock_access=1 subst_catalog=1 callback_preservation=1 standalone_ui_colors=1 legacy_pinwheel=0 raw_scrap_excluded=1 recurring_watchdog=0 notification=shown'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>

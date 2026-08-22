@@ -2,14 +2,29 @@
 
 Transform your X4 empire from reactive management into intelligent operations.
 
-## Current release
+## Current public test
 
-- Version: 3.2 GA
-- Engineering build: 259
+- Version: 3.4 TEST
+- Engineering build: 265
+- Status: **WORK IN PROGRESS** — the Supply Model and Advisory Expansion Planner are under active development
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-## What is new in EOC 3.2 GA Build 259
+Build 259 remains the last GA-qualified runtime. Build 265 is available for public testing.
+
+## What is new in EOC 3.4 TEST Build 265
+
+- Adds a separate, on-demand Supply Model tab with previous-refresh deltas.
+- Adds an advisory Expansion Planner and selected-station resource filters.
+- Adds player-editable price and storage proposals with preview, separate confirmation, native application, and immediate read-back.
+- Performs exactly one bounded final DockedMenu owner reconciliation during startup for compatibility testing.
+- Keeps Supply analysis player-triggered: no Supply watcher, polling loop, per-frame analysis, or recurring Supply scan.
+- Does not place plots, alter construction plans, create resources, move cargo, or move credits.
+- Continues to exclude Raw Scrap from conventional Supply recommendations.
+
+The standalone EOC button and all menus passed a local isolation test with every other mod disabled. A reported missing-button case involves a larger mod environment; the exact conflicting extension has not been identified. Players investigating that problem should first test with only EOC enabled, then re-enable other UI/menu mods in small groups.
+
+## Preserved EOC 3.2 foundation
 
 - Makes Dock Interactions access self-contained within EOC, so a separate UI framework installation is not required for the EOC button.
 - Packages the Docked-menu integration through X4's native substitution catalog and safely preserves compatible callbacks when another UI addon loaded first.
@@ -49,6 +64,7 @@ Build 259 also preserves the complete EOC 3.2 feature set:
 
 ## Documentation and support
 
+- [EOC 3.4 TEST Public Test Guide](docs/EOC_3.4_TEST_PUBLIC_TEST_GUIDE.md)
 - [EOC 3.2 GA User and Support Guide](docs/EOC_3.2_GA_USER_SUPPORT_GUIDE.md)
 - [EOC 3.2 GA Release Notes](docs/RELEASE_NOTES_3.2_GA.md)
 - [Report an EOC issue](https://github.com/razoreqx1/JK-Empire-Operations/issues)
