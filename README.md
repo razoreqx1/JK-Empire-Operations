@@ -70,6 +70,7 @@ Build 259 also preserves the complete EOC 3.2 feature set:
 
 ## Documentation and support
 
+- [EOC Development Roadmap](docs/EOC_ROADMAP.md)
 - [EOC 3.5 GA User and Support Guide](docs/EOC_3.5_GA_USER_SUPPORT_GUIDE.md)
 - [EOC 3.5 GA Release Notes](docs/RELEASE_NOTES_3.5_GA.md)
 - [Archived EOC 3.5 TEST Public Test Guide](docs/EOC_3.5_TEST_PUBLIC_TEST_GUIDE.md)
