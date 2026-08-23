@@ -2,12 +2,12 @@
 <content
   id="ws_3778882957"
   name="EOC - Executive Operations Center"
-  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.5 TEST - Build 286&#xA;&#xA;Expanded-frame correction for the native Solution Planner.&#xA;&#xA;- Removes Build 285's disproven table reservation.&#xA;- Expands the bounded EOC frame from 78% to 80% of the viewport, providing approximately 1552 pixels beneath the header against X4's proven 1518-pixel planner requirement.&#xA;- Preserves native blueprint, recipe, dependency, hourly-rate, and module-count evidence without truncation.&#xA;- Preserves explicit/on-demand Supply, native scrolling, same-page position, Raw Scrap exclusion, and every prior authority boundary.&#xA;&#xA;Build 286 is TEST-only and requires live proof before promotion.&#xA;&#xA;Compatible with X4 8.x and 9.x."
+  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.5 GA - Build 304&#xA;&#xA;Assignment feedback and authority consistency.&#xA;&#xA;- Preserves Build 301's runtime-proven native MiningRoutine exact-resource pin.&#xA;- Disables the raw-source action through two immediate redraws, leaving one complete displayed disabled cycle.&#xA;- Suppresses a second callback before redraw and pushes final pin PASS or FAIL to the open Planner page.&#xA;- Retires the legacy unregistered direct-assignment surface in favor of registered-ship controls.&#xA;- Revalidates Disabled mode, ownership, operational state, purpose, cargo, registration, commander, and subordinates at shared assignment executors.&#xA;- Performs no new recurring scans and preserves existing bounded cadence.&#xA;- Never buys ships, steals assigned ships, constructs modules, or moves unrelated cargo.&#xA;&#xA;Build 304 is the EOC 3.5 GA release with the startup identity corrected from the accepted Build 303 runtime.&#xA;&#xA;Compatible with X4 8.x and 9.x."
   author="RazorEQX"
-  version="386"
-  date="2026-08-22"
+  version="404"
+  date="2026-08-23"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.5 TEST Build 286" description="Expanded-frame native Solution Planner correction." />
+  <text language="44" name="EOC 3.5 GA Build 304" description="GA assignment feedback, native raw-resource pinning, and authority consistency." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

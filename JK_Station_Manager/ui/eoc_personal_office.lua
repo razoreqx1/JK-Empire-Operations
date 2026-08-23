@@ -89,7 +89,7 @@ local function registerOnMenu(targetMenu, owner)
     return true
 end
 
---- Perform one final, delayed owner check after all UI addons have settled.
+--- Perform one final owner check on the next UI update.
 -- If another mod replaced DockedMenu after the initial registration, EOC
 -- registers once on that final owner. This callback never reschedules itself.
 local function reconcileFinalOwner()
@@ -97,7 +97,7 @@ local function reconcileFinalOwner()
     local finalMenu = Helper.getMenu("DockedMenu")
     local changed = finalMenu ~= previousMenu
     local registered = registerOnMenu(finalMenu, "FINAL_ACTIVE_MENU")
-    DebugError("[JKEOC][B277][DOCK_ACCESS] stage=FINAL_OWNER_RECONCILED changed=" .. tostring(changed) .. " registered=" .. tostring(registered) .. " recurring_watchdog=0")
+    DebugError("[JKEOC][B289][DOCK_ACCESS] stage=FINAL_OWNER_RECONCILED changed=" .. tostring(changed) .. " registered=" .. tostring(registered) .. " delay_seconds=0 recurring_watchdog=0")
 end
 
 local function scheduleFinalReconcile()
@@ -106,7 +106,7 @@ local function scheduleFinalReconcile()
     end
     integration.finalReconcileScheduled = true
     if Helper and type(Helper.addDelayedOneTimeCallbackOnUpdate) == "function" then
-        Helper.addDelayedOneTimeCallbackOnUpdate(reconcileFinalOwner, true, getElapsedTime() + 10)
+        Helper.addDelayedOneTimeCallbackOnUpdate(reconcileFinalOwner, true, getElapsedTime())
     else
         reconcileFinalOwner()
     end

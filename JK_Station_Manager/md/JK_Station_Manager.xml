@@ -862,7 +862,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
               <set_value name="$productionblueprintmodulename" exact="''" />
               <set_value name="$istrueplayerhq" exact="player.headquarters.exists and $station == player.headquarters" />
               <set_value name="$recommendedproductionname" exact="'%1 PRODUCTION MODULE'.[$ware.name]" />
-              <debug_text text="'[JKEOC][B286][PLANNER_HANDOFF] station=%1 ware=%2 ware_id=%3 blueprint_authority=NATIVE_UI true_hq=%4'.[$station.name, $ware.name, $ware.id, $istrueplayerhq]" filter="general" />
+              <debug_text text="'[JKEOC][B289][PLANNER_HANDOFF] station=%1 ware=%2 ware_id=%3 blueprint_authority=NATIVE_UI true_hq=%4'.[$station.name, $ware.name, $ware.id, $istrueplayerhq]" filter="general" />
               <do_if value="global.$JKEOC_FocusActive == true and global.$JKEOC_FocusStationObject? and global.$JKEOC_RecoveryObjectiveWare? and $station == global.$JKEOC_FocusStationObject and $ware.name == global.$JKEOC_RecoveryObjectiveWare">
                 <set_value name="global.$JKEOC_FocusPlannedStorageMatches" exact="$plannedstoragematches" />
                 <set_value name="global.$JKEOC_FocusPlannedStorageCapacity" exact="$plannedstoragecapacity" />
@@ -3398,7 +3398,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
             <add_player_choice_sub text="'OPEN NEXT RECOVERY STEP'" position="right" section="JKSM_RecoveryActionDetails" />
           </do_else>
           <do_if value="global.$JKEOC_RecoveryObjectiveWare? and global.$JKEOC_RecoveryRootCause == 'NO ASSIGNED LOGISTICS SHIPS'">
-            <add_player_choice_sub text="'ACTION: AUTO-ASSIGN AN AVAILABLE PLAYER SHIP'" position="bottom_left" section="JKSM_AutoAssignShip" />
+            <add_player_choice_sub text="'OPEN REGISTERED SHIP ASSIGNMENT CONTROL'" position="bottom_left" section="JKEOC_B76_Menu" />
           </do_if>
           <add_player_choice_sub text="'SCAN NOW / VERIFY CHANGE'" position="right" section="JKSM_FocusRefresh" />
         </do_if>
@@ -3666,37 +3666,15 @@ subordinates, storage modules, and funds. No station or ship settings are change
       </actions>
     </cue>
 
-    <!-- Phase 1: operational action. Assigns the first operational, unassigned player ship to the focused station.
-         The game/station then controls its station subordinate behaviour; the EOC verifies the subordinate count on the next scan. -->
+    <!-- Build 302: the retired direct-assignment surface now routes to the governed
+         registered-ship control. It performs no commander or assignment mutation. -->
     <cue name="JKSM_AutoAssignShip" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_AutoAssignShip" /></conditions>
       <actions>
-        <find_ship name="$JKEOC_AvailableShips" multiple="true" space="player.galaxy" owner="faction.player" />
-        <remove_value name="$JKEOC_SelectedShip" />
-        <do_all exact="$JKEOC_AvailableShips.count" counter="$as">
-          <set_value name="$candidate" exact="$JKEOC_AvailableShips.{$as}" />
-          <do_if value="not $JKEOC_SelectedShip? and $candidate != player.ship and $candidate.isrealclass.ship and $candidate.isoperational and not $candidate.isunit and not $candidate.isclass.ship_xs and not $candidate.commander and not $candidate.subordinates.count and (not global.$JKEOC_FocusObjectiveWareObject? or $candidate.waretransport.indexof.{global.$JKEOC_FocusObjectiveWareObject.waretransport})">
-            <set_value name="$JKEOC_SelectedShip" exact="$candidate" />
-          </do_if>
-        </do_all>
-        <do_if value="$JKEOC_SelectedShip?">
-          <set_value name="$assignment" exact="if global.$JKEOC_FocusObjectiveWareObject? and global.$JKEOC_FocusObjectiveWareObject.waretransport == waretransport.solid then assignment.mining else if global.$JKEOC_FocusObjectiveWareObject? and global.$JKEOC_FocusObjectiveWareObject.waretransport == waretransport.liquid then assignment.mining else assignment.trade" />
-          <set_object_commander object="$JKEOC_SelectedShip" commander="global.$JKEOC_FocusStationObject" assignment="$assignment" />
-          <set_value name="global.$JKEOC_LastAction" exact="'Assigned %1 to %2 with role %3'.[$JKEOC_SelectedShip.name, global.$JKEOC_FocusStationDisplay, $assignment]" />
-          <set_value name="global.$JKEOC_RecoveryStatus" exact="'CHANGE APPLIED - MONITORING'" />
-          <set_value name="global.$JKEOC_RecoveryVerification" exact="'%1 was assigned to %2 with the matching logistics role. Allow monitoring scans to measure stock recovery.'.[$JKEOC_SelectedShip.name, global.$JKEOC_FocusStationDisplay]" />
-          <show_notification text="'EOC action applied: %1 assigned to %2'.[$JKEOC_SelectedShip.name, global.$JKEOC_FocusStationDisplay]" timeout="8s" />
-          <signal_cue_instantly cue="JKSM_RunIntelligenceScan" />
-          <add_player_choice_sub text="'STATION: %1 | ASSIGNED: %2 — OPEN STATION RECOVERY'.[global.$JKEOC_FocusStationDisplay, $JKEOC_SelectedShip.name]" position="bottom_right" section="JKSM_FocusDashboard" />
-        </do_if>
-        <do_else>
-          <set_value name="global.$JKEOC_LastAction" exact="'No operational unassigned player ship was found'" />
-          <show_notification text="'EOC could not find an unassigned player ship. Build or free a suitable trader, then scan again.'" timeout="10s" />
-          <add_player_choice_sub text="'STATION: %1 | NO AVAILABLE SHIP FOUND — RETURN'.[global.$JKEOC_FocusStationDisplay]" position="bottom_right" section="JKSM_RecoveryDetails" />
-        </do_else>
+        <show_notification text="'EOC ship assignment uses the registered-ship authority controls. No direct assignment was made.'" timeout="10s" />
+        <add_player_choice_sub text="'OPEN REGISTERED SHIP ASSIGNMENT CONTROL'" position="bottom_right" section="JKEOC_B76_Menu" />
       </actions>
     </cue>
-
     <cue name="JKSM_FocusRefresh" namespace="this" instantiate="true">
       <conditions><event_conversation_next_section actor="player.computer" section="JKSM_FocusRefresh" /></conditions>
       <actions>

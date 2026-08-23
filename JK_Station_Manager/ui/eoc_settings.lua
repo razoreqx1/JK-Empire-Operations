@@ -79,10 +79,11 @@ local menu = {
 local config = {
     layer = 6,
     widthRatio = 0.76,
-    -- Build 286: 0.80 gives the shared content table approximately 1552
-    -- physical pixels at Razor's 2160-pixel viewport and 2.00 UI scale. X4's
-    -- live proven minimum for the populated Solution Planner is 1518 pixels.
-    heightRatio = 0.80,
+    -- Build 292: Build 291 live logs proved the populated Solution Planner
+    -- required 1574 physical pixels while 0.80 left 1552, so X4 rejected the
+    -- table. At Razor's 2160-pixel viewport, 0.82 adds about 44 physical pixels
+    -- and clears the proven 22-pixel deficit without changing planner content.
+    heightRatio = 0.82,
     minWidth = 1060,
     -- 600 logical pixels remains below the 1508 physical-pixel budget observed
     -- at Razor's current UI scale; 650 scaled to 1558 and X4 rejected the table.
@@ -124,7 +125,7 @@ local EOC_IDENTITY_BB = "$JKEOC_CommandIntelligenceIdentity"
 local EOC_OS_BUILD = 262
 menu.supplyBlackboardKey = "$JKEOC_B277SupplyModel"
 menu.supplyPages = {}
-local EOC_CHECKLIST_SCHEMA = 3
+local EOC_CHECKLIST_SCHEMA = 4
 local KPI_REFRESH_SECONDS = 30
 menu.KPI_HISTORY_LIMIT = 64
 menu.KPI_REFRESH_INTERVALS = { cash = 30, shipyard = 30, construction = 60, trade = 60, storage = 120, earners = 120, drains = 120, attention = 120 }
@@ -264,6 +265,24 @@ local function managedActionForCase(caseData)
         if text(v(action, 1, "")) == stationName and text(v(action, 14, v(action, 3, ""))) == wareName then return action end
     end
     return nil
+end
+
+function menu.plannerAccessForCase(caseData)
+    if not caseData then return false, "NO_CASE" end
+    local action = managedActionForCase(caseData)
+    if action and string.upper(text(v(action, 6, ""))) == "RECOVERY EXHAUSTED - PLANNER AVAILABLE" then
+        return true, "RECOVERY_EXHAUSTED"
+    end
+    local readiness = menu.expansionReadiness
+    if readiness
+        and text(readiness.station) == text(v(caseData, 1, ""))
+        and text(readiness.ware) == text(v(caseData, 4, "")) then
+        return true, "RETAINED_READINESS"
+    end
+    if (tonumber(v(caseData, 34, 0)) or 0) > 0 then
+        return true, "PLANNED_PRODUCTION_REVIEW"
+    end
+    return false, "RECOVERY_NOT_EXHAUSTED"
 end
 
 local function managedActionText(caseData)
@@ -638,6 +657,25 @@ local function shippingPendingCommit()
     refresh.pendingRow = {}
 end
 
+menu.rawSourceUpdate = {}
+function menu.rawSourceStation(_, value) menu.rawSourceUpdate.station = text(value) end
+function menu.rawSourceWare(_, value) menu.rawSourceUpdate.ware = menu.supplyWareId(value) end
+function menu.rawSourceStatus(_, value) menu.rawSourceUpdate.status = text(value) end
+function menu.rawSourceShip(_, value) menu.rawSourceUpdate.ship = text(value) end
+function menu.rawSourceDetail(_, value) menu.rawSourceUpdate.detail = text(value) end
+function menu.rawSourceCommit()
+    if menu.rawSourceUpdate.station and menu.rawSourceUpdate.ware then
+        menu.rawSourceRecords = menu.rawSourceRecords or {}
+        local status = menu.rawSourceUpdate.status or "BLOCKED"
+        local ship = menu.rawSourceUpdate.ship or ""
+        menu.rawSourceRecords[menu.rawSourceUpdate.station .. "|" .. menu.rawSourceUpdate.ware] = {
+            status = status, ship = ship, detail = menu.rawSourceUpdate.detail or ""
+        }
+    end
+    menu.rawSourceUpdate = {}
+    menu.refresh()
+end
+
 local function shippingModeReceived(_, value)
     shippingRefreshState().mode = tostring(value or menu.shipmode)
 end
@@ -920,10 +958,10 @@ local function scoutRecoveryPlan(caseData, rows)
     if caseType == "STORAGE PRESSURE" then
         recommendation = "Treat this as excess inventory, not a request for more supply. Let EOC's bounded sell action relieve the immediate pressure, then prevent recurrence by lowering unnecessary allocation or creating reliable consumption and export capacity. Add storage only when the ware has a real future demand that justifies it."
         checklist = {
-            "Confirm the station is not still buying or mining " .. ware .. " unnecessarily.",
-            "Reduce the automatic allocation or target to the reserve the station actually needs.",
+            "Have EOC confirm the station's current overage evidence and managed export action.",
+            "Let EOC relieve the overage first; allocation changes remain an optional vanilla-station fallback only if bounded export cannot resolve it.",
             "Keep a permitted sell offer and at least one compatible trader available.",
-            "If another owned station consumes " .. ware .. ", give that route priority over an NPC sale.",
+            "Have EOC report whether owned demand exists before treating an NPC sale as the only outlet.",
             "Verify that stock and storage pressure fall during the next trade cycle."
         }
     elseif wareUpper == "ALLOGRAPHYNE" then
@@ -937,13 +975,13 @@ local function scoutRecoveryPlan(caseData, rows)
             "If there is no active demand, lower the ware target so EOC stops treating zero stock as a fault."
         }
     elseif plannedProduction > 0 then
-        recommendation = "The durable fix is already under construction. Finish the planned " .. ware .. " production capacity and support its inputs; use EOC's bounded import only as temporary coverage until local output is proven."
+        recommendation = "The durable fix is already under construction. Your required task is to finish the planned " .. ware .. " production modules and any Planner-identified supporting modules. With Do Everything enabled, EOC owns temporary imports, input-recovery actions, and post-build verification."
         checklist = {
-            "Finish the planned production module and confirm it becomes operational.",
-            "Provide the module's required inputs and matching storage.",
-            "Keep temporary imports enabled until local output begins.",
-            "Verify that " .. ware .. " stock rises during a production cycle.",
-            "Remove unnecessary emergency logistics only after stable local output is proven."
+            "Finish the planned production modules in X4; EOC will detect when they become operational.",
+            "Build any supporting production or storage modules named by Solution Planner; EOC will manage recoverable input supply and verify the resulting chain.",
+            "EOC keeps its bounded temporary import active until local recovery is proven.",
+            "EOC verifies whether " .. ware .. " stock and local production recover after construction.",
+            "EOC retires its own unnecessary emergency offer when fresh evidence proves stable recovery."
         }
     elseif produces > 0 then
         if paused then
@@ -955,10 +993,10 @@ local function scoutRecoveryPlan(caseData, rows)
         end
         checklist = {
             "Review EOC's limited module evidence: production is installed and whether a manual pause is reported.",
-            "Restore every missing or critically low production input.",
-            "In the vanilla station view, confirm the module is enabled and undamaged, then check workforce supply and ware allocations for the existing line.",
-            "Allow one complete production cycle without changing capacity.",
-            "Add another production module only if proven output remains below sustained demand."
+            "Let EOC manage every confirmed recoverable production-input shortage.",
+            "EOC will report any remaining X4-only module, damage, workforce, or allocation boundary instead of asking for a generic player checkbox.",
+            "EOC will evaluate the next complete production cycle when you run fresh verification.",
+            "Reopen Solution Planner before adding capacity; build another module only when current evidence still proves a sustained deficit."
         }
     elseif suppliers > 0 and compatible > 0 then
         recommendation = "Use imports for immediate recovery, but treat repeated shortages as a capacity decision. If " .. ware .. " is a recurring strategic dependency, establish an owned source or dedicated route; otherwise keep the station-manager import path and correct any rule, range, price, or ship-order constraint that prevents delivery."
@@ -1322,6 +1360,12 @@ local function init()
     RegisterEvent(menu.name .. ".minimum.build.station", minimumBuildStation)
     RegisterEvent(menu.name .. ".minimum.build.role", minimumBuildRole)
     RegisterEvent(menu.name .. ".minimum.build.commit", minimumBuildCommit)
+    RegisterEvent(menu.name .. ".rawsource.station", menu.rawSourceStation)
+    RegisterEvent(menu.name .. ".rawsource.ware", menu.rawSourceWare)
+    RegisterEvent(menu.name .. ".rawsource.status", menu.rawSourceStatus)
+    RegisterEvent(menu.name .. ".rawsource.ship", menu.rawSourceShip)
+    RegisterEvent(menu.name .. ".rawsource.detail", menu.rawSourceDetail)
+    RegisterEvent(menu.name .. ".rawsource.commit", menu.rawSourceCommit)
 end
 
 function menu.onShowMenu()
@@ -1360,6 +1404,11 @@ function menu.onShowMenu()
         if key ~= "-" and step > 0 then
             menu.checklistProgress[key .. "|" .. tostring(step)] = text(v(record, 3, "PENDING"))
         end
+    end
+    menu.rawSourceRecords = {}
+    for _, record in ipairs(v(menu.param, 36, {})) do
+        local key = text(v(record, 1, "")) .. "|" .. menu.supplyWareId(v(record, 2, ""))
+        menu.rawSourceRecords[key] = { status = text(v(record, 4, "SOURCE REQUIRED")), ship = text(v(record, 5, "")), detail = text(v(record, 6, "")) }
     end
     menu.minimumDraft = menu.minimumDraft or { mining = menu.minimums.mining, trade = menu.minimums.trade, buildstorage = menu.minimums.buildstorage, defence = menu.minimums.defence, escort = menu.minimums.escort }
     local rawStartupPreference = v(menu.param, 26, 1)
@@ -1519,6 +1568,11 @@ local function addTabButton(row, column, label, page)
 
     row[column]:createButton(properties):setText(label)
     row[column].handlers.onClick = function()
+        if page == "solution" then
+            local caseData = menu.solutionCase or menu.diagnosticCase
+            local plannerReady, plannerReason = menu.plannerAccessForCase(caseData)
+            DebugError("[JKEOC][B291][PLANNER_TAB_ROUTE] station=" .. text(v(caseData, 1, "")) .. " ware=" .. text(v(caseData, 4, "")) .. " ready=" .. tostring(plannerReady) .. " reason=" .. tostring(plannerReason))
+        end
         menu.navigationOrigin = nil
         menu.navigationStack = {}
         menu.reportOrigin = nil
@@ -1583,6 +1637,26 @@ local function checklistCaseKey(caseData)
     }, "|")
 end
 
+local function expansionEvidenceKey(caseData)
+    local action = managedActionForCase(caseData)
+    return table.concat({
+        checklistCaseKey(caseData),
+        tostring(v(caseData, 13, 0)),
+        tostring(v(caseData, 14, 0)),
+        tostring(v(caseData, 15, 0)),
+        text(v(caseData, 17, "")),
+        tostring(v(caseData, 18, 0)),
+        tostring(v(caseData, 19, 0)),
+        tostring(v(caseData, 24, 0)),
+        tostring(v(caseData, 27, 0)),
+        text(v(caseData, 28, "")),
+        tostring(v(caseData, 34, 0)),
+        tostring(v(caseData, 39, false)),
+        text(v(caseData, 40, "")),
+        action and text(v(action, 6, "")) or "",
+    }, "|")
+end
+
 function menu.focusCaseStation(caseData)
     local stationName = text(v(caseData, 1, ""))
     for index, station in ipairs(menu.stations or {}) do
@@ -1604,11 +1678,12 @@ function menu.nativePlannerEvidence(caseData)
         return { state = "CANNOT PROVE", reason = "The case did not retain the affected ware ID." }
     end
 
-    local station64
+    local station64, stationProfileIndex
     local stationName = text(v(caseData, 1, ""))
     for _, profile in ipairs(menu.stations or {}) do
         if text(v(profile, 1, "")) == stationName then
             station64 = menu.supplyStationId(profile)
+            stationProfileIndex = tonumber(v(profile, 16, 0)) or 0
             break
         end
     end
@@ -1616,7 +1691,7 @@ function menu.nativePlannerEvidence(caseData)
         return { state = "CANNOT PROVE", ware = targetWare, reason = "The selected station could not be resolved to a live X4 component." }
     end
 
-    local result = { state = "NOT OWNED", ware = targetWare, candidates = {}, station = station64 }
+    local result = { state = "NOT OWNED", ware = targetWare, candidates = {}, recipesByWare = {}, station = station64, stationProfileIndex = stationProfileIndex }
     local ok, count = pcall(function() return C.GetNumBlueprints("", "", "") end)
     if not ok or (tonumber(count) or 0) <= 0 then
         result.reason = "X4 returned no player-owned blueprints."
@@ -1636,32 +1711,40 @@ function menu.nativePlannerEvidence(caseData)
                 local queueduration = 0
                 for _, product in ipairs(data.products) do queueduration = queueduration + (tonumber(product.cycle) or 0) end
                 for _, product in ipairs(data.products) do
-                    if menu.supplyWareId(product.ware) == targetWare then
-                        local outputPerHour = queueduration > 0 and ((tonumber(product.amount) or 0) * 3600 / queueduration) or 0
-                        local resources = {}
-                        for _, resource in ipairs(product.resources or {}) do
-                            local resourceWare = menu.supplyWareId(resource.ware)
-                            local amountPerHour = queueduration > 0 and ((tonumber(resource.amount) or 0) * 3600 / queueduration) or 0
-                            local rname, transport = GetWareData(resourceWare, "name", "transport")
-                            resources[#resources + 1] = { ware = resourceWare, name = tostring(rname or resourceWare), transport = string.upper(tostring(transport or "UNKNOWN")), amountPerHour = amountPerHour }
-                        end
-                        table.sort(resources, function(a, b) return a.name < b.name end)
-                        local moduleName = GetMacroData(macro, "name")
-                        local blueprintName = GetWareData(blueprintWare, "name")
-                        result.candidates[#result.candidates + 1] = {
-                            macro = macro,
-                            name = tostring(moduleName or macro),
-                            blueprintWare = blueprintWare,
-                            blueprintName = tostring(blueprintName or blueprintWare),
-                            method = method ~= "" and method or "default",
-                            outputPerHour = outputPerHour,
-                            resources = resources,
-                            maxworkforce = tonumber(data.maxworkforce) or 0,
-                        }
+                    local productWare = menu.supplyWareId(product.ware)
+                    local outputPerHour = queueduration > 0 and ((tonumber(product.amount) or 0) * 3600 / queueduration) or 0
+                    local resources = {}
+                    for _, resource in ipairs(product.resources or {}) do
+                        local resourceWare = menu.supplyWareId(resource.ware)
+                        local amountPerHour = queueduration > 0 and ((tonumber(resource.amount) or 0) * 3600 / queueduration) or 0
+                        local rname, transport = GetWareData(resourceWare, "name", "transport")
+                        resources[#resources + 1] = { ware = resourceWare, name = tostring(rname or resourceWare), transport = string.upper(tostring(transport or "UNKNOWN")), amountPerHour = amountPerHour }
                     end
+                    table.sort(resources, function(a, b) return a.name < b.name end)
+                    local moduleName = GetMacroData(macro, "name")
+                    local blueprintName = GetWareData(blueprintWare, "name")
+                    local candidate = {
+                        macro = macro,
+                        name = tostring(moduleName or macro),
+                        blueprintWare = blueprintWare,
+                        blueprintName = tostring(blueprintName or blueprintWare),
+                        method = method ~= "" and method or "default",
+                        outputPerHour = outputPerHour,
+                        resources = resources,
+                        maxworkforce = tonumber(data.maxworkforce) or 0,
+                    }
+                    result.recipesByWare[productWare] = result.recipesByWare[productWare] or {}
+                    result.recipesByWare[productWare][#result.recipesByWare[productWare] + 1] = candidate
+                    if productWare == targetWare then result.candidates[#result.candidates + 1] = candidate end
                 end
             end
         end
+    end
+    for _, recipes in pairs(result.recipesByWare) do
+        table.sort(recipes, function(a, b)
+            if a.outputPerHour == b.outputPerHour then return a.name < b.name end
+            return a.outputPerHour > b.outputPerHour
+        end)
     end
     table.sort(result.candidates, function(a, b)
         if a.outputPerHour == b.outputPerHour then return a.name < b.name end
@@ -1679,8 +1762,214 @@ function menu.nativePlannerEvidence(caseData)
     result.deficitPerHour = math.max(0, result.consumptionPerHour - result.productionPerHour)
     result.moduleCount = result.selected.outputPerHour > 0 and math.ceil(result.deficitPerHour / result.selected.outputPerHour) or 0
     result.reason = "X4 returned an owned module blueprint and its native production library entry."
-    DebugError("[JKEOC][B286][NATIVE_PLANNER] station=" .. stationName .. " ware=" .. targetWare .. " blueprint=OWNED macro=" .. result.selected.macro .. " method=" .. result.selected.method .. " output_h=" .. tostring(result.selected.outputPerHour) .. " consumption_h=" .. tostring(result.consumptionPerHour) .. " existing_output_h=" .. tostring(result.productionPerHour) .. " deficit_h=" .. tostring(result.deficitPerHour) .. " recommended_count=" .. tostring(result.moduleCount) .. " inputs=" .. tostring(#result.selected.resources))
+    result.checklist = menu.productionChainChecklist(result, caseData)
+    DebugError("[JKEOC][B289][NATIVE_PLANNER] station=" .. stationName .. " ware=" .. targetWare .. " blueprint=OWNED macro=" .. result.selected.macro .. " method=" .. result.selected.method .. " output_h=" .. tostring(result.selected.outputPerHour) .. " consumption_h=" .. tostring(result.consumptionPerHour) .. " existing_output_h=" .. tostring(result.productionPerHour) .. " deficit_h=" .. tostring(result.deficitPerHour) .. " recommended_count=" .. tostring(result.moduleCount) .. " inputs=" .. tostring(#result.selected.resources))
     return result
+end
+
+-- Build 293 derives a bounded, aggregate production-chain checklist from the
+-- same explicit native blueprint/library scan. It never runs in background.
+-- Shared upstream demand is combined before module counts are rounded, planned
+-- output is subtracted once, and cycles/unsupported wares stop as boundaries.
+function menu.productionChainChecklist(nativePlan, caseData)
+    local stationName = text(v(caseData, 1, "Selected station"))
+    local station64 = nativePlan.station
+    local queue = {}
+    local profileIndex = 0
+    for _, profile in ipairs(menu.stations or {}) do
+        if text(v(profile, 1, "")) == stationName then profileIndex = tonumber(v(profile, 16, 0)) or 0; break end
+    end
+    local function matchingRecord(record)
+        return text(v(record, 1, "")) == stationName or (profileIndex > 0 and (tonumber(v(record, 2, 0)) or 0) == profileIndex)
+    end
+    if menu.activeConstructionSnapshot and matchingRecord(menu.activeConstructionSnapshot) then queue = v(menu.activeConstructionSnapshot, 8, {}) end
+    if #queue == 0 then
+        for _, record in ipairs(menu.constructionRecords or {}) do if matchingRecord(record) then queue = v(record, 8, {}); break end end
+    end
+    local function plannedModules(recipe)
+        if not recipe then return 0 end
+        local wanted = string.lower(recipe.name or "")
+        local count = 0
+        for _, item in ipairs(queue or {}) do
+            local status = string.upper(text(v(item, 3, "PLANNED")))
+            if string.lower(text(v(item, 1, ""))) == wanted and status ~= "COMPLETE" and status ~= "COMPLETED" then count = count + 1 end
+        end
+        return count
+    end
+    local function wareFacts(ware)
+        local name, transport = GetWareData(ware, "name", "transport")
+        return tostring(name or ware), string.upper(tostring(transport or "UNKNOWN"))
+    end
+    local recipes = nativePlan.recipesByWare or {}
+    local rootRecipe = nativePlan.selected
+    local rootPlanned = math.max(tonumber(v(caseData, 34, 0)) or 0, plannedModules(rootRecipe))
+    local rootNeeded = rootRecipe.outputPerHour > 0 and math.ceil(nativePlan.deficitPerHour / rootRecipe.outputPerHour) or 0
+    local rootAdditional = math.max(rootNeeded - rootPlanned, 0)
+    -- Size the support chain to the proven requirement, never to an oversized
+    -- queue. Surplus planned modules are flagged instead of creating a cascade.
+    local rootFuture = rootNeeded
+    local moduleCounts, demandExtra, depth = {}, {}, {}
+    local converged = false
+    for _ = 1, 24 do
+        local nextDemand, nextDepth = {}, {}
+        local function addDemand(resource, amount, itemDepth)
+            if resource.ware ~= "" and amount > 0 then
+                nextDemand[resource.ware] = (nextDemand[resource.ware] or 0) + amount
+                nextDepth[resource.ware] = math.min(nextDepth[resource.ware] or itemDepth, itemDepth)
+            end
+        end
+        for _, resource in ipairs(rootRecipe.resources or {}) do addDemand(resource, resource.amountPerHour * rootFuture, 1) end
+        for ware, counts in pairs(moduleCounts) do
+            local recipe = recipes[ware] and recipes[ware][1]
+            local future = counts.needed or 0
+            if recipe and future > 0 then
+                for _, resource in ipairs(recipe.resources or {}) do addDemand(resource, resource.amountPerHour * future, (depth[ware] or 1) + 1) end
+            end
+        end
+        local changed = false
+        local nextCounts = {}
+        for ware, extra in pairs(nextDemand) do
+            local recipe = recipes[ware] and recipes[ware][1]
+            local consumption = menu.supplySafeRate(station64, ware, false, true)
+            local production = menu.supplySafeRate(station64, ware, true, true)
+            local totalDemand = consumption + extra
+            local planned = plannedModules(recipe)
+            local uncoveredBeforePlan = math.max(totalDemand - production, 0)
+            local needed = recipe and recipe.outputPerHour > 0 and math.ceil(uncoveredBeforePlan / recipe.outputPerHour) or 0
+            local additional = math.max(needed - planned, 0)
+            local gap = recipe and math.max(totalDemand - production - planned * recipe.outputPerHour, 0) or uncoveredBeforePlan
+            nextCounts[ware] = { planned = planned, needed = needed, additional = additional, consumption = consumption, production = production, demand = totalDemand, gap = gap }
+            local old = moduleCounts[ware]
+            if not old or old.planned ~= planned or old.needed ~= needed or old.additional ~= additional or math.abs((demandExtra[ware] or 0) - extra) > 0.001 then changed = true end
+        end
+        moduleCounts, demandExtra, depth = nextCounts, nextDemand, nextDepth
+        if not changed then converged = true; break end
+    end
+
+    local items = {}
+    local function addItem(state, label, evidence, itemDepth, sortName, action)
+        items[#items + 1] = { state = state, label = label, evidence = evidence, depth = itemDepth or 0, sortName = sortName or label, action = action }
+    end
+    local rootState = rootPlanned > rootNeeded and "SURPLUS PLAN" or (nativePlan.productionPerHour >= nativePlan.consumptionPerHour and "COMPLETE" or (rootPlanned >= rootNeeded and "PLANNED" or "REQUIRED"))
+    addItem(rootState, "FINAL OUTPUT - " .. text(v(caseData, 4, nativePlan.ware)), "Need " .. tostring(rootNeeded) .. " module(s) for the measured " .. formatNumber(nativePlan.deficitPerHour) .. "/h deficit | installed output " .. formatNumber(nativePlan.productionPerHour) .. "/h | planned " .. tostring(rootPlanned) .. " | additional required " .. tostring(rootAdditional) .. (rootPlanned > rootNeeded and (" | remove or reconsider " .. tostring(rootPlanned - rootNeeded) .. " surplus planned module(s) before expanding support; downstream counts are sized to the proven need, not the oversized queue.") or "."), 0, "")
+    for ware, counts in pairs(moduleCounts) do
+        local recipe = recipes[ware] and recipes[ware][1]
+        local name, transport = wareFacts(ware)
+        local state, evidence
+        if counts.demand <= counts.production + 0.001 then
+            state = "COMPLETE"
+            evidence = "Demand " .. formatNumber(counts.demand) .. "/h is covered by installed output " .. formatNumber(counts.production) .. "/h."
+        elseif recipe and counts.planned > counts.needed then
+            state = "SURPLUS PLAN"
+            evidence = "Need " .. tostring(counts.needed) .. " " .. recipe.name .. " module(s), but " .. tostring(counts.planned) .. " are planned. Reconsider " .. tostring(counts.planned - counts.needed) .. " surplus module(s); deeper support is sized to the proven need."
+        elseif recipe and counts.additional == 0 and counts.planned > 0 then
+            state = "PLANNED"
+            evidence = "Need " .. tostring(counts.needed) .. "; " .. tostring(counts.planned) .. " planned " .. recipe.name .. " module(s) cover the remaining rate; verify after construction."
+        elseif recipe and counts.additional > 0 then
+            state = "REQUIRED"
+            evidence = "Demand " .. formatNumber(counts.demand) .. "/h | installed " .. formatNumber(counts.production) .. "/h | need " .. tostring(counts.needed) .. " total new module(s) | planned " .. tostring(counts.planned) .. " | add exactly " .. tostring(counts.additional) .. " " .. recipe.name .. " module(s) at " .. formatNumber(recipe.outputPerHour) .. "/h each."
+        else
+            state = "SOURCE REQUIRED"
+            evidence = "Uncovered rate " .. formatNumber(counts.gap) .. "/h. X4 returned no owned production recipe in this explicit scan; prove an owned supplier, reachable market source, or raw-resource route."
+        end
+        local action
+        if state == "SOURCE REQUIRED" and (transport == "SOLID" or transport == "LIQUID") then
+            action = { ware = ware, name = name, transport = transport, rate = counts.gap }
+            local record = menu.rawSourceRecords and menu.rawSourceRecords[stationName .. "|" .. menu.supplyWareId(ware)]
+            if record then
+                if record.status == "PINNED COVERAGE" or record.status == "PINNED - AWAITING DELIVERY" then
+                    state = "PINNED COVERAGE"
+                    evidence = (record.ship ~= "" and (record.ship .. " | ") or "") .. (record.detail ~= "" and record.detail or ("EOC has persistent exact-resource coverage for " .. name .. "."))
+                elseif record.status == "MORE COVERAGE NEEDED" then
+                    state = "MORE MINERS NEEDED"
+                    evidence = record.detail ~= "" and record.detail or "EOC has pinned coverage, but repeated low-stock evidence supports another compatible registered miner."
+                elseif record.status == "SHIP NEEDED" then
+                    state = "MINER NEEDED"
+                    evidence = record.detail ~= "" and record.detail or "No pinned compatible registered miner currently covers this resource."
+                elseif record.status == "ASSIGNED - PIN NOT PROVEN" then
+                    state = "PIN NOT PROVEN"
+                    evidence = (record.ship ~= "" and (record.ship .. " | ") or "") .. (record.detail ~= "" and record.detail or "The station assignment exists, but exact resource pinning was not proven.")
+                elseif record.status == "RESOURCE TEMPORARILY UNAVAILABLE" then
+                    state = "RESOURCE UNAVAILABLE"
+                    evidence = record.detail ~= "" and record.detail or "X4 returned no discoverable source at the bounded failure-triggered source check."
+                elseif record.status == "ASSIGNED" or record.status == "EXISTING" then
+                    state = "ASSIGNED"
+                    evidence = (record.ship ~= "" and (record.ship .. " is assigned") or "A compatible miner is assigned") .. " to this station for " .. name .. ". EOC is awaiting live delivery/stock evidence; assignment alone is not proof of supply."
+                elseif record.status == "PENDING APPROVAL" then
+                    state = "APPROVAL REQUIRED"
+                    evidence = record.ship .. " is cargo-compatible and reserved for explicit approval in Fleet & Logistics. No assignment has occurred."
+                elseif record.status == "REQUESTED" or record.status == "REQUEST RECEIVED" or record.status == "ASSIGNING" or record.status == "ASSIGNING AND PINNING" then
+                    state = "ASSIGNING"
+                    evidence = record.detail ~= "" and record.detail or "EOC is resolving and verifying the exact registered-miner assignment."
+                elseif record.status == "BLOCKED" then
+                    evidence = record.detail ~= "" and record.detail or evidence
+                end
+
+            end
+        end
+        addItem(state, "INPUT - " .. name .. " [" .. transport .. "]", evidence, depth[ware] or 1, name, action)
+    end
+    table.sort(items, function(a, b) if a.depth == b.depth then return a.sortName < b.sortName end return a.depth < b.depth end)
+
+    local storageSeen = {}
+    local targetName, targetTransport = wareFacts(nativePlan.ware)
+    storageSeen[targetTransport] = targetName
+    for ware in pairs(moduleCounts) do local name, transport = wareFacts(ware); storageSeen[transport] = storageSeen[transport] or name end
+    for transport, example in pairs(storageSeen) do
+        local capacity, free = 0, 0
+        for _, record in ipairs(menu.storageRecords or {}) do
+            if text(v(record, 1, "")) == stationName and string.upper(text(v(record, 2, ""))) == transport then capacity = tonumber(v(record, 4, 0)) or 0; free = tonumber(v(record, 5, 0)) or 0; break end
+        end
+        local storageState = transport == "UNKNOWN" and "CANNOT PROVE" or ((capacity > 0 and free > 0) and "COMPLETE" or "REQUIRED")
+        local storageEvidence
+        if transport == "UNKNOWN" then
+            storageEvidence = "X4 did not return a cargo class for " .. example .. "; verify it in the vanilla editor."
+        elseif capacity > 0 and free > 0 then
+            storageEvidence = formatNumber(capacity) .. " installed, " .. formatNumber(free) .. " currently free. X4's ware allocations remain authoritative; preserve room for " .. example .. " and every existing ware."
+        elseif capacity > 0 then
+            storageEvidence = formatNumber(capacity) .. " is installed but no free capacity is reported. Reallocate or add " .. transport .. " storage before relying on " .. example .. "."
+        else
+            storageEvidence = "No " .. transport .. " capacity is reported. Add compatible storage before relying on " .. example .. "."
+        end
+        addItem(storageState, "STORAGE CLASS PRESENT - " .. transport, storageEvidence, 90, transport)
+    end
+
+    local people, capacity, optimal = 0, 0, 0
+    local provisions, seenProvision = {}, {}
+    for _, record in ipairs(menu.workforceRecords or {}) do
+        if text(v(record, 1, "")) == stationName then
+            people = math.max(people, tonumber(v(record, 3, 0)) or 0)
+            capacity = math.max(capacity, tonumber(v(record, 4, 0)) or 0)
+            optimal = math.max(optimal, tonumber(v(record, 5, 0)) or 0)
+            local provision = text(v(record, 8, "NO PROVISION WARE"))
+            if provision ~= "NO PROVISION WARE" and not seenProvision[provision] then
+                seenProvision[provision] = true
+                provisions[#provisions + 1] = { name = provision, current = tonumber(v(record, 9, 0)) or 0, target = tonumber(v(record, 10, 0)) or 0 }
+            end
+        end
+    end
+    local incrementalWorkforce = rootFuture * (tonumber(rootRecipe.maxworkforce) or 0)
+    for ware, counts in pairs(moduleCounts) do
+        local recipe = recipes[ware] and recipes[ware][1]
+        if recipe then incrementalWorkforce = incrementalWorkforce + (counts.needed or 0) * (tonumber(recipe.maxworkforce) or 0) end
+    end
+    local plannedHabitation = 0
+    for _, item in ipairs(queue or {}) do
+        local moduleType = string.upper(text(v(item, 2, "")))
+        local moduleEffect = string.upper(text(v(item, 5, "")))
+        local moduleName = string.upper(text(v(item, 1, "")))
+        if string.find(moduleType, "HABIT", 1, true) or string.find(moduleEffect, "WORKFORCE", 1, true) or string.find(moduleName, "HABITAT", 1, true) then plannedHabitation = plannedHabitation + math.max(tonumber(v(item, 7, 0)) or 0, 0) end
+    end
+    local futureOptimal = optimal + incrementalWorkforce
+    local workforceState = capacity >= futureOptimal and "COMPLETE" or ((capacity + plannedHabitation) >= futureOptimal and "PLANNED" or "REQUIRED")
+    addItem(workforceState, "WORKFORCE CAPACITY", "Current " .. formatNumber(people) .. " people | habitat capacity " .. formatNumber(capacity) .. " | current optimal " .. formatNumber(optimal) .. " | added chain demand " .. formatNumber(incrementalWorkforce) .. " | future capacity target " .. formatNumber(futureOptimal) .. (plannedHabitation > 0 and (" | planned habitation capacity " .. formatNumber(plannedHabitation)) or "") .. ".", 91, "WORKFORCE")
+    table.sort(provisions, function(a, b) return a.name < b.name end)
+    for _, provision in ipairs(provisions) do
+        addItem((provision.target <= 0 or provision.current >= provision.target) and "COMPLETE" or "REQUIRED", "WORKFORCE PROVISION - " .. provision.name, formatNumber(provision.current) .. " stored against the current X4 target of " .. formatNumber(provision.target) .. ". Future consumption cannot be proven until the added workforce exists; refresh after habitation fills.", 92, provision.name)
+    end
+    if not converged then addItem("CANNOT PROVE", "CHAIN BOUNDARY", "The aggregate native recipe graph did not stabilize within 24 bounded passes. EOC stopped instead of presenting a guessed module count.", 99, "ZZ") end
+    DebugError("[JKEOC][B293][PRODUCTION_CHAIN_CHECKLIST] station=" .. stationName .. " ware=" .. nativePlan.ware .. " items=" .. tostring(#items) .. " root_needed=" .. tostring(rootNeeded) .. " root_planned=" .. tostring(rootPlanned) .. " root_additional=" .. tostring(rootAdditional) .. " incremental_workforce=" .. tostring(incrementalWorkforce) .. " converged=" .. tostring(converged) .. " background_scan=0")
+    return { items = items, converged = converged, rootNeeded = rootNeeded, rootPlanned = rootPlanned, rootAdditional = rootAdditional, incrementalWorkforce = incrementalWorkforce }
 end
 
 function menu.runExpansionReadiness(caseData)
@@ -1688,12 +1977,13 @@ function menu.runExpansionReadiness(caseData)
     local function add(label, state, evidence) rows[#rows + 1] = { label = label, state = state, evidence = evidence } end
     local action = managedActionForCase(caseData)
     local actionStateText = action and string.upper(text(v(action, 6, ""))) or ""
-    local recoveryReady = actionStateText == "RECOVERY EXHAUSTED - PLANNER AVAILABLE"
     local stationName = text(v(caseData, 1, "Selected station"))
     local ware = text(v(caseData, 4, "affected ware"))
     local supplyWare = text(v(caseData, 17, ware))
     local produces = tonumber(v(caseData, 15, 0)) or 0
     local planned = tonumber(v(caseData, 34, 0)) or 0
+    local recoveryExhausted = actionStateText == "RECOVERY EXHAUSTED - PLANNER AVAILABLE"
+    local plannedProductionReview = planned > 0
     local capacity = tonumber(v(caseData, 13, 0)) or 0
     local free = tonumber(v(caseData, 14, 0)) or 0
     local suppliers = tonumber(v(caseData, 18, 0)) or 0
@@ -1712,7 +2002,13 @@ function menu.runExpansionReadiness(caseData)
     local mixedStation = string.find(role, "MIXED", 1, true) ~= nil or string.find(role, "EVERYTHING", 1, true) ~= nil
     local complexStation = trueHQ or mixedStation
 
-    add("IMMEDIATE RECOVERY TEST", recoveryReady and "PASS" or "NOT READY", recoveryReady and "The bounded BUY offer completed the full 30-minute test with reachable supply and compatible traders, but stock did not rise." or "Immediate recovery has not reached the evidence-supported exhaustion state.")
+    if recoveryExhausted then
+        add("IMMEDIATE RECOVERY TEST", "PASS", "The bounded BUY offer completed the full 30-minute test with reachable supply and compatible traders, but stock did not rise.")
+    elseif plannedProductionReview then
+        add("IMMEDIATE RECOVERY TEST", "WARNING", "Matching production is already committed in the X4 Station Build Plan. Planner access is limited to reviewing that existing plan and its supporting recipe; this does not prove the earlier recovery test passed or justify duplicate capacity.")
+    else
+        add("IMMEDIATE RECOVERY TEST", "NOT READY", "Immediate recovery has not reached the evidence-supported exhaustion state.")
+    end
     add("EXISTING / PLANNED OUTPUT", (produces > 0 or planned > 0) and "WARNING" or "PASS", produces > 0 and (tostring(produces) .. " installed " .. ware .. " production module(s) already exist; restore and measure them before adding capacity.") or (planned > 0 and (tostring(planned) .. " matching module(s) are already planned; do not add a duplicate.") or "No installed or planned matching production module was reported."))
     add("CURRENT CARGO STORAGE", capacity > 0 and "PASS" or "NOT READY", capacity > 0 and (formatNumber(capacity) .. " compatible capacity is installed; " .. formatNumber(free) .. " is currently free. This proves current storage only, not the future recipe's required allocation.") or "No compatible storage capacity was reported for the affected ware.")
     add("CURRENT RECOVERY-WARE SUPPLY", suppliers > 0 and "PASS" or "WARNING", tostring(suppliers) .. " reachable offer(s), including " .. tostring(ownedSuppliers) .. " owned offer(s), for " .. supplyWare .. ". This is the ware EOC tested for immediate recovery; it is not proof of every future production input.")
@@ -1748,8 +2044,9 @@ function menu.runExpansionReadiness(caseData)
         if item.state == "NOT READY" then notReady = notReady + 1 elseif item.state == "CANNOT PROVE" then unknown = unknown + 1 elseif item.state == "WARNING" then warnings = warnings + 1 end
     end
     local summary = notReady > 0 and "NOT READY - CORRECT THE FAILED CONDITION BEFORE PLANNING" or ((unknown > 0 or warnings > 0) and "READY FOR CAUTIOUS PLANNING - NOT CLEARED TO BUILD" or "READY FOR PLANNING")
-    menu.expansionReadiness = { key = checklistCaseKey(caseData), station = stationName, ware = ware, rows = rows, summary = summary, notReady = notReady, unknown = unknown, warnings = warnings, checkedAt = getElapsedTime(), nativePlan = nativePlan }
-    DebugError("[JKEOC][B286][EXPANSION_READINESS] station=" .. stationName .. " ware=" .. ware .. " blueprint=" .. blueprintState .. " module=" .. blueprintModule .. " true_hq=" .. tostring(trueHQ) .. " summary=" .. summary .. " not_ready=" .. tostring(notReady) .. " cannot_prove=" .. tostring(unknown) .. " warnings=" .. tostring(warnings) .. " construction_authority=0")
+    menu.plannerChecklistPage = 1
+    menu.expansionReadiness = { key = checklistCaseKey(caseData), evidenceKey = expansionEvidenceKey(caseData), station = stationName, ware = ware, rows = rows, summary = summary, notReady = notReady, unknown = unknown, warnings = warnings, checkedAt = getElapsedTime(), nativePlan = nativePlan }
+    DebugError("[JKEOC][B289][EXPANSION_READINESS] station=" .. stationName .. " ware=" .. ware .. " blueprint=" .. blueprintState .. " module=" .. blueprintModule .. " true_hq=" .. tostring(trueHQ) .. " summary=" .. summary .. " not_ready=" .. tostring(notReady) .. " cannot_prove=" .. tostring(unknown) .. " warnings=" .. tostring(warnings) .. " construction_authority=0")
     return menu.expansionReadiness
 end
 
@@ -1765,6 +2062,7 @@ local function eocChecklistState(caseData, plan, step)
     local plannedProduction = tonumber(v(caseData, 34, 0)) or 0
     local missingInputs = tonumber(v(caseData, 27, 0)) or 0
     local paused = v(caseData, 29, false) == true
+    local capacity = tonumber(v(caseData, 13, 0)) or 0
 
     local function tradeCycle(expectedType, verifyMovement)
         if not action or actionType ~= expectedType then return "EOC WAITING", "EOC has not yet established the required bounded " .. expectedType .. " action.", true end
@@ -1803,7 +2101,9 @@ local function eocChecklistState(caseData, plan, step)
         if step == 6 then return tradeCycle("BUY", true) end
     elseif plan == "STORAGE_OVERAGE" then
         if step == 1 then return "EOC VERIFIED", "EOC checked current station evidence for the overstocked ware and its managed action.", true end
+        if step == 2 then return "EOC CHECKED", "EOC is using its bounded SELL action first. Storage-allocation mutation is outside EOC authority and is not a required player checkbox.", true end
         if step == 3 then return tradeCycle("SELL", false) end
+        if step == 4 then return "EOC CHECKED", ownedSuppliers > 0 and ("EOC observes " .. tostring(ownedSuppliers) .. " owned supplier/consumer-network offer(s) in current evidence.") or "EOC does not currently observe an owned outlet; its bounded NPC export remains the supported recovery action.", true end
         if step == 5 then return tradeCycle("SELL", true) end
     elseif plan == "ALLOGRAPHYNE_PROJECT" then
         if step == 1 and string.upper(text(v(menu.missionContext, 2, ""))) == "ALLOGRAPHYNE" then return "EOC VERIFIED", "EOC's mission context identifies active Allographyne demand.", true end
@@ -1812,9 +2112,18 @@ local function eocChecklistState(caseData, plan, step)
             return "EOC BLOCKED", "Current evidence does not show both reachable supply and compatible assigned delivery capacity.", true
         end
         if step == 5 and action and actionType == "BUY" then return tradeCycle("BUY", true) end
-    elseif plan == "PLANNED_PRODUCTION" and step == 1 then
-        if produces > 0 and plannedProduction <= 0 then return "EOC VERIFIED", "EOC now observes installed production capacity.", true end
-        return "EOC WAITING", "EOC still observes " .. tostring(plannedProduction) .. " planned matching production module(s).", true
+    elseif plan == "PLANNED_PRODUCTION" then
+        if step == 1 then
+            if produces > 0 and plannedProduction <= 0 then return "EOC VERIFIED", "EOC now observes installed production capacity.", true end
+            return "EOC WAITING", "EOC still observes " .. tostring(plannedProduction) .. " planned matching production module(s). Finish construction in X4, then run fresh verification.", true
+        end
+        if step == 2 then
+            if missingInputs <= 0 and capacity > 0 then return "EOC CHECKED", "Current evidence reports compatible storage and no empty production input. EOC will re-evaluate the completed chain after construction.", true end
+            return "EOC WAITING", "EOC still observes an input or compatible-storage condition. Use the retained Solution Planner recipe for any required modules; EOC will manage supported input offers.", true
+        end
+        if step == 3 then return tradeCycle("BUY", false) end
+        if step == 4 then return tradeCycle("BUY", true) end
+        if step == 5 then return "EOC WAITING", "EOC will remove only its own emergency offer after a fresh verification proves stable local recovery.", true end
     elseif plan == "PAUSED_PRODUCTION" or plan == "MISSING_INPUTS" or plan == "INSTALLED_PRODUCTION" then
         if step == 1 then
             if produces > 0 and not paused then return "EOC CHECKED", "EOC observes installed production and no reported manual pause. It has not proven that the module is enabled or undamaged; confirm those conditions in the vanilla station view.", true end
@@ -1824,9 +2133,20 @@ local function eocChecklistState(caseData, plan, step)
             if missingInputs <= 0 then return "EOC VERIFIED", "EOC currently reports no missing production input.", true end
             return "EOC WAITING", "EOC still reports " .. tostring(missingInputs) .. " missing production input(s).", true
         end
+        if step == 3 then return "EOC CHECKED", "EOC reported the evidence it can prove. Module damage/enabled state, workforce policy, and manual allocation controls remain visible X4 boundaries, not generic player checklist answers.", true end
+        if step == 4 then
+            if action and actionType == "BUY" then return tradeCycle("BUY", true) end
+            return "EOC WAITING", "Run fresh verification after one production cycle so EOC can evaluate the new station evidence.", true
+        end
+        if step == 5 then return "EOC CHECKED", "Capacity escalation remains advisory. Reopen Solution Planner whenever retained escalation evidence is available.", true end
     elseif plan == "SUPPLY_UNAVAILABLE" then
+        if step == 1 then return "EOC CHECKED", "EOC currently observes no reachable supplier. Ware-rule and blacklist mutation remains outside EOC authority and is reported only as an X4 boundary.", true end
         if step == 2 then
             return "EOC VERIFIED", ownedSuppliers > 0 and ("EOC found " .. tostring(ownedSuppliers) .. " owned supplier(s).") or "EOC searched its current evidence and found no owned supplier.", true
+        end
+        if step == 4 then
+            if capacity > 0 and compatible > 0 then return "EOC VERIFIED", "EOC observes compatible storage and assigned delivery capacity.", true end
+            return "EOC WAITING", "Current evidence still lacks compatible storage or delivery capacity. Build only Planner-identified storage/production modules; registered-ship automation follows its separate authorization mode.", true
         end
         if step == 5 then
             if suppliers > 0 or produces > 0 then return "EOC VERIFIED", "EOC now observes a real supplier or installed production source.", true end
@@ -1839,6 +2159,11 @@ local function eocChecklistState(caseData, plan, step)
         end
         if step == 3 then return tradeCycle("BUY", false) end
         if step == 4 then return tradeCycle("BUY", true) end
+        if step == 2 then
+            if compatible > 0 then return "EOC VERIFIED", "EOC observes compatible assigned delivery capacity and will continue bounded verification.", true end
+            return "EOC WAITING", "EOC still observes no compatible assigned trader. Auto-assignment is limited to eligible registered ships when that separate authority is enabled.", true
+        end
+        if step == 5 then return "EOC CHECKED", "Production escalation is not required until EOC exhausts the supported delivery path. Retained Planner access remains available for reference after escalation.", true end
     end
     return nil, nil, false
 end
@@ -1910,6 +2235,12 @@ local function renderInteractiveChecklist(tableWidget, caseData, items)
             handler = askEOCHandler(caseData, key, progressKey, stepIndex, stepText)
             active = not eocComplete and not actionState("analysis.run").running
         else
+            if menu.mode == "MANAGED" then
+                marker = "[EOC / X4 BOUNDARY] "
+                background = inactiveModeBackground
+                handler = function() end
+                active = false
+            else
             local classification, required = checklistPlayerClassification(plan, stepIndex)
             if required then
                 if state == "COMPLETE" then playerComplete = playerComplete + 1 elseif state == "NO" then playerNo = playerNo + 1 else playerPending = playerPending + 1; nextPlayerStep = nextPlayerStep or stepIndex end
@@ -1920,9 +2251,9 @@ local function renderInteractiveChecklist(tableWidget, caseData, items)
             background = state ~= "PENDING" and inactiveModeBackground or availableModeBackground
             handler = toggleHandler(caseData, key, progressKey, stepIndex, state, stepText)
             active = true
+            end
             if plan == "IMPORT_READY" and stepIndex == 5 then
-                local plannerAction = managedActionForCase(caseData)
-                local plannerReady = plannerAction and string.upper(text(v(plannerAction, 6, ""))) == "RECOVERY EXHAUSTED - PLANNER AVAILABLE"
+                local plannerReady = menu.plannerAccessForCase(caseData)
                 marker = plannerReady and "[RUN READINESS CHECK AND OPEN PLANNER] " or "[LOCKED - EOC STILL TESTING] "
                 active = plannerReady
                 handler = plannerReady and function()
@@ -1946,6 +2277,24 @@ local function renderInteractiveChecklist(tableWidget, caseData, items)
         local label = marker .. tostring(stepIndex) .. ". " .. stepText
         if locked and eocDetail then label = label .. "  —  " .. eocDetail end
         addButton(row, 1, label, handler, active, background)
+    end
+    local plannerReady, plannerReason = menu.plannerAccessForCase(caseData)
+    if plan ~= "IMPORT_READY" and plannerReady then
+        local plannerRow = tableWidget:addRow(true)
+        plannerRow[1]:setColSpan(4)
+        local plannerLabel = plannerReason == "PLANNED_PRODUCTION_REVIEW" and "OPEN SOLUTION PLANNER - REVIEW EXISTING PRODUCTION PLAN" or "REOPEN SOLUTION PLANNER - FRESH READINESS MAY BE REQUIRED"
+        addButton(plannerRow, 1, plannerLabel, function()
+            if plannerReason == "PLANNED_PRODUCTION_REVIEW" then
+                DebugError("[JKEOC][B291][PLANNED_PRODUCTION_PLANNER_ROUTE] station=" .. text(v(caseData, 1, "")) .. " ware=" .. text(v(caseData, 4, "")) .. " planned=" .. tostring(tonumber(v(caseData, 34, 0)) or 0) .. " action=RUN_READINESS_AND_OPEN")
+                menu.runExpansionReadiness(caseData)
+            end
+            menu.solutionCase = caseData
+            menu.focusCaseStation(caseData)
+            captureNavigation("DIAGNOSTICS - " .. text(v(caseData, 4, "SELECTED CASE")))
+            menu.page = "solution"
+            menu.activeTab = "solution"
+            menu.refresh()
+        end, true, currentChoiceBackground)
     end
     local row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText("TWO-WAY PROGRESS: " .. tostring(eocVerified) .. " EOC verified | " .. tostring(eocWaiting) .. " ask/wait EOC | " .. tostring(playerComplete) .. " required player steps done | " .. tostring(playerNo) .. " required steps not done | " .. tostring(playerPending) .. " required checks/actions pending | " .. tostring(optionalPending) .. " optional strategy choices (never blocking).", { wordwrap = true, color = navigationStoryColor })
@@ -3168,18 +3517,31 @@ end
 
 local function solutionPlannerCenter(tableWidget)
     local caseData = menu.solutionCase or menu.diagnosticCase
+    if menu.diagnosticCase and (not caseData or (
+        text(v(caseData, 1, "")) == text(v(menu.diagnosticCase, 1, ""))
+        and text(v(caseData, 3, "")) == text(v(menu.diagnosticCase, 3, ""))
+        and text(v(caseData, 4, "")) == text(v(menu.diagnosticCase, 4, ""))
+    )) then
+        if caseData ~= menu.diagnosticCase then
+            DebugError("[JKEOC][B289][PLANNER_CONTEXT_REFRESH] station=" .. text(v(menu.diagnosticCase, 1, "")) .. " ware=" .. text(v(menu.diagnosticCase, 4, "")) .. " source=fresh_diagnostic_case")
+        end
+        caseData = menu.diagnosticCase
+        menu.solutionCase = caseData
+    end
     section(tableWidget, "STATION SOLUTION PLANNER")
     local safetyBanner = tableWidget:addRow(false)
-    safetyBanner[1]:setColSpan(4):createText("TEST ESCALATION SAFETY: Do not use permanent construction as a shortcut around an active station problem. EOC unlocks recommendations only after its immediate recovery evidence is exhausted. HQ, mixed-purpose, and build-everything stations require special caution because added modules can duplicate capacity, compete for inputs, and worsen shared-storage pressure.", { wordwrap = true, color = investigationFailColor })
+    safetyBanner[1]:setColSpan(4):createText("TEST ESCALATION SAFETY: Do not use permanent construction as a shortcut around an active station problem. EOC unlocks new-capacity recommendations only after immediate recovery evidence is exhausted. When matching production is already planned, EOC permits review of that existing plan and its supporting recipe without authorizing duplicate capacity. HQ, mixed-purpose, and build-everything stations require special caution because added modules can duplicate capacity, compete for inputs, and worsen shared-storage pressure.", { wordwrap = true, color = investigationFailColor })
     if not caseData then
         local row = tableWidget:addRow(false)
         row[1]:setColSpan(4):createText("No case is loaded. Open Diagnostics, exhaust the immediate recovery checks, then select OPEN PLANNER on the permanent-solution step.", { wordwrap = true, color = investigationUnknownColor })
         return
     end
-    local plannerAction = managedActionForCase(caseData)
-    local plannerReady = plannerAction and string.upper(text(v(plannerAction, 6, ""))) == "RECOVERY EXHAUSTED - PLANNER AVAILABLE"
+    local plannerReady, plannerReason = menu.plannerAccessForCase(caseData)
     local warning = tableWidget:addRow(false)
-    warning[1]:setColSpan(4):createText(plannerReady and "ESCALATION WARNING: EOC has exhausted the immediate recovery evidence it can test: a bounded BUY offer remained active for the full 30-minute delivery-test window, reachable supply and compatible station traders were present, and stock did not rise. This planner is advisory. Review the station's existing build plan before adding anything; complex mixed-purpose stations and HQ-style build-everything stations can be made worse by duplicate modules, input competition, or shared-storage pressure." or "PLANNER LOCKED: EOC has not exhausted immediate recovery testing for this case. Return to Diagnostics and let the bounded BUY action complete its 30-minute delivery-test window. EOC must confirm reachable supply, compatible station traders, a later reconciliation, and no stock increase before permanent construction advice is shown. Do not expand this station yet.", { wordwrap = true, color = plannerReady and investigationUnknownColor or investigationFailColor })
+    local plannerWarning = plannerReason == "PLANNED_PRODUCTION_REVIEW"
+        and "PLANNED-PRODUCTION REVIEW: X4 already reports matching production in this station's build plan. EOC may show the exact native recipe and supporting requirements so you can review the committed plan. This does not prove the earlier recovery test passed and does not authorize duplicate modules; finish and verify the existing plan first."
+        or (plannerReady and "ESCALATION WARNING: EOC has exhausted the immediate recovery evidence it can test: a bounded BUY offer remained active for the full 30-minute delivery-test window, reachable supply and compatible station traders were present, and stock did not rise. This planner is advisory. Review the station's existing build plan before adding anything; complex mixed-purpose stations and HQ-style build-everything stations can be made worse by duplicate modules, input competition, or shared-storage pressure." or "PLANNER LOCKED: EOC has not exhausted immediate recovery testing for this case. Return to Diagnostics and let the bounded BUY action complete its 30-minute delivery-test window. EOC must confirm reachable supply, compatible station traders, a later reconciliation, and no stock increase before permanent construction advice is shown. Do not expand this station yet.")
+    warning[1]:setColSpan(4):createText(plannerWarning, { wordwrap = true, color = plannerReady and investigationUnknownColor or investigationFailColor })
     if not plannerReady then
         local lockedRow = tableWidget:addRow(true)
         lockedRow[1]:setColSpan(4)
@@ -3187,7 +3549,7 @@ local function solutionPlannerCenter(tableWidget)
         return
     end
     local readiness = menu.expansionReadiness
-    local readinessMatches = readiness and readiness.key == checklistCaseKey(caseData)
+    local readinessMatches = readiness and readiness.key == checklistCaseKey(caseData) and readiness.evidenceKey == expansionEvidenceKey(caseData)
     if not readinessMatches then
         local required = tableWidget:addRow(false)
         required[1]:setColSpan(4):createText("EXPANSION READINESS CHECK REQUIRED: Before EOC shows any permanent recommendation, it will review the evidence it can prove for this exact station and ware and identify every condition X4 still requires you to inspect. The check is read-only and changes nothing.", { wordwrap = true, color = investigationUnknownColor })
@@ -3245,23 +3607,52 @@ local function solutionPlannerCenter(tableWidget)
             end
         end
     end
-    section(tableWidget, "RECOMMENDED BUILD-PLAN SEQUENCE")
-    local steps = {}
-    if nativePlan and nativePlan.state == "OWNED" and nativePlan.moduleCount == 0 then
-        steps[#steps + 1] = "1. Do not add production capacity. Native hourly output already covers measured hourly consumption. Investigate allocation, storage, inputs, workforce, pauses, or delivery instead."
-    elseif planned > 0 then
-        steps[#steps + 1] = "1. Do not add a duplicate yet. Finish the " .. tostring(planned) .. " already-planned matching production module(s)."
-    elseif produces > 0 then
-        steps[#steps + 1] = "1. Restore and measure the " .. tostring(produces) .. " installed production module(s) before adding capacity."
-    else
-        steps[#steps + 1] = nativePlan and nativePlan.state == "OWNED" and ("1. In the vanilla Station Build Plan, add exactly " .. tostring(nativePlan.moduleCount) .. " " .. nativePlan.selected.name .. " module(s), subject to the remaining construction checks below.") or ("1. In the vanilla Station Build Plan, locate a production module whose output is " .. ware .. ". Add no module until its race, method, blueprint ownership, and full recipe are visible there.")
+    section(tableWidget, "LIVE PRODUCTION-CHAIN CHECKLIST")
+    local checklist = nativePlan and nativePlan.checklist
+    local checklistItems = checklist and checklist.items or {
+        { state = "CANNOT PROVE", label = "NATIVE PRODUCTION CHAIN", evidence = "X4 did not return a complete owned module/recipe chain. No exact dependency or module count will be inferred." },
+        { state = "REQUIRED", label = "VANILLA BUILD-PLAN REVIEW", evidence = "Confirm the production method, recipe, storage, workforce, plot, builder, build wares, and module compatibility in X4 before committing." },
+    }
+    local pageSize = 5
+    local pageCount = math.max(1, math.ceil(#checklistItems / pageSize))
+    menu.plannerChecklistPage = math.max(1, math.min(tonumber(menu.plannerChecklistPage) or 1, pageCount))
+    local firstItem = (menu.plannerChecklistPage - 1) * pageSize + 1
+    local lastItem = math.min(#checklistItems, firstItem + pageSize - 1)
+    local statePrefix = { COMPLETE = "[X]", PLANNED = "[/]", ASSIGNED = "[/]", ASSIGNING = "[/]", ["APPROVAL REQUIRED"] = "[ ]", REQUIRED = "[ ]", ["SURPLUS PLAN"] = "[!]", ["SOURCE REQUIRED"] = "[!]", ["CANNOT PROVE"] = "[?]" }
+    for itemIndex = firstItem, lastItem do
+        local item = checklistItems[itemIndex]
+        local itemColor = item.state == "COMPLETE" and investigationPassColor or ((item.state == "REQUIRED" or item.state == "SURPLUS PLAN" or item.state == "SOURCE REQUIRED") and investigationFailColor or investigationUnknownColor)
+        local checklistRow = tableWidget:addRow(false)
+        checklistRow[1]:setColSpan(4):createText((statePrefix[item.state] or "[?]") .. " " .. item.state .. " - " .. item.label .. ": " .. item.evidence, { wordwrap = true, color = itemColor })
     end
-    steps[#steps + 1] = nativePlan and nativePlan.state == "OWNED" and "2. Provision every input and hourly rate listed above before construction. Any input without local production, an owned supplier, or reachable market supply is a blocker." or (missingInputs > 0 and ("2. Plan upstream support for the proven missing input(s): " .. missingNames .. ". Repair the deepest input first.") or "2. Inspect the chosen module's complete recipe in the vanilla editor and plan every required upstream input.")
-    steps[#steps + 1] = "3. Add the cargo-class storage required by the complete input/output chain, preserving shared capacity for the station's existing wares."
-    steps[#steps + 1] = "4. For every input shown by the chosen vanilla production recipe, confirm one plain source: PRODUCED HERE, AVAILABLE FROM AN OWNED STATION, or REACHABLE TO BUY. Keep compatible traders for every input not produced here. Treat any input with no proven source as a blocker."
-    steps[#steps + 1] = "5. Confirm normal X4 construction cost, builder, build-storage wares, plot space, and module compatibility in the vanilla editor before committing."
-    steps[#steps + 1] = "6. After construction and one production cycle, run a fresh EOC verification. Add further capacity only if measured output remains below sustained demand."
-    for _, stepText in ipairs(steps) do local row = tableWidget:addRow(false); row[1]:setColSpan(4):createText(stepText, { wordwrap = true }) end
+    local checklistNav = tableWidget:addRow(true)
+    addButton(checklistNav, 1, "PREVIOUS", function() menu.plannerChecklistPage = math.max(1, menu.plannerChecklistPage - 1); menu.refresh() end, menu.plannerChecklistPage > 1)
+    checklistNav[2]:createText("PAGE " .. tostring(menu.plannerChecklistPage) .. " / " .. tostring(pageCount), { halign = "center" })
+    local rawAction
+    for _, item in ipairs(checklistItems) do if item.action then rawAction = item.action; break end end
+    if rawAction then
+        local bound = rawAction
+        local rawStation = text(v(caseData, 1, ""))
+        local rawWare = menu.supplyWareId(bound.ware)
+        local rawKey = rawStation .. "|" .. rawWare
+        menu.rawSourceAcknowledgements = menu.rawSourceAcknowledgements or {}
+        local confirmationRefreshes = tonumber(menu.rawSourceAcknowledgements[rawKey]) or 0
+        local acknowledgementActive = confirmationRefreshes > 0
+        local record = menu.rawSourceRecords and menu.rawSourceRecords[rawKey]
+        local label = acknowledgementActive and ((record and record.ship ~= "" and "RAW SOURCE SHIP ASSIGNED") or "RAW SOURCE REQUEST RECEIVED") or (bound.disabledLabel or (menu.shipmode == "AUTO-ASSIGN REGISTERED" and "ASSIGN NEXT RAW SOURCE" or (menu.shipmode == "APPROVAL REQUIRED" and "PROPOSE NEXT RAW SOURCE" or "CHECK RAW SOURCE")))
+        addButton(checklistNav, 3, label, function()
+            if (tonumber(menu.rawSourceAcknowledgements[rawKey]) or 0) > 0 then return end
+            menu.rawSourceRecords = menu.rawSourceRecords or {}
+            menu.rawSourceRecords[rawKey] = { status = "REQUESTED", ship = "", detail = "EOC submitted the exact raw-source assignment check." }
+            menu.rawSourceAcknowledgements[rawKey] = 2
+            raise("planner.rawsource", { station = rawStation, profile = nativePlan.stationProfileIndex or 0, ware = bound.ware, name = bound.name, transport = bound.transport, rate = bound.rate })
+            menu.refresh()
+        end, not bound.disabled and not acknowledgementActive, currentChoiceBackground)
+        if acknowledgementActive then menu.rawSourceAcknowledgements[rawKey] = confirmationRefreshes - 1 end
+    else
+        addButton(checklistNav, 3, "REFRESH CHECKLIST", function() menu.runExpansionReadiness(caseData); menu.refresh() end, true, currentChoiceBackground)
+    end
+    addButton(checklistNav, 4, "NEXT", function() menu.plannerChecklistPage = math.min(pageCount, menu.plannerChecklistPage + 1); menu.refresh() end, menu.plannerChecklistPage < pageCount)
     local boundary = tableWidget:addRow(false)
     boundary[1]:setColSpan(4):createText(nativePlan and nativePlan.state == "OWNED" and "EVIDENCE BOUNDARY: X4 has proven the owned module macro, blueprint ware, production method, hourly output, full primary-input recipe, workforce requirement, and capacity count shown above. Plot position, module connection compatibility, builder, build-storage inventory, final construction cost, and future storage allocation remain authoritative in the vanilla Station Build Plan. EOC will not alter it." or "EVIDENCE BOUNDARY: X4 did not return a complete owned module/recipe chain. The vanilla Station Build Plan is authoritative. EOC will not infer or alter it.", { wordwrap = true, color = investigationUnknownColor })
     local row = tableWidget:addRow(true)
@@ -4242,6 +4633,12 @@ local function diagnosticsCenter(tableWidget)
     local diagnosticCase = menu.diagnosticCase
     if diagnosticCase and text(v(diagnosticCase, 1, "")) ~= text(v(station, 1, "")) then diagnosticCase = nil end
     if not diagnosticCase then diagnosticCase = cases[1] end
+    -- Persist the exact fallback case displayed by Diagnostics so a direct
+    -- Solution Planner tab click keeps the same station and ware context.
+    if diagnosticCase and menu.diagnosticCase ~= diagnosticCase then
+        menu.diagnosticCase = diagnosticCase
+        DebugError("[JKEOC][B290][DIAGNOSTIC_CONTEXT_RETAINED] station=" .. text(v(diagnosticCase, 1, "")) .. " ware=" .. text(v(diagnosticCase, 4, "")) .. " source=displayed_station_case")
+    end
     -- Player-requested cases are 11-field investigation requests, not completed
     -- 36-field diagnostic evidence records. Never render absent evidence as zero.
     local diagnosticReady = diagnosticCase and string.upper(text(v(diagnosticCase, 2, ""))) ~= "PLAYER" and #diagnosticCase >= 32

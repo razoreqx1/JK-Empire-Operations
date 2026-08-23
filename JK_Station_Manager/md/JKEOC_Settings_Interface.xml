@@ -20,6 +20,7 @@
 <do_if value="not global.$JKEOC_B73TradeMode?"><set_value name="global.$JKEOC_B73TradeMode" exact="'ADVISOR'" /></do_if><do_if value="not global.$JKEOC_MinMining?"><set_value name="global.$JKEOC_MinMining" exact="0" /></do_if><do_if value="not global.$JKEOC_MinTrade?"><set_value name="global.$JKEOC_MinTrade" exact="0" /></do_if><do_if value="not global.$JKEOC_MinBuildStorage?"><set_value name="global.$JKEOC_MinBuildStorage" exact="0" /></do_if><do_if value="not global.$JKEOC_MinDefence?"><set_value name="global.$JKEOC_MinDefence" exact="0" /></do_if><do_if value="not global.$JKEOC_MinEscort?"><set_value name="global.$JKEOC_MinEscort" exact="0" /></do_if>
         <do_if value="not global.$JKEOC_B73Offers?"><set_value name="global.$JKEOC_B73Offers" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B76AssignmentMode?"><set_value name="global.$JKEOC_B76AssignmentMode" exact="'APPROVAL REQUIRED'" /></do_if>
+        <do_if value="not global.$JKEOC_B295RawSourceRecords?"><set_value name="global.$JKEOC_B295RawSourceRecords" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_ConstructionAuthority?"><set_value name="global.$JKEOC_ConstructionAuthority" exact="'APPROVAL REQUIRED'" /></do_if>
         <do_if value="not global.$JKEOC_ConstructionFundingLedger?"><set_value name="global.$JKEOC_ConstructionFundingLedger" exact="table[]" /></do_if>
         <do_if value="not global.$JKEOC_ConstructionBuilderLedger?"><set_value name="global.$JKEOC_ConstructionBuilderLedger" exact="table[]" /></do_if>
@@ -164,7 +165,13 @@
             <append_to_list name="$storagerecords" exact="[$directory.$stationname, 'LIQUID', $directory.$liquidcapacity - $directory.$liquidfree, $directory.$liquidcapacity, $directory.$liquidfree]" />
           </do_if>
         </do_for_each>
-        <set_value name="$params" exact="[0, 0, global.$JKEOC_B73TradeMode, global.$JKEOC_B73Offers.count, global.$JKEOC_B76AssignmentMode, $summary, $stations, $inbox, global.$JKEOC_B76PreviousAssignmentMode, global.$JKEOC_LuaReports, $cases, $registeredships, $tradeoffers, $pending, if global.$JKEOC_B64DefaultGoal? then global.$JKEOC_B64DefaultGoal else 'OBSERVE AND ADVISE ONLY', if global.$JKEOC_B64Findings? then global.$JKEOC_B64Findings.count else 0, [if global.$JKEOC_B64Mailbox? and global.$JKEOC_B64Mailbox.$status? then global.$JKEOC_B64Mailbox.$status else 'READY', if global.$JKEOC_B64Mailbox? and global.$JKEOC_B64Mailbox.$result? then global.$JKEOC_B64Mailbox.$result else 'No engineering probe has been submitted.'], if global.$JKEOC_B71ProofStatus? then global.$JKEOC_B71ProofStatus else 'READY', $blueprintrecords, $wharfrecords, global.$JKEOC_ShipOrders, $observations, [if global.$JKEOC_TerraformingMissionStation? then global.$JKEOC_TerraformingMissionStation else '', if global.$JKEOC_TerraformingMissionWare? then global.$JKEOC_TerraformingMissionWare else '', if global.$JKEOC_TerraformingMissionContext? then global.$JKEOC_TerraformingMissionContext else ''], $constructionrecords, global.$JKEOC_ConstructionAuthority, if global.$JKEOC_StartupSequenceEnabled then 1 else 0, $workforcerecords, $storagerecords, global.$JKEOC_MinMining, global.$JKEOC_MinTrade, global.$JKEOC_MinBuildStorage, global.$JKEOC_MinDefence, global.$JKEOC_MinEscort, $availableships, $checklistprogress]" />
+        <set_value name="$rawsourcerecords" exact="[]" />
+        <do_for_each name="$raw" in="global.$JKEOC_B295RawSourceRecords">
+          <do_if value="($raw.$status == 'ASSIGNED' or $raw.$status == 'EXISTING') and (not $raw.$ship? or not $raw.$ship.exists or $raw.$ship.commander != $raw.$station or $raw.$ship.assignment != assignment.mining)"><set_value name="$raw.$status" exact="'BLOCKED'" /><set_value name="$raw.$detail" exact="'BLOCKED: The previously observed miner is no longer assigned to this station. Run the explicit Planner raw-source action again.'" /></do_if>
+          <do_elseif value="($raw.$status == 'PENDING APPROVAL' or $raw.$status == 'ASSIGNING') and (not global.$JKEOC_B74PendingRemediation? or global.$JKEOC_B74PendingRemediation.$rawsourcerecord != $raw or not global.$JKEOC_B74PendingShip? or not global.$JKEOC_B74PendingShip.exists)"><set_value name="$raw.$status" exact="'BLOCKED'" /><set_value name="$raw.$detail" exact="'BLOCKED: The prior assignment candidate is no longer pending or eligible. Run the explicit Planner raw-source action again.'" /></do_elseif>
+          <append_to_list name="$rawsourcerecords" exact="[$raw.$stationname, $raw.$wareid, $raw.$warename, $raw.$status, if $raw.$shipname? then $raw.$shipname else if $raw.$ship? and $raw.$ship.exists then $raw.$ship.name else '', if $raw.$detail? then $raw.$detail else '']" />
+        </do_for_each>
+        <set_value name="$params" exact="[0, 0, global.$JKEOC_B73TradeMode, global.$JKEOC_B73Offers.count, global.$JKEOC_B76AssignmentMode, $summary, $stations, $inbox, global.$JKEOC_B76PreviousAssignmentMode, global.$JKEOC_LuaReports, $cases, $registeredships, $tradeoffers, $pending, if global.$JKEOC_B64DefaultGoal? then global.$JKEOC_B64DefaultGoal else 'OBSERVE AND ADVISE ONLY', if global.$JKEOC_B64Findings? then global.$JKEOC_B64Findings.count else 0, [if global.$JKEOC_B64Mailbox? and global.$JKEOC_B64Mailbox.$status? then global.$JKEOC_B64Mailbox.$status else 'READY', if global.$JKEOC_B64Mailbox? and global.$JKEOC_B64Mailbox.$result? then global.$JKEOC_B64Mailbox.$result else 'No engineering probe has been submitted.'], if global.$JKEOC_B71ProofStatus? then global.$JKEOC_B71ProofStatus else 'READY', $blueprintrecords, $wharfrecords, global.$JKEOC_ShipOrders, $observations, [if global.$JKEOC_TerraformingMissionStation? then global.$JKEOC_TerraformingMissionStation else '', if global.$JKEOC_TerraformingMissionWare? then global.$JKEOC_TerraformingMissionWare else '', if global.$JKEOC_TerraformingMissionContext? then global.$JKEOC_TerraformingMissionContext else ''], $constructionrecords, global.$JKEOC_ConstructionAuthority, if global.$JKEOC_StartupSequenceEnabled then 1 else 0, $workforcerecords, $storagerecords, global.$JKEOC_MinMining, global.$JKEOC_MinTrade, global.$JKEOC_MinBuildStorage, global.$JKEOC_MinDefence, global.$JKEOC_MinEscort, $availableships, $checklistprogress, $rawsourcerecords]" />
         <debug_text text="'[JKEOC][B224][LUA_LAUNCH] stations=%1 inbox=%2 cases=%3 registered=%4 available_unregistered=%5 offers=%6 pending=%7 blueprints=%8 wharf_routes=%9'.[$stations.count, $inbox.count, $cases.count, $registeredships.count, $availableships.count, $tradeoffers.count, $pending.count, $blueprintrecords.count, $wharfrecords.count]" filter="general" />
         <open_menu menu="JKEOC_SettingsMenu" param="$params" param2="null" />
       </actions>
@@ -174,6 +181,66 @@
       <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" /></conditions>
       <actions>
       <do_if value="event.param2 == 'INIT'"><raise_lua_event name="'JKEOC_SettingsMenu.INIT'" /><debug_text text="'[JKEOC][B224][LUA_READY]'" filter="general" /></do_if>
+      <do_elseif value="event.param2 == 'planner.rawsource' and event.param3.$profile? and event.param3.$ware?">
+        <show_notification text="'EOC RESOURCE REQUEST RECEIVED: checking %1 for %2.'.[if event.param3.$name? then event.param3.$name else event.param3.$ware, event.param3.$station]" timeout="7s" />
+        <set_value name="$profile" exact="global.$JKEOC_B67Profiles.{event.param3.$profile}" />
+        <set_value name="$station" exact="if $profile? and $profile.$station? then $profile.$station else null" />
+        <set_value name="$ware" exact="ware.{event.param3.$ware}" />
+        <set_value name="$waretransport" exact="null" />
+        <do_if value="$ware?"><set_value name="$waretransport" exact="$ware.waretransport" /></do_if>
+        <do_if value="$station.exists and $station.owner == faction.player and $profile.$stationname == event.param3.$station">
+          <set_value name="$warevalid" exact="$ware? and ($waretransport == waretransport.solid or $waretransport == waretransport.liquid)" />
+        </do_if>
+        <do_else><set_value name="$warevalid" exact="false" /></do_else>
+        <set_value name="$oldrecord" exact="null" />
+        <do_for_each name="$entry" in="global.$JKEOC_B295RawSourceRecords"><do_if value="$entry.$station == $station and $entry.$wareid == event.param3.$ware"><set_value name="$oldrecord" exact="$entry" /></do_if></do_for_each>
+        <set_value name="$duplicatepending" exact="$oldrecord? and $oldrecord.$transactionactive? and $oldrecord.$transactionactive" />
+        <do_if value="$duplicatepending"><set_value name="$record" exact="$oldrecord" /><set_value name="$record.$detail" exact="'The exact raw-source assignment is already pending; the repeated request was ignored without selecting another ship.'" /></do_if>
+        <do_else>
+          <do_if value="$oldrecord?"><remove_from_list name="global.$JKEOC_B295RawSourceRecords" exact="$oldrecord" /></do_if>
+          <set_value name="$record" exact="table[$station=$station, $stationname=event.param3.$station, $ware=$ware, $wareid=event.param3.$ware, $warename=if event.param3.$name? then event.param3.$name else event.param3.$ware, $transport=if event.param3.$transport? then event.param3.$transport else 'UNKNOWN', $rate=if event.param3.$rate? then event.param3.$rate else 0, $status='REQUEST RECEIVED', $detail='EOC received the exact raw-resource request and is checking pinned coverage, storage, and registered miners.', $ships=[]]" />
+          <append_to_list name="global.$JKEOC_B295RawSourceRecords" exact="$record" />
+        </do_else>
+        <do_if value="not $duplicatepending and $station.exists and $warevalid">
+          <set_value name="$directory" exact="null" /><do_for_each name="$candidateentry" in="global.$JKEOC_StationDirectory"><do_if value="$candidateentry.$station == $station"><set_value name="$directory" exact="$candidateentry" /></do_if></do_for_each>
+          <set_value name="$storagecapacity" exact="if $directory? then if $waretransport == waretransport.solid then $directory.$solidcapacity else $directory.$liquidcapacity else 0" />
+          <set_value name="$storagefree" exact="if $directory? then if $waretransport == waretransport.solid then $directory.$solidfree else $directory.$liquidfree else 0" />
+          <do_if value="$storagecapacity le 0"><set_value name="$record.$status" exact="'BLOCKED'" /><set_value name="$record.$detail" exact="'BLOCKED: No compatible %1 storage is installed at this station.'.[event.param3.$transport]" /></do_if>
+          <do_elseif value="$storagefree le 0"><set_value name="$record.$status" exact="'BLOCKED'" /><set_value name="$record.$detail" exact="'BLOCKED: Compatible %1 storage exists but X4 reports no free capacity.'.[event.param3.$transport]" /></do_elseif>
+          <do_elseif value="global.$JKEOC_B76AssignmentMode == 'DISABLED'"><set_value name="$record.$status" exact="'BLOCKED'" /><set_value name="$record.$detail" exact="'BLOCKED: Shipping assignment is disabled. EOC made no ship change.'" /></do_elseif>
+          <do_elseif value="(global.$JKEOC_B74PendingShip? and global.$JKEOC_B74PendingShip.exists) or global.$JKEOC_B298Pending?"><set_value name="$record.$status" exact="'BLOCKED'" /><set_value name="$record.$detail" exact="'BLOCKED: Another exact ship assignment or resource-pin verification is already active. EOC did not select another ship.'" /></do_elseif>
+          <do_else>
+            <!-- A selector must be genuinely unset until a concrete object passes every
+                 guard.  Never seed it with null and then treat `$ship?` as object proof. -->
+            <remove_value name="$ship" />
+            <set_value name="$registeredcount" exact="global.$JKEOC_B76EligibleShips.count" /><set_value name="$existingcount" exact="0" /><set_value name="$minercount" exact="0" /><set_value name="$idleminercount" exact="0" /><set_value name="$cargocount" exact="0" />
+            <do_for_each name="$candidate" in="global.$JKEOC_B76EligibleShips">
+              <do_if value="$candidate.exists">
+                <set_value name="$existingcount" exact="$existingcount + 1" />
+                <do_if value="$candidate.owner == faction.player and $candidate != player.ship and $candidate.isclass.ship and $candidate.isoperational and not $candidate.isunit and not $candidate.isclass.ship_xs and $candidate.primarypurpose == purpose.mine">
+                  <set_value name="$minercount" exact="$minercount + 1" />
+                  <do_if value="not $candidate.commander and not $candidate.subordinates.count">
+                    <set_value name="$idleminercount" exact="$idleminercount + 1" />
+                    <do_if value="$candidate.waretransport.indexof.{$waretransport}"><set_value name="$cargocount" exact="$cargocount + 1" /><do_if value="not $ship?"><set_value name="$ship" exact="$candidate" /></do_if></do_if>
+                  </do_if>
+                </do_if>
+              </do_if>
+            </do_for_each>
+            <debug_text text="'[JKEOC][B300][RAW_CANDIDATE_AUDIT] station=%1 ware=%2 registered=%3 existing=%4 miners=%5 idle_miners=%6 cargo_compatible=%7 selected=%8'.[$record.$stationname, $record.$wareid, $registeredcount, $existingcount, $minercount, $idleminercount, $cargocount, if $ship? and $ship.exists then $ship.name else 'NONE']" filter="general" />
+            <do_if value="$ship? and $ship.exists">
+              <set_value name="$record.$ship" exact="$ship" />
+              <set_value name="$record.$transactionactive" exact="true" />
+              <set_value name="$remediation" exact="table[$station=$station, $stationname=event.param3.$station, $category='PLANNER RAW SOURCE', $assignment='Mine for Commander', $subjectkey=$ware, $matchedship=$ship, $state='OPEN', $verification='Planner requested exact raw-resource mining assignment', $rawsourcerecord=$record]" />
+              <set_value name="global.$JKEOC_B74PendingRemediation" exact="$remediation" /><set_value name="global.$JKEOC_B74PendingShip" exact="$ship" />
+              <do_if value="global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED'"><set_value name="$record.$status" exact="'ASSIGNING'" /><set_value name="$record.$detail" exact="'Compatible registered miner selected; verifying station mining assignment.'" /><signal_cue_instantly cue="md.JKEOC_Operational_Remediation.JKEOC_B74_Assign" /></do_if>
+              <do_else><set_value name="$record.$status" exact="'PENDING APPROVAL'" /><set_value name="$record.$detail" exact="'Compatible registered miner reserved; approve it in Fleet &amp; Logistics.'" /><show_notification text="'ACTION REQUIRED: %1 can mine %2 for %3. Approve the pending assignment in Fleet &amp; Logistics.'.[$ship.name, $ware.name, $station.name]" timeout="14s" /></do_else>
+            </do_if>
+            <do_else><set_value name="$record.$status" exact="'BLOCKED'" /><set_value name="$record.$detail" exact="'BLOCKED: No idle registered miner with the exact %1 cargo class is available. EOC did not acquire or reassign a ship.'.[event.param3.$transport]" /></do_else>
+          </do_else>
+        </do_if>
+        <raise_lua_event name="'JKEOC_SettingsMenu.rawsource.station'" param="$record.$stationname" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.ware'" param="$record.$wareid" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.status'" param="$record.$status" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.ship'" param="if $record.$shipname? then $record.$shipname else if $record.$ship? and $record.$ship.exists then $record.$ship.name else ''" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.detail'" param="$record.$detail" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.commit'" />
+        <debug_text text="'[JKEOC][B300][RAW_SOURCE_REQUEST] station=%1 ware=%2 native_ware=%3 native_transport=%4 requested_transport=%5 mode=%6 status=%7 ship=%8 duplicate=%9 managed_cycle=5min'.[$record.$stationname, $record.$wareid, $ware?, $waretransport, $record.$transport, global.$JKEOC_B76AssignmentMode, $record.$status, if $record.$shipname? then $record.$shipname else if $record.$ship? and $record.$ship.exists then $record.$ship.name else 'NONE', $duplicatepending]" filter="general" />
+      </do_elseif>
       <do_elseif value="event.param2 == 'kpi.refresh'">
         <raise_lua_event name="'JKEOC_SettingsMenu.kpi.refresh.begin'" />
         <raise_lua_event name="'JKEOC_SettingsMenu.kpi.time'" param="player.age" />
@@ -1015,6 +1082,7 @@
     <cue name="JKEOC_Settings_ClearBackgroundConversation" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="1s" /><actions><cancel_conversation actor="player.computer" /><debug_text text="'[JKEOC][B224][BACKGROUND_CLOSED]'" filter="general" /></actions></cue>
   </cues>
 </mdscript>
+
 
 
 

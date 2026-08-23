@@ -2,17 +2,18 @@
 
 Transform your X4 empire from reactive management into intelligent operations.
 
-## Current public test
+## Current GA release
 
-- Version: 3.5 TEST
-- Engineering build: 286
-- Status: **WORK IN PROGRESS PUBLIC TEST** — the Supply Model and native Station Solution Planner are under active testing
+- Version: 3.5 GA
+- Engineering build: 304
+- Extension version: 4.04
+- Status: **GENERAL AVAILABILITY** — runtime accepted and published to Steam Workshop
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 259 remains the last GA-qualified runtime. Build 286 is available for public testing on Steam and GitHub.
+Build 304 preserves the accepted Build 303 runtime and corrects the visible startup identity so it reports the current GA release.
 
-## What is new in EOC 3.5 TEST Build 286
+## What is new in EOC 3.5 GA Build 304
 
 - Adds a native Station Solution Planner that uses X4's owned-blueprint and library data for the exact module, blueprint ware, production method, cycle output, complete primary-input recipe, workforce, and storage classes.
 - Calculates recommended additional modules as the live non-negative hourly deficit divided by exact one-module hourly output, rounded up.
@@ -22,9 +23,13 @@ Build 259 remains the last GA-qualified runtime. Build 286 is available for publ
 - Keeps Supply analysis player-triggered: no Supply watcher, polling loop, per-frame analysis, or recurring Supply scan.
 - Does not add modules, place plots, alter build plans, create resources, or move cargo or credits.
 - Continues to exclude Raw Scrap from conventional Supply recommendations.
+- Adds exact raw-resource mining support through native X4 `MiningRoutine` orders and verifies both the general ware basket and one-entry manual override before claiming a resource pin.
+- Manages raw-resource fleets slowly and consistently: one station per five-minute cycle, no more than one assignment change per cycle, and up to three miners only after repeated low-stock evidence.
+- Gives explicit assignment feedback, suppresses rapid duplicate requests, preserves persistent station/ware records, and reports the final assigned ship and exact native pin result.
+- Keeps Auto, Approval Required, and Disabled assignment modes separate and revalidates ownership, operational state, purpose, cargo class, registration, commander, and subordinate state before mutation.
+- Leaves ordinary station trading behavior native and never buys ships, steals assigned ships, creates resources, or performs unauthorized construction, cargo, or credit actions.
 
-Build 286 passed its targeted live test at 3840x2160 with X4 UI scale 2.00. The complete planner rendered with native scrolling, and the fresh log contained no EOC widget-height rejection, Lua error, Mission Director failure, stack trace, or invalid argument in the tested workflow. This is still a public TEST across wider resolutions, UI scales, saves, and mod combinations.
-
+The promoted runtime passed live Planner, assignment-feedback, exact Helium pinning, duplicate-suppression, and bounded five-minute manager checks. Build 304 changes only release identity and the previously stale startup notification.
 ## Preserved EOC 3.2 foundation
 
 - Makes Dock Interactions access self-contained within EOC, so a separate UI framework installation is not required for the EOC button.
@@ -65,7 +70,9 @@ Build 259 also preserves the complete EOC 3.2 feature set:
 
 ## Documentation and support
 
-- [EOC 3.5 TEST Public Test Guide](docs/EOC_3.5_TEST_PUBLIC_TEST_GUIDE.md)
+- [EOC 3.5 GA User and Support Guide](docs/EOC_3.5_GA_USER_SUPPORT_GUIDE.md)
+- [EOC 3.5 GA Release Notes](docs/RELEASE_NOTES_3.5_GA.md)
+- [Archived EOC 3.5 TEST Public Test Guide](docs/EOC_3.5_TEST_PUBLIC_TEST_GUIDE.md)
 - [EOC 3.2 GA User and Support Guide](docs/EOC_3.2_GA_USER_SUPPORT_GUIDE.md)
 - [EOC 3.2 GA Release Notes](docs/RELEASE_NOTES_3.2_GA.md)
 - [Report an EOC issue](https://github.com/razoreqx1/JK-Empire-Operations/issues)
