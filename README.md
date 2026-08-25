@@ -7,7 +7,7 @@ Transform your X4 empire from reactive management into intelligent operations.
 - Version: 3.7 GA
 - Engineering build: 321
 - Extension version: 4.21
-- Status: **GENERAL AVAILABILITY** — runtime accepted; GitHub source and documentation published
+- Status: **GENERAL AVAILABILITY** — runtime accepted and published to Steam Workshop and GitHub
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
