@@ -28,6 +28,7 @@ local ffi = require("ffi")
 local C = ffi.C
 
 ffi.cdef[[
+    float GetTextHeight(const char*const text, const char*const fontname, const float fontsize, const float wordwrapwidth);
     typedef struct {
         const char* macro;
         const char* ware;
@@ -1070,6 +1071,12 @@ local function analysisComplete()
     state.running = false
     state.result = menu.analysisOutput or "Analysis completed and EOC intelligence was refreshed."
     state.lastRun = menu.lastUpdated or formatGameTime(0)
+    if menu.pendingChecklistRequest then
+        local request = menu.pendingChecklistRequest
+        menu.checklistProgress[request.progressKey] = "WAITING"
+        raise("checklist.set", { key = request.key, station = request.station, subject = request.subject, casetype = request.casetype, plan = request.plan, step = request.step, state = "WAITING", text = request.text, schema = EOC_CHECKLIST_SCHEMA })
+        menu.pendingChecklistRequest = nil
+    end
 
     if menu.pendingVerificationKey then
         menu.verificationKey = menu.pendingVerificationKey
@@ -1178,7 +1185,14 @@ local function constructionRefreshComplete()
     menu.constructionRefresh = nil
     menu.constructionRefreshing = false
     menu.constructionStatus = "REFRESH COMPLETE: Latest station construction facts loaded."
-    if menu.frame then menu.refresh() end
+    -- A construction snapshot may arrive after the player has followed a newer
+    -- route. Retain the data, but never let that stale completion redraw or
+    -- replace the page the player is now using.
+    if menu.frame and menu.page == "construction" then
+        menu.refresh()
+    else
+        DebugError("[JKEOC][B318][CONSTRUCTION_REFRESH_RETAINED_NO_REDRAW] current_page=" .. tostring(menu.page) .. " station=" .. tostring(targetName))
+    end
 end
 local function constructionFundingResult(_, value)
     local result = text(value or "Construction action completed.")
@@ -1368,6 +1382,62 @@ local function init()
     RegisterEvent(menu.name .. ".rawsource.commit", menu.rawSourceCommit)
 end
 
+function menu.resetTabToRoot(page)
+    menu.navigationOrigin = nil
+    menu.navigationStack = {}
+    menu.reportOrigin = nil
+    menu.restoreTablePage = nil
+    menu.restoreTableTopRow = nil
+    menu.restoreTableSelectedRow = nil
+    menu.restoreNavigatorPage = nil
+    menu.restoreNavigatorTopRow = nil
+    menu.restoreNavigatorSelectedRow = nil
+
+    if page == "kpi" then
+        menu.kpiView = "cash"
+        menu.kpiResultPage = 1
+    elseif page == "supply" then
+        menu.supplyView = "home"
+        menu.supplyPages = {}
+        menu.supplyPreview = nil
+        menu.supplyBatchPreview = nil
+        menu.supplyStationDetailWare = nil
+        menu.supplyProducerDetailWare = nil
+        menu.supplyCapacityDetailWare = nil
+        menu.supplyOverviewDetailWare = {}
+    elseif page == "fleet" then
+        menu.fleetScope = "global"
+        menu.fleetView = "coverage"
+        menu.fleetPage = 1
+        menu.coverageFilter = "action"
+        menu.coverageSelected = nil
+    elseif page == "cases" then
+        menu.caseScope = "global"
+        menu.caseSeverity = "all"
+        menu.selectedCase = 1
+        menu.casePage = 1
+        menu.clearCasesConfirm = false
+        menu.diagnosticCase = nil
+    elseif page == "diagnostics" then
+        menu.diagnosticView = "recovery"
+        menu.diagnosticCase = nil
+        menu.marketChoiceNote = nil
+        menu.marketTestPreview = nil
+        menu.marketRemovePreview = nil
+    elseif page == "solution" then
+        menu.solutionCase = nil
+        menu.plannerChecklistPage = 1
+    elseif page == "reports" then
+        menu.selectedReport = 1
+    end
+end
+
+function menu.resetAllTabsToRoot()
+    for _, page in ipairs({ "kpi", "supply", "fleet", "cases", "diagnostics", "solution", "reports" }) do
+        menu.resetTabToRoot(page)
+    end
+end
+
 function menu.onShowMenu()
     menu.analysisRunning = false
     menu.mode = v(menu.param, 3, "ADVISOR")
@@ -1410,6 +1480,7 @@ function menu.onShowMenu()
         local key = text(v(record, 1, "")) .. "|" .. menu.supplyWareId(v(record, 2, ""))
         menu.rawSourceRecords[key] = { status = text(v(record, 4, "SOURCE REQUIRED")), ship = text(v(record, 5, "")), detail = text(v(record, 6, "")) }
     end
+    menu.logisticsCoverage = v(menu.param, 37, {})
     menu.minimumDraft = menu.minimumDraft or { mining = menu.minimums.mining, trade = menu.minimums.trade, buildstorage = menu.minimums.buildstorage, defence = menu.minimums.defence, escort = menu.minimums.escort }
     local rawStartupPreference = v(menu.param, 26, 1)
     local restoredStartupPreference = tonumber(rawStartupPreference) ~= 0
@@ -1443,7 +1514,7 @@ function menu.onShowMenu()
     menu.selectedCase = clamp(menu.selectedCase or 1, 1, math.max(1, #menu.cases))
     menu.casePage = math.max(1, tonumber(menu.casePage) or 1)
     menu.fleetScope = menu.fleetScope or "global"
-    menu.fleetView = menu.fleetView or "stations"
+    menu.fleetView = menu.fleetView or "coverage"
     menu.fleetPage = math.max(1, tonumber(menu.fleetPage) or 1)
     menu.diagnosticView = menu.diagnosticView or "recovery"
     if menu.diagnosticView == "engineering" then menu.diagnosticView = "recovery" end
@@ -1460,6 +1531,10 @@ function menu.onShowMenu()
         menu.osBootNextAt = menu.osBootNextAt or (getElapsedTime() + EOC_OS_BOOT_DELAY)
     elseif not menu.sessionBootComplete then
         menu.sessionBootComplete = true
+    else
+        menu.resetAllTabsToRoot()
+        menu.page = "dashboard"
+        menu.activeTab = "dashboard"
     end
     menu.analysisOutput = menu.analysisOutput or "Run Analyze Now to generate the current executive analysis."
     menu.reportOutput = menu.reportOutput or "Generate a report to preview its current output here."
@@ -1474,8 +1549,27 @@ local function acknowledgeClick(label)
     menu.clickStatusUntil = getElapsedTime() + 1.25
 end
 
+local function oneCycleFeedbackKey(label)
+    local upper = string.upper(tostring(label or ""))
+    if string.find(upper, "REFRESH THIS ANALYSIS", 1, true) or string.find(upper, "RUN THIS ANALYSIS", 1, true) then return "SUPPLY ANALYSIS" end
+    if string.find(upper, "REFRESH CHECKLIST", 1, true) then return "CHECKLIST REFRESH" end
+    if string.find(upper, "REFRESH CONSTRUCTION", 1, true) then return "CONSTRUCTION REFRESH" end
+    if string.find(upper, "REFRESH STOCK & RATE", 1, true) then return "LOGISTICS EVIDENCE REFRESH" end
+    if string.find(upper, "REFRESH VIEW", 1, true) then return "KPI VIEW REFRESH" end
+    if string.find(upper, "GENERATE REPORT", 1, true) or string.find(upper, "GENERATE STATION REPORT", 1, true) then return "REPORT GENERATION" end
+    if string.find(upper, "FRESH VERIFICATION", 1, true) or string.find(upper, "FRESH ANALYSIS", 1, true) or string.find(upper, "RUN EMPIRE ANALYSIS", 1, true) or upper == "RUN ANALYSIS" or string.find(upper, "ACTION: RUN EMPIRE ANALYSIS", 1, true) then return "ANALYSIS REFRESH" end
+    return nil
+end
+
 local function addButton(row, column, label, handler, active, background, height, textColor, preserveBackground, cardText)
     local properties = { active = active ~= false, bgColor = background, height = height }
+    menu.oneCycleFeedback = menu.oneCycleFeedback or {}
+    local feedbackKey = oneCycleFeedbackKey(label)
+    local feedbackActive = feedbackKey and (tonumber(menu.oneCycleFeedback[feedbackKey]) or 0) > 0
+    if feedbackActive then
+        properties.active = false
+        properties.bgColor = inactiveModeBackground
+    end
     if menu.reportRunning and (string.find(label, "GENERATE REPORT", 1, true) == 1 or string.find(label, "REPORT RUNNING", 1, true) == 1) then
         properties.active = false
     end
@@ -1492,8 +1586,11 @@ local function addButton(row, column, label, handler, active, background, height
         textProperties.y = Helper.standardTextHeight / 2
     end
     row[column]:createButton(properties):setText(label, textProperties)
+    if feedbackActive then menu.oneCycleFeedback[feedbackKey] = math.max(0, (tonumber(menu.oneCycleFeedback[feedbackKey]) or 0) - 1) end
     row[column].handlers.onClick = function()
+        if feedbackActive then return end
         acknowledgeClick(label)
+        if feedbackKey then menu.oneCycleFeedback[feedbackKey] = 1 end
         if string.find(label, "GENERATE REPORT", 1, true) == 1 then
             if menu.reportRunning then return end
             menu.reportRunning = true
@@ -1503,6 +1600,10 @@ local function addButton(row, column, label, handler, active, background, height
         -- live table position before same-page actions can preserve it.
         handler()
     end
+end
+
+function menu.addPrimaryButton(row, column, label, handler, active)
+    addButton(row, column, label, handler, active, currentChoiceBackground)
 end
 
 function menu.supplyCardHeight()
@@ -1568,21 +1669,8 @@ local function addTabButton(row, column, label, page)
 
     row[column]:createButton(properties):setText(label)
     row[column].handlers.onClick = function()
-        if page == "solution" then
-            local caseData = menu.solutionCase or menu.diagnosticCase
-            local plannerReady, plannerReason = menu.plannerAccessForCase(caseData)
-            DebugError("[JKEOC][B291][PLANNER_TAB_ROUTE] station=" .. text(v(caseData, 1, "")) .. " ware=" .. text(v(caseData, 4, "")) .. " ready=" .. tostring(plannerReady) .. " reason=" .. tostring(plannerReason))
-        end
-        menu.navigationOrigin = nil
-        menu.navigationStack = {}
-        menu.reportOrigin = nil
-        if page == "cases" then
-            menu.caseScope = (menu.stations and menu.stations[menu.selected]) and "station" or "global"
-            menu.caseSeverity = "all"
-            menu.selectedCase = 1
-            menu.casePage = 1
-            menu.diagnosticCase = nil
-        end
+        menu.resetTabToRoot(page)
+        DebugError("[JKEOC][B313][TAB_ROOT] page=" .. tostring(page) .. " explicit_tab_click=1")
         menu.page = page
         menu.activeTab = page
         menu.refresh()
@@ -2213,8 +2301,10 @@ local function renderInteractiveChecklist(tableWidget, caseData, items)
     local function askEOCHandler(boundCase, boundKey, boundProgressKey, boundStep, boundText)
         return function()
             if actionState("analysis.run").running then return end
-            menu.checklistProgress[boundProgressKey] = "REQUESTED"
-            raise("checklist.set", { key = boundKey, station = text(v(boundCase, 1, "")), subject = text(v(boundCase, 4, "")), casetype = text(v(boundCase, 3, "")), plan = checklistPlanId(boundCase), step = boundStep, state = "REQUESTED", text = boundText, schema = EOC_CHECKLIST_SCHEMA })
+            if menu.checklistProgress[boundProgressKey] == "CHECKING" or menu.checklistProgress[boundProgressKey] == "WAITING" then return end
+            menu.checklistProgress[boundProgressKey] = "CHECKING"
+            menu.pendingChecklistRequest = { progressKey = boundProgressKey, key = boundKey, station = text(v(boundCase, 1, "")), subject = text(v(boundCase, 4, "")), casetype = text(v(boundCase, 3, "")), plan = checklistPlanId(boundCase), step = boundStep, text = boundText }
+            raise("checklist.set", { key = boundKey, station = text(v(boundCase, 1, "")), subject = text(v(boundCase, 4, "")), casetype = text(v(boundCase, 3, "")), plan = checklistPlanId(boundCase), step = boundStep, state = "CHECKING", text = boundText, schema = EOC_CHECKLIST_SCHEMA })
             if startAction("analysis.run") then menu.analysisRunning = true; raise("analysis.run", { checklist = true, station = text(v(boundCase, 1, "")), subject = text(v(boundCase, 4, "")), step = boundStep }) end
             menu.refresh()
         end
@@ -2230,10 +2320,11 @@ local function renderInteractiveChecklist(tableWidget, caseData, items)
         if locked then
             local eocComplete = eocState == "EOC VERIFIED" or eocState == "EOC CHECKED"
             if eocComplete then eocVerified = eocVerified + 1 else eocWaiting = eocWaiting + 1; nextWaitingStep = nextWaitingStep or stepIndex end
-            marker = "[" .. ((savedState == "REQUESTED" and eocState == "EOC WAITING") and "ASK EOC" or eocState) .. "] "
+            local requestMarker = savedState == "CHECKING" and "EOC CHECKING" or ((savedState == "REQUESTED" or savedState == "WAITING") and "WAITING FOR TRADE CYCLE" or eocState)
+            marker = "[" .. requestMarker .. "] "
             background = eocComplete and inactiveModeBackground or pendingChoiceBackground
             handler = askEOCHandler(caseData, key, progressKey, stepIndex, stepText)
-            active = not eocComplete and not actionState("analysis.run").running
+            active = not eocComplete and not actionState("analysis.run").running and savedState ~= "CHECKING" and savedState ~= "WAITING"
         else
             if menu.mode == "MANAGED" then
                 marker = "[EOC / X4 BOUNDARY] "
@@ -2311,16 +2402,8 @@ local function renderInteractiveChecklist(tableWidget, caseData, items)
         acknowledgement = acknowledgement .. " BRANCH ACTIVE: A NO / NOT DONE answer prevents EOC from treating that prerequisite as satisfied. EOC will keep the case open, avoid claiming success, and direct the next verification toward the unresolved branch. It will not cancel or mutate an existing managed action from the answer alone."
     end
     row[1]:setColSpan(4):createText(acknowledgement, { wordwrap = true, color = navigationStoryColor })
-    if not nextPlayerStep then
-        row = tableWidget:addRow(true)
-        row[1]:setColSpan(4)
-        addButton(row, 1, actionLabel("analysis.run", "RUN FRESH VERIFICATION CHECK", "VERIFYING WITH FRESH ANALYSIS"), function()
-            if startAction("analysis.run") then
-                menu.analysisRunning = true
-                raise("analysis.run", { verify = true, station = text(v(caseData, 1, "")), subject = text(v(caseData, 4, "")), severity = text(v(caseData, 2, "UNKNOWN")), amount = tonumber(v(caseData, 8, 0)) or 0 })
-            end
-        end, not actionState("analysis.run").running, currentChoiceBackground)
-    end
+    -- Verification is offered once, on Verify Result. The checklist explains
+    -- readiness but must not create a second competing verification control.
 end
 
 pair = function(tableWidget, leftLabel, leftValue, rightLabel, rightValue)
@@ -2342,16 +2425,9 @@ local function addWorkingStationBanner(tableWidget)
     local caseSubject = menu.diagnosticCase and text(v(menu.diagnosticCase, 1, "")) == stationName and text(v(menu.diagnosticCase, 4, "")) or nil
     local label = "WORKING STATION - " .. stationName
     if caseSubject and caseSubject ~= "-" then label = label .. "  |  CASE - " .. caseSubject end
-    local row = tableWidget:addRow(true)
+    local row = tableWidget:addRow(false)
     row[1]:setColSpan(4)
-    row[1]:createButton({ active = true, bgColor = inactiveModeBackground }):setText(label)
-    row[1].handlers.onClick = function()
-        menu.navigationOrigin = nil
-        menu.navigationStack = {}
-        menu.page = "stations"
-        menu.activeTab = "stations"
-        menu.refresh()
-    end
+    row[1]:createText(label, { wordwrap = true, color = navigationStoryColor })
 end
 
 local function stationCases(station)
@@ -2464,7 +2540,12 @@ captureNavigation = function(label, keepSelection)
         fleetScope = menu.fleetScope,
         fleetView = menu.fleetView,
         fleetPage = menu.fleetPage,
+        fleetRecommendationCargo = menu.fleetRecommendationCargo,
         diagnosticView = menu.diagnosticView,
+        kpiView = menu.kpiView,
+        kpiResultPage = menu.kpiResultPage,
+        predictiveStationId = menu.predictiveStationId,
+        predictiveFilter = menu.predictiveFilter,
     }
     table.insert(menu.navigationStack, origin)
     menu.navigationOrigin = origin
@@ -2485,7 +2566,12 @@ local function restoreNavigation()
     menu.fleetScope = origin.fleetScope or menu.fleetScope
     menu.fleetView = origin.fleetView or menu.fleetView
     menu.fleetPage = origin.fleetPage or menu.fleetPage
+    menu.fleetRecommendationCargo = origin.fleetRecommendationCargo
     menu.diagnosticView = origin.diagnosticView or menu.diagnosticView
+    menu.kpiView = origin.kpiView or menu.kpiView
+    menu.kpiResultPage = origin.kpiResultPage or menu.kpiResultPage
+    menu.predictiveStationId = origin.predictiveStationId
+    menu.predictiveFilter = origin.predictiveFilter or menu.predictiveFilter
     menu.page = origin.page
     menu.activeTab = origin.activeTab or origin.page
     table.remove(menu.navigationStack)
@@ -3963,7 +4049,7 @@ local function casesCenter(tableWidget)
                 row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(menu.caseDuplicateNotice,{wordwrap=true,color=investigationUnknownColor})
             end
         end
-    end    actionResult(tableWidget, "case.create", "Creates one persistent player-requested investigation for the selected issue. Existing issue-specific cases are not duplicated.")
+    end
     local cases = filteredCases()
     if #cases == 0 then
         section(tableWidget, "NO MATCHING ACTIVE CASES")
@@ -3983,7 +4069,7 @@ local function casesCenter(tableWidget)
         local caseData = case
         row = tableWidget:addRow(true)
         row[1]:setColSpan(2)
-        addModeButton(row, 1, "OPEN CASE: " .. text(v(caseData, 1, "Unknown station")), caseIndex == menu.selectedCase, true, function()
+        addModeButton(row, 1, "OPEN CASE: " .. text(v(caseData, 1, "Unknown station")) .. " -> " .. text(v(caseData, 4, "GENERAL OPERATIONS")), caseIndex == menu.selectedCase, true, function()
             menu.selectedCase = caseIndex
             menu.caseDuplicateNotice = nil
             for _, actionNameToClear in ipairs({ "case.create", "case.monitor", "case.close" }) do
@@ -4005,11 +4091,30 @@ local function casesCenter(tableWidget)
 
     local selected = cases[menu.selectedCase]
     section(tableWidget, "SELECTED CASE: " .. text(v(selected, 1, "Unknown station")) .. " -> " .. text(v(selected, 4, "GENERAL OPERATIONS")))
-    pair(tableWidget, "SEVERITY", v(selected, 2, "ISSUE"), "STATE", v(selected, 5, "OPEN"))
+    pair(tableWidget, "SEVERITY", v(selected, 2, "ISSUE"), "WORKFLOW", "GUIDED RECOVERY")
+    local selectedChecks = prerequisiteRows(selected)
+    local selectedAction, selectedActionColor = managedActionText(selected)
+    local selectedBlocked = string.find(string.upper(selectedAction), "BLOCKED", 1, true) ~= nil
+    section(tableWidget, "PLAYER COMMAND SUMMARY")
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText(selectedBlocked and "PLAYER ACTION REQUIRED" or "NO PLAYER ACTION RIGHT NOW — EOC IS HANDLING THIS CASE", { wordwrap = true, color = selectedBlocked and investigationFailColor or investigationPassColor, font = Helper.headerFont })
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText(selectedBlocked and ("DO THIS NEXT: " .. manualNextAction(selected, selectedChecks)) or ("EOC STATUS: " .. selectedAction), { wordwrap = true, color = selectedActionColor })
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(4)
+    menu.addPrimaryButton(row, 1, "OPEN GUIDED NEXT ACTION — RETURN PATH PRESERVED", function()
+        menu.focusCaseStation(selected)
+        menu.diagnosticCase = selected
+        captureNavigation("CASE - " .. text(v(selected, 4, "SELECTED CASE")))
+        menu.diagnosticView = "recovery"
+        menu.page = "diagnostics"
+        menu.activeTab = "diagnostics"
+        menu.refresh()
+    end, true)
     row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText("WHY THIS CASE IS OPEN: " .. text(v(selected, 6, "Evidence requires review")), { wordwrap = true })
 
-    local checks = prerequisiteRows(selected)
+    local checks = selectedChecks
     local firstProblem = nil
     local passCount, notApplicableCount = 0, 0
     for _, check in ipairs(checks) do
@@ -4183,6 +4288,36 @@ local function fleetBuildManager(tableWidget)
     if state.result then row=tableWidget:addRow(false);row[1]:setColSpan(4):createText("STATUS: "..state.result,{wordwrap=true}) end
     row=tableWidget:addRow(true);row[1]:setColSpan(4);addButton(row,1,"RETURN TO SAVED FLEET TEMPLATES",function()state.mode="list";state.plan=nil;state.result=nil;state.deleteConfirm=false;menu.refresh()end,true)
 end
+function menu.reconciledLogisticsCoverage()
+    local merged, order = {}, {}
+    for _, sourceRecord in ipairs(menu.logisticsCoverage or {}) do
+        local key = text(v(sourceRecord, 1, "")) .. "|" .. menu.supplyWareId(v(sourceRecord, 2, ""))
+        local record = merged[key]
+        if not record then
+            record = {}
+            for index = 1, 16 do record[index] = v(sourceRecord, index, index == 11 and "" or 0) end
+            merged[key] = record
+            order[#order + 1] = record
+        else
+            record[5] = math.max(tonumber(record[5]) or 0, tonumber(v(sourceRecord, 5, 0)) or 0)
+            record[6] = math.max(tonumber(record[6]) or 0, tonumber(v(sourceRecord, 6, 0)) or 0)
+            for index = 7, 10 do record[index] = math.max(tonumber(record[index]) or 0, tonumber(v(sourceRecord, index, 0)) or 0) end
+            if #text(v(sourceRecord, 11, "")) > #text(record[11]) then record[11] = v(sourceRecord, 11, "") end
+            local currentSource, candidateSource = text(record[12]), text(v(sourceRecord, 12, "UNKNOWN"))
+            local currentWeak = currentSource == "" or currentSource == "UNKNOWN" or currentSource == "UNKNOWN - NO CURRENT SOURCE PROOF" or currentSource == "SOURCE TEMPORARILY UNAVAILABLE"
+            local candidateStrong = candidateSource ~= "" and candidateSource ~= "UNKNOWN" and candidateSource ~= "UNKNOWN - NO CURRENT SOURCE PROOF" and candidateSource ~= "SOURCE TEMPORARILY UNAVAILABLE"
+            if currentWeak and candidateStrong then record[12] = candidateSource end
+            record[13] = math.max(tonumber(record[13]) or 0, tonumber(v(sourceRecord, 13, 0)) or 0)
+            record[14] = math.max(tonumber(record[14]) or 0, tonumber(v(sourceRecord, 14, 0)) or 0)
+            if text(record[15]) == "" then record[15] = v(sourceRecord, 15, "SHARED POOL") end
+            record[16] = math.max(tonumber(record[16]) or 0, tonumber(v(sourceRecord, 16, 0)) or 0)
+            local currentRole, candidateRole = text(record[4]), text(v(sourceRecord, 4, "LOGISTICS"))
+            if string.find(currentRole, "EMERGENCY", 1, true) and not string.find(candidateRole, "EMERGENCY", 1, true) then record[4] = candidateRole end
+        end
+    end
+    return order
+end
+
 local function fleetCenter(tableWidget)
     local station = selectedStation()
     local stationName = text(v(station, 1, "SELECTED STATION"))
@@ -4213,6 +4348,7 @@ local function fleetCenter(tableWidget)
     local fleetScopeLabel = menu.fleetScope == "global" and "EMPIRE - ALL STATIONS" or
         ("SELECTED STATION - " .. stationName)
     local fleetViewLabels = {
+        coverage = "LOGISTICS COVERAGE",
         stations = "STATIONS",
         ships = "REGISTERED AVAILABLE SHIPS",
         offers = "EOC-OWNED TRADE OFFERS",
@@ -4237,6 +4373,12 @@ local function fleetCenter(tableWidget)
         menu.fleetScope = "station"
         menu.fleetPage = 1
         menu.refresh()
+    end)
+
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(4)
+    addModeButton(row, 1, (menu.fleetView == "coverage" and "ACTIVE: " or "") .. "UNIFIED LOGISTICS COVERAGE", menu.fleetView == "coverage", true, function()
+        selectFleetView("coverage")
     end)
 
     row = tableWidget:addRow(true)
@@ -4273,6 +4415,260 @@ local function fleetCenter(tableWidget)
 
     if menu.fleetView == "fleetbuild" then
         fleetBuildManager(tableWidget)
+        return
+    end
+
+    if menu.fleetView == "coverage" then
+        do
+        section(tableWidget, "EOC 3.6 LOGISTICS EXCEPTION DASHBOARD")
+        local intro = tableWidget:addRow(false)
+        intro[1]:setColSpan(4):createText("Healthy evidence is summarized. Actionable exceptions are shown first. Select a station, then select one resource card for complete ship and source evidence.", { wordwrap = true })
+
+        local reconciledCoverage = menu.reconciledLogisticsCoverage()
+
+        local function coverageState(record)
+            local stock, target = tonumber(v(record, 5, 0)) or 0, tonumber(v(record, 6, 0)) or 0
+            local assigned, working = tonumber(v(record, 7, 0)) or 0, tonumber(v(record, 8, 0)) or 0
+            local blocked, lastMovement = tonumber(v(record, 10, 0)) or 0, tonumber(v(record, 13, 0)) or 0
+            local samples, eligible = tonumber(v(record, 14, 1)) or 1, tonumber(v(record, 16, 0)) or 0
+            local role, source = text(v(record, 4, "LOGISTICS")), text(v(record, 12, "UNKNOWN"))
+            local sufficientlyStocked = target > 0 and stock >= target * 0.95
+            if sufficientlyStocked then return working > 0 and ("COVERED — " .. tostring(working) .. " SHIPS WORKING") or "COVERED — STOCK SUFFICIENT", 3 end
+            if lastMovement > 0 and working > 0 then return "COVERED — " .. tostring(working) .. " SHIPS WORKING", 3 end
+            if blocked > 0 and working <= 0 then return "BLOCKED", 1 end
+            if source == "SOURCE TEMPORARILY UNAVAILABLE" and stock < target then return "SOURCE UNAVAILABLE", 1 end
+            if assigned <= 0 and stock < target then return eligible > 0 and "ADD 1 SHIP" or "NO ELIGIBLE SHIP", 1 end
+            if string.find(role, "EMERGENCY", 1, true) then return lastMovement > 0 and "COVERED" or "AWAITING DELIVERY", lastMovement > 0 and 3 or 2 end
+            if target > 0 and stock >= target then return "COVERED", 3 end
+            if assigned > 0 or samples <= 1 then return "AWAITING DELIVERY", 2 end
+            return "EVIDENCE UNKNOWN", 2
+        end
+
+        local function coverageKey(record)
+            return text(v(record, 1, "")) .. "|" .. text(v(record, 2, "")) .. "|" .. text(v(record, 4, ""))
+        end
+
+        if menu.fleetScope == "global" then
+            local summaries, order = {}, {}
+            for _, record in ipairs(reconciledCoverage) do
+                local stationValue = text(v(record, 1, "Unknown station"))
+                local summary = summaries[stationValue]
+                if not summary then summary = { name = stationValue, covered = 0, waiting = 0, action = 0, total = 0 }; summaries[stationValue] = summary; order[#order + 1] = summary end
+                local _, severity = coverageState(record)
+                summary.total = summary.total + 1
+                if severity == 1 then summary.action = summary.action + 1 elseif severity == 2 then summary.waiting = summary.waiting + 1 else summary.covered = summary.covered + 1 end
+            end
+            table.sort(order, function(a, b) if a.action == b.action then return a.name < b.name end return a.action > b.action end)
+            local totals = tableWidget:addRow(false)
+            local actionTotal, waitingTotal, coveredTotal = 0, 0, 0
+            for _, summary in ipairs(order) do actionTotal = actionTotal + summary.action; waitingTotal = waitingTotal + summary.waiting; coveredTotal = coveredTotal + summary.covered end
+            totals[1]:setColSpan(4):createText("EMPIRE SUMMARY — " .. actionTotal .. " ACTIONABLE | " .. waitingTotal .. " AWAITING EVIDENCE | " .. coveredTotal .. " COVERED | " .. #order .. " STATIONS", { halign = "center", color = actionTotal > 0 and investigationUnknownColor or investigationPassColor })
+            for index = 1, #order, 2 do
+                local cardRow = tableWidget:addRow(true)
+                for slot = 0, 1 do
+                    local summary = order[index + slot]
+                    if summary then
+                        local column = slot == 0 and 1 or 3
+                        cardRow[column]:setColSpan(2)
+                        local label = summary.name .. "\n" .. summary.action .. " ACTIONABLE | " .. summary.waiting .. " WAITING | " .. summary.covered .. " COVERED"
+                        addButton(cardRow, column, label, function()
+                            for profileIndex, profile in ipairs(menu.stations or {}) do if text(v(profile, 1, "")) == summary.name then menu.selected = profileIndex break end end
+                            menu.fleetScope = "station"; menu.coverageSelected = nil; menu.coverageFilter = "action"; menu.fleetPage = 1; menu.refresh()
+                        end, true, inactiveModeBackground, menu.supplyCardHeight(), summary.action > 0 and investigationUnknownColor or investigationPassColor, true, true)
+                    end
+                end
+            end
+            return
+        end
+
+        local filterRow = tableWidget:addRow(true)
+        menu.coverageFilter = menu.coverageFilter or "action"
+        addModeButton(filterRow, 1, (menu.coverageFilter == "action" and "ACTIVE: " or "") .. "ACTIONABLE", menu.coverageFilter == "action", true, function() menu.coverageFilter = "action"; menu.coverageSelected = nil; menu.fleetPage = 1; menu.refresh() end)
+        addModeButton(filterRow, 2, (menu.coverageFilter == "waiting" and "ACTIVE: " or "") .. "WAITING", menu.coverageFilter == "waiting", true, function() menu.coverageFilter = "waiting"; menu.coverageSelected = nil; menu.fleetPage = 1; menu.refresh() end)
+        addModeButton(filterRow, 3, (menu.coverageFilter == "covered" and "ACTIVE: " or "") .. "COVERED", menu.coverageFilter == "covered", true, function() menu.coverageFilter = "covered"; menu.coverageSelected = nil; menu.fleetPage = 1; menu.refresh() end)
+        addModeButton(filterRow, 4, (menu.coverageFilter == "all" and "ACTIVE: " or "") .. "ALL EVIDENCE", menu.coverageFilter == "all", true, function() menu.coverageFilter = "all"; menu.coverageSelected = nil; menu.fleetPage = 1; menu.refresh() end)
+
+        local selectedName = text(v(selectedStation(), 1, ""))
+        local records = {}
+        for _, record in ipairs(reconciledCoverage) do
+            if text(v(record, 1, "")) == selectedName then
+                local state, severity = coverageState(record)
+                if menu.coverageFilter == "all" or (menu.coverageFilter == "action" and severity == 1) or (menu.coverageFilter == "waiting" and severity == 2) or (menu.coverageFilter == "covered" and severity == 3) then records[#records + 1] = { raw = record, state = state, severity = severity } end
+            end
+        end
+        table.sort(records, function(a, b) if a.severity == b.severity then return text(v(a.raw, 3, "")) < text(v(b.raw, 3, "")) end return a.severity < b.severity end)
+
+        local selected
+        if menu.coverageSelected then for _, item in ipairs(records) do if coverageKey(item.raw) == menu.coverageSelected then selected = item break end end end
+        if selected then
+            local back = tableWidget:addRow(true); back[1]:setColSpan(4); addButton(back, 1, "BACK TO " .. string.upper(menu.coverageFilter) .. " CARDS", function() menu.coverageSelected = nil; menu.refresh() end, true)
+            local record = selected.raw
+            section(tableWidget, selectedName .. " — " .. text(v(record, 3, "Unknown ware")))
+            pair(tableWidget, "ROLE", text(v(record, 4, "LOGISTICS")), "STATUS", selected.state)
+            pair(tableWidget, "STOCK / TARGET", formatNumber(v(record, 5, 0)) .. " / " .. formatNumber(v(record, 6, 0)), "WORK / WAIT / BLOCK", tostring(v(record, 8, 0)) .. " / " .. tostring(v(record, 9, 0)) .. " / " .. tostring(v(record, 10, 0)))
+            pair(tableWidget, "SHIPS ASSIGNED", v(record, 7, 0), "ELIGIBLE AVAILABLE", v(record, 16, 0))
+            local detail = tableWidget:addRow(false); detail[1]:setColSpan(4):createText("SHIPS: " .. text(v(record, 11, "NONE")) .. " | " .. text(v(record, 15, "SHARED POOL")), { wordwrap = true })
+            local evidence = tableWidget:addRow(false); evidence[1]:setColSpan(4):createText("SOURCE: " .. text(v(record, 12, "UNKNOWN")) .. " | LAST MOVEMENT: " .. ((tonumber(v(record, 13, 0)) or 0) > 0 and menu.supplyElapsedLabel(v(record, 13, 0)) or "NOT YET OBSERVED"), { wordwrap = true })
+            return
+        end
+
+        local summary = tableWidget:addRow(false); summary[1]:setColSpan(4):createText(selectedName .. " — " .. #records .. " " .. string.upper(menu.coverageFilter) .. " RECORD(S) | SELECT ONE FOR FULL EVIDENCE", { halign = "center" })
+        if #records == 0 then local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("No records match this station and filter."); return end
+        local cardPitch = Helper.scaleY(Helper.standardTextHeight)
+        local measured, measuredHeight = pcall(function() local fontsize = Helper.scaleFont(Helper.standardFont, Helper.standardFontSize); return math.ceil(C.GetTextHeight("Ag", Helper.standardFont, math.floor(fontsize), 0)) end)
+        if measured and type(measuredHeight) == "number" then cardPitch = math.max(cardPitch, Helper.scaleY(Helper.standardTextOffsety) + measuredHeight) end
+        cardPitch = cardPitch + Helper.borderSize
+        local fixedRows = 20
+        local pixelCardRows = math.max(1, math.floor((tonumber(menu.coverageContentHeight) or Helper.scaleY(config.maxHeight)) / cardPitch) - fixedRows)
+        local poolCardRows = math.max(1, (170 - 5 - 1) - fixedRows)
+        local recordsPerPage = math.max(2, 2 * math.min(pixelCardRows, poolCardRows))
+        local pageCount = math.max(1, math.ceil(#records / recordsPerPage)); menu.fleetPage = math.max(1, math.min(pageCount, menu.fleetPage or 1))
+        local nav = tableWidget:addRow(true)
+        addButton(nav, 1, "PREVIOUS", function() menu.fleetPage = math.max(1, menu.fleetPage - 1); menu.refresh() end, menu.fleetPage > 1)
+        nav[2]:createText("PAGE " .. menu.fleetPage .. " / " .. pageCount, { halign = "center" })
+        addButton(nav, 3, "NEXT", function() menu.fleetPage = math.min(pageCount, menu.fleetPage + 1); menu.refresh() end, menu.fleetPage < pageCount)
+        nav[4]:createText("SCROLL FOR MORE", { halign = "center" })
+        local first = (menu.fleetPage - 1) * recordsPerPage + 1; local last = math.min(#records, first + recordsPerPage - 1)
+        for index = first, last, 2 do
+            local cardRow = tableWidget:addRow(true)
+            for slot = 0, 1 do
+                local item = records[index + slot]
+                if item then
+                    local record, column = item.raw, slot == 0 and 1 or 3; cardRow[column]:setColSpan(2)
+                    local label = text(v(record, 3, "Unknown ware")) .. " — " .. item.state .. "\n" .. formatNumber(v(record, 5, 0)) .. " / " .. formatNumber(v(record, 6, 0)) .. " STOCK | " .. tostring(v(record, 8, 0)) .. "/" .. tostring(v(record, 9, 0)) .. "/" .. tostring(v(record, 10, 0)) .. " WORK/WAIT/BLOCK"
+                    addButton(cardRow, column, label, function() menu.coverageSelected = coverageKey(record); menu.refresh() end, true, inactiveModeBackground, menu.supplyCardHeight(), item.severity == 1 and investigationFailColor or item.severity == 2 and investigationUnknownColor or investigationPassColor, true, true)
+                end
+            end
+        end
+        return
+        end
+
+        -- Retained below only as unreachable Build 307 comparison code during
+        -- static regression review; Build 308 exits through the dashboard above.
+        section(tableWidget, "EOC 3.6 UNIFIED LOGISTICS COVERAGE")
+        local explanation = tableWidget:addRow(false)
+        explanation[1]:setColSpan(4):createText("This view joins current station stock and production rates with exact station assignments, working/waiting/blocked evidence, EOC-managed actions, source proof, and confirmed stock movement. Ordinary X4 station traders are a shared pool; EOC will not invent a ware-specific route.", { wordwrap = true })
+        local refreshRow = tableWidget:addRow(true)
+        refreshRow[1]:setColSpan(4)
+        addButton(refreshRow, 1, "REFRESH STOCK & RATE EVIDENCE", function()
+            menu.supplyRun("overview")
+        end, true)
+
+        local supplyByStationWare = {}
+        local store = menu.supplyModelStore()
+        local currentSupply = store.views and store.views.overview and store.views.overview.current or nil
+        for _, supplyStation in ipairs((currentSupply and currentSupply.stations) or {}) do
+            for _, ware in ipairs(supplyStation.wares or {}) do
+                supplyByStationWare[text(supplyStation.name) .. "|" .. menu.supplyWareId(ware.ware)] = ware
+            end
+        end
+
+        local function constructionRequired(stationNameValue, wareNameValue)
+            for _, caseData in ipairs(menu.cases or {}) do
+                if text(v(caseData, 1, "")) == stationNameValue and text(v(caseData, 4, "")) == wareNameValue then
+                    local evidence = string.upper(text(v(caseData, 3, "")) .. " " .. text(v(caseData, 6, "")))
+                    if string.find(evidence, "NO STORAGE", 1, true) or string.find(evidence, "CONSTRUCTION REQUIRED", 1, true) then return true end
+                end
+            end
+            return false
+        end
+
+        local coverageRows = {}
+        for _, record in ipairs(menu.logisticsCoverage or {}) do
+            local stationNameValue = text(v(record, 1, "Unknown station"))
+            if menu.fleetScope == "global" or stationNameValue == stationName then coverageRows[#coverageRows + 1] = record end
+        end
+        -- Ships Trade Analyzer proved that X4 exposes a shared pool of 170 table
+        -- rows. Keep five for other windows and the first-draw limbo row, then
+        -- constrain the retained coverage slice by both the remaining 164-row
+        -- pool and the live pixel height. A coverage record owns six fixed rows.
+        local rowPitch = Helper.scaleY(Helper.standardTextHeight)
+        local measured, measuredHeight = pcall(function()
+            local fontsize = Helper.scaleFont(Helper.standardFont, Helper.standardFontSize)
+            return math.ceil(C.GetTextHeight("Ag", Helper.standardFont, math.floor(fontsize), 0))
+        end)
+        if measured and type(measuredHeight) == "number" then
+            rowPitch = math.max(rowPitch, Helper.scaleY(Helper.standardTextOffsety) + measuredHeight)
+        end
+        rowPitch = rowPitch + Helper.borderSize
+        local fixedRows = 22
+        if menu.clickStatus and menu.clickStatusUntil and getElapsedTime() < menu.clickStatusUntil then fixedRows = fixedRows + 1 end
+        if menu.navigationOrigin and menu.page ~= menu.navigationOrigin.page then fixedRows = fixedRows + 1 end
+        local contentPixels = tonumber(menu.coverageContentHeight) or Helper.scaleY(config.maxHeight)
+        local pixelRows = math.max(1, math.floor(contentPixels / rowPitch) - fixedRows)
+        local poolRows = math.max(1, (170 - 5 - 1) - fixedRows)
+        local recordsPerPage = math.max(1, math.floor(math.min(pixelRows, poolRows) / 6))
+        local pageCount = math.max(1, math.ceil(#coverageRows / recordsPerPage))
+        menu.fleetPage = math.max(1, math.min(pageCount, tonumber(menu.fleetPage) or 1))
+        local firstRecord = (menu.fleetPage - 1) * recordsPerPage + 1
+        local lastRecord = math.min(#coverageRows, firstRecord + recordsPerPage - 1)
+        local nav = tableWidget:addRow(true)
+        addButton(nav, 1, "PREVIOUS", function() menu.fleetPage = math.max(1, menu.fleetPage - 1); menu.refresh() end, menu.fleetPage > 1)
+        nav[2]:createText("PAGE " .. tostring(menu.fleetPage) .. " / " .. tostring(pageCount) .. " — " .. tostring(#coverageRows) .. " RECORDS", { halign = "center" })
+        addButton(nav, 3, "NEXT", function() menu.fleetPage = math.min(pageCount, menu.fleetPage + 1); menu.refresh() end, menu.fleetPage < pageCount)
+        nav[4]:createText(tostring(recordsPerPage) .. " RECORDS PER PAGE", { halign = "center" })
+
+        for recordIndex = firstRecord, lastRecord do
+            local record = coverageRows[recordIndex]
+            if record then
+                local stationNameValue = text(v(record, 1, "Unknown station"))
+                local wareId = menu.supplyWareId(v(record, 2, ""))
+                local wareNameValue = text(v(record, 3, "Unknown ware"))
+                local role = text(v(record, 4, "LOGISTICS"))
+                local stock = tonumber(v(record, 5, 0)) or 0
+                local target = tonumber(v(record, 6, 0)) or 0
+                local assigned = tonumber(v(record, 7, 0)) or 0
+                local working = tonumber(v(record, 8, 0)) or 0
+                local waiting = tonumber(v(record, 9, 0)) or 0
+                local blocked = tonumber(v(record, 10, 0)) or 0
+                local shipNames = text(v(record, 11, ""))
+                local source = text(v(record, 12, "UNKNOWN - NO CURRENT SOURCE PROOF"))
+                local lastMovement = tonumber(v(record, 13, 0)) or 0
+                local samples = tonumber(v(record, 14, 1)) or 1
+                local assignmentScope = text(v(record, 15, "SHARED POOL"))
+                local eligible = tonumber(v(record, 16, 0)) or 0
+                local supply = supplyByStationWare[stationNameValue .. "|" .. wareId]
+                local production = supply and (tonumber(supply.effectiveProduction) or 0) or 0
+                local consumption = supply and (tonumber(supply.effectiveConsumption) or 0) or 0
+                if supply then stock = tonumber(supply.stock) or stock end
+
+                local state
+                if constructionRequired(stationNameValue, wareNameValue) then
+                    state = "PLAYER CONSTRUCTION REQUIRED"
+                elseif string.find(role, "EMERGENCY", 1, true) then
+                    state = lastMovement > 0 and "COVERED — STOCK MOVEMENT CONFIRMED" or "AWAITING FIRST DELIVERY"
+                elseif source == "SOURCE TEMPORARILY UNAVAILABLE" and stock < target then
+                    state = "SOURCE TEMPORARILY UNAVAILABLE"
+                elseif assigned <= 0 and stock < target then
+                    state = eligible > 0 and "MORE CAPACITY NEEDED — ADD 1 SHIP" or "NO ELIGIBLE SHIP AVAILABLE"
+                elseif blocked > 0 and working <= 0 then
+                    state = "BLOCKED — " .. tostring(blocked) .. " SHIP(S) NOT OPERATIONAL"
+                elseif target > 0 and stock >= target then
+                    state = working > 0 and ("COVERED — " .. tostring(working) .. " SHIPS WORKING") or "COVERED — STOCK AT TARGET"
+                elseif lastMovement > 0 then
+                    state = "COVERED — " .. tostring(working) .. " SHIPS WORKING"
+                elseif assigned > 0 and samples <= 1 then
+                    state = "AWAITING FIRST DELIVERY"
+                elseif assigned > 0 then
+                    state = "AWAITING FIRST DELIVERY"
+                else
+                    state = "COVERAGE UNKNOWN — REFRESH EVIDENCE"
+                end
+
+                section(tableWidget, stationNameValue .. " — " .. wareNameValue)
+                pair(tableWidget, "ROLE", role, "STATUS", state)
+                pair(tableWidget, "STOCK / TARGET", formatNumber(stock) .. " / " .. formatNumber(target), "RATE PROD / USE", formatNumber(production) .. "/h / " .. formatNumber(consumption) .. "/h")
+                pair(tableWidget, "SHIPS ASSIGNED", tostring(assigned), "WORK / WAIT / BLOCK", tostring(working) .. " / " .. tostring(waiting) .. " / " .. tostring(blocked))
+                local shipsRow = tableWidget:addRow(false)
+                shipsRow[1]:setColSpan(4):createText("ASSIGNED SHIPS: " .. (shipNames ~= "" and shipNames or "NONE") .. " | " .. assignmentScope, { wordwrap = false })
+                local evidenceRow = tableWidget:addRow(false)
+                evidenceRow[1]:setColSpan(4):createText("SOURCE: " .. source .. " | LAST CONFIRMED MOVEMENT: " .. (lastMovement > 0 and menu.supplyElapsedLabel(lastMovement) or "NOT YET OBSERVED"), { wordwrap = false })
+            end
+        end
+        if #coverageRows == 0 then
+            local empty = tableWidget:addRow(false)
+            empty[1]:setColSpan(4):createText("No logistics coverage records match the active scope. Reopen EOC after a completed Empire Analysis to rebuild the evidence snapshot.", { wordwrap = true })
+        end
         return
     end
 
@@ -4353,6 +4749,7 @@ local function fleetCenter(tableWidget)
             local supportedCargo = cargo == "CONTAINER" or cargo == "SOLID" or cargo == "LIQUID"
             local key = caseStation .. "|" .. cargo
             if not seen[key] and supportedCargo and compatible == 0 and target > current and
+                (not menu.fleetRecommendationCargo or cargo == menu.fleetRecommendationCargo) and
                 (menu.fleetScope == "global" or caseStation == stationName) then
                 seen[key] = true
                 local mediumBlueprint, mediumWharf = findBestLogisticsOption(caseStation, cargo, "M")
@@ -4390,6 +4787,14 @@ local function fleetCenter(tableWidget)
         fleetbuild = "FLEET MANAGEMENT",
     }
     section(tableWidget, viewTitles[menu.fleetView] .. "  |  SHOWING ALL " .. #entries .. "  |  SCROLL FOR MORE")
+
+    if menu.fleetView == "recommendations" and menu.fleetRecommendationCargo then
+        local routed = tableWidget:addRow(false)
+        routed[1]:setColSpan(4):createText("PREDICTIVE ROUTE: Showing the exact " .. menu.fleetRecommendationCargo .. " ship-construction need for " .. stationName .. ". Review the evidence, choose a size when required, preview, then confirm exactly one ship. Use the return button above to continue the Predictive issue list.", { wordwrap = true, color = navigationStoryColor })
+        local showAll = tableWidget:addRow(true)
+        showAll[1]:setColSpan(4)
+        addButton(showAll, 1, "SHOW ALL SHIP RECOMMENDATIONS", function() menu.fleetRecommendationCargo = nil; menu.refresh() end, true)
+    end
 
     if #entries == 0 then
         local emptyMessages = {
@@ -4653,6 +5058,14 @@ local function diagnosticsCenter(tableWidget)
     for _, check in ipairs(workingChecks) do if check.state == "UNKNOWN" or check.state == "NOT YET TESTED" then workingEvidenceMissing = true; break end end
 
     section(tableWidget, "EOC GUIDED RECOVERY")
+    local rootRow = tableWidget:addRow(true)
+    rootRow[1]:setColSpan(4)
+    addButton(rootRow, 1, "OPEN CASES ROOT — REVIEW / CLEAR CASES", function()
+        menu.resetTabToRoot("cases")
+        menu.page = "cases"
+        menu.activeTab = "cases"
+        menu.refresh()
+    end, true)
     local brief = tableWidget:addRow(false)
     brief[1]:setColSpan(4):createText("THIS CASE HAS ONE STORY: what EOC noticed, what the evidence proves, what you need to do, and how EOC will verify the result.", { wordwrap = true })
     pair(tableWidget, "WORKING STATION", stationName, "ACTIVE CASES", #cases)
@@ -4768,6 +5181,16 @@ local function diagnosticsCenter(tableWidget)
         addButton(row, 1, "READ EOC'S CONCLUSION AND EVIDENCE", function() menu.diagnosticView = "investigation"; menu.refresh() end, true)
 
         local diagnosticChecks = prerequisiteRows(diagnosticCase)
+        local commandAction, commandColor = managedActionText(diagnosticCase)
+        local commandBlocked = string.find(string.upper(commandAction), "BLOCKED", 1, true) ~= nil
+        local priorUnchanged = menu.verificationKey == verificationKey and string.upper(text(menu.verificationClass, "")) == "UNCHANGED"
+        local playerOwnsNext = commandBlocked or priorUnchanged
+        section(tableWidget, "PLAYER COMMAND — READ THIS FIRST")
+        row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText(playerOwnsNext and "PLAYER ACTION REQUIRED" or "NO PLAYER ACTION RIGHT NOW — EOC IS HANDLING THIS CASE", { wordwrap = true, color = playerOwnsNext and investigationUnknownColor or investigationPassColor, font = Helper.headerFont })
+        row = tableWidget:addRow(false)
+        local commandNext = commandBlocked and ("DO THIS NEXT: " .. manualNextAction(diagnosticCase, diagnosticChecks)) or (priorUnchanged and ("PLAYER CHECK REQUIRED: The completed wait-and-verify cycle was unchanged. " .. manualNextAction(diagnosticCase, diagnosticChecks)) or ("EOC STATUS: " .. commandAction))
+        row[1]:setColSpan(4):createText(commandNext, { wordwrap = true, color = priorUnchanged and investigationUnknownColor or commandColor })
         local firstProblem = nil
         for _, check in ipairs(diagnosticChecks) do
             if not firstProblem and (check.state == "FAIL" or check.state == "UNKNOWN" or check.state == "NOT YET TESTED") then firstProblem = check end
@@ -4815,11 +5238,11 @@ local function diagnosticsCenter(tableWidget)
         row[1]:setColSpan(2)
         addButton(row, 1, "VIEW SUPPORTING EVIDENCE", function() menu.diagnosticView = "supplier"; menu.refresh() end, true)
         row[3]:setColSpan(2)
-        addButton(row, 3, evidenceMissing and "VERIFICATION WAITS FOR A SUPPORTED ACTION" or "RUN A FRESH VERIFICATION CHECK", function() menu.diagnosticView = "stabilization"; menu.refresh() end, not evidenceMissing)
+        menu.addPrimaryButton(row, 3, evidenceMissing and "VERIFICATION WAITS FOR A SUPPORTED ACTION" or (priorUnchanged and "OPEN VERIFY RESULT — REVIEW UNCHANGED ESCALATION" or "OPEN VERIFY RESULT — AFTER ONE MEANINGFUL CYCLE"), function() menu.diagnosticView = "stabilization"; menu.refresh() end, not evidenceMissing)
 
         section(tableWidget, "STEP 3 OF 3 - VERIFY AFTER THE ACTION")
         row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText(evidenceMissing and "EOC must identify a supported action before there is anything to verify." or "After one meaningful operating or delivery cycle, run a fresh verification check. EOC will compare current evidence and explain whether the case is resolved, improving, unchanged, or worsening.", { wordwrap = true })
+        row[1]:setColSpan(4):createText(evidenceMissing and "EOC must identify a supported action before there is anything to verify." or "Do not repeat verification immediately. After one meaningful operating or delivery cycle, open Verify Result and run the single fresh check. EOC will compare current evidence and explain whether the case is resolved, improving, unchanged, or worsening.", { wordwrap = true })
     elseif menu.diagnosticView == "options" then
         if not diagnosticCase then section(tableWidget, "NO ACTIVE CASE"); row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("Return to Guided Recovery and select an active case.", { wordwrap = true }); return end
         local optionChecks = prerequisiteRows(diagnosticCase)
@@ -4949,7 +5372,8 @@ local function diagnosticsCenter(tableWidget)
     elseif menu.diagnosticView == "stabilization" then
         section(tableWidget, "VERIFY RECOVERY")
         row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText(workingEvidenceMissing and "THERE IS NOTHING TO VERIFY YET. EOC has not identified a supported player action. Return to Next Action and run the requested fresh analysis first." or ("ACTION BEING VERIFIED: " .. manualNextAction(diagnosticCase, workingChecks)), { wordwrap = true, color = workingEvidenceMissing and investigationUnknownColor or navigationStoryColor })
+        local unchangedHere = menu.verificationKey == verificationKey and string.upper(text(menu.verificationClass, "")) == "UNCHANGED"
+        row[1]:setColSpan(4):createText(workingEvidenceMissing and "THERE IS NOTHING TO VERIFY YET. EOC has not identified a supported player action. Return to Next Action and run the requested fresh analysis first." or (unchangedHere and ("PLAYER CHECK REQUIRED AFTER UNCHANGED RESULT: " .. manualNextAction(diagnosticCase, workingChecks)) or ("ACTION BEING VERIFIED: " .. manualNextAction(diagnosticCase, workingChecks))), { wordwrap = true, color = workingEvidenceMissing and investigationUnknownColor or (unchangedHere and investigationUnknownColor or navigationStoryColor) })
         if string.upper(text(v(diagnosticCase, 2, ""))) == "PLAYER" then row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("VERIFICATION LOCKED: This player-requested incident is NOT YET TESTED. Collect supported focused evidence before claiming recovery.", { wordwrap = true, color = investigationUnknownColor }) end
         row = tableWidget:addRow(true)
         row[1]:setColSpan(2)
@@ -4982,7 +5406,7 @@ local function diagnosticsCenter(tableWidget)
         row[1]:setColSpan(4):createText("The requested diagnostics view is unavailable. Select Next Action, Evidence Details, or Verify Result.", { wordwrap = true })
     end
 
-    if diagnosticCase and menu.diagnosticView ~= "recovery" and menu.diagnosticView ~= "options" then
+    if diagnosticCase and menu.diagnosticView ~= "recovery" and menu.diagnosticView ~= "options" and menu.diagnosticView ~= "stabilization" then
         section(tableWidget, "EOC OPERATIONAL STATUS")
         row = tableWidget:addRow(false)
         local actionText, actionColor = managedActionText(diagnosticCase)
@@ -5176,6 +5600,7 @@ end
 local function kpiDashboardControls(tableWidget)
     section(tableWidget, "LIVE KPI DASHBOARDS")
     local choices = {
+        { "PREDICTIVE INTELLIGENCE", "predictive" },
         { "CASH FLOW", "cash" }, { "CONSTRUCTION PROGRESS", "construction" }, { "EXECUTIVE ATTENTION", "attention" },
         { "OPEN TRADE OFFERS", "trade" }, { "STORAGE LEVELS", "storage" },
         { "TOP EARNERS", "earners" }, { "CASH DRAINS", "drains" }, { "SHIPYARD ACTIVITY", "shipyard" }
@@ -5518,10 +5943,234 @@ local function kpiExtendedView(t,view)
     kpiPagedRows(t,rows,function(x) local row=t:addRow(false); row[1]:createText(x.station); row[2]:createText(formatNumber(x.delta).." Cr"); row[3]:createText(x.delta>0 and "UP" or "DOWN"); row[4]:createText(kpiBar(x.delta,maximum),{color=x.delta<0 and investigationFailColor or investigationPassColor}) end,"No qualifying movement occurred in the latest interval.")
 end
 
+function menu.predictiveIntelligenceView(t)
+    section(t, "EOC 3.7 PREDICTIVE INTELLIGENCE")
+    local store = menu.supplyModelStore()
+    local state = store.views and store.views.balance or nil
+    local current, previous = state and state.current or nil, state and state.previous or nil
+    local intro = t:addRow(false)
+    intro[1]:setColSpan(4):createText("Forecasts use retained player-requested Supply snapshots, rolling KPI evidence, and Unified Logistics Coverage. No scan runs when this page opens. Confidence reflects evidence depth; UNKNOWN remains unknown.", { wordwrap = true })
+    if not current then
+        local row = t:addRow(false)
+        row[1]:setColSpan(4):createText("UNKNOWN — Run the Supply Model's Empire Resource Matrix twice after meaningful operating time has passed. One snapshot establishes a baseline; two support direction and timing.", { wordwrap = true, color = investigationUnknownColor })
+        row = t:addRow(true)
+        row[1]:setColSpan(4)
+        addButton(row, 1, "OPEN EMPIRE RESOURCE MATRIX", function()
+            captureNavigation("PREDICTIVE INTELLIGENCE")
+            menu.page = "supply"
+            menu.activeTab = "supply"
+            menu.supplyView = "balance"
+            menu.supplyPages.balance = menu.supplyPages.balance or 1
+            menu.refresh()
+        end, true)
+        return
+    end
+    local elapsed = previous and math.max(0, (tonumber(current.captured) or 0) - (tonumber(previous.captured) or 0)) or 0
+    local meaningfulPrevious = previous and elapsed >= 300 and previous or nil
+    local priorStations, coverage = {}, {}
+    for _, station in ipairs((meaningfulPrevious and meaningfulPrevious.stations) or {}) do priorStations[tostring(station.id or station.name)] = station end
+    for _, record in ipairs(menu.reconciledLogisticsCoverage()) do coverage[text(v(record, 1, "")) .. "|" .. menu.supplyWareId(v(record, 2, ""))] = record end
+    local risks = {}
+    local function add(category, severity, station, stationId, ware, outlook, confidence, evidence, leakage)
+        risks[#risks + 1] = { category=category, severity=severity, station=station, stationId=stationId, ware=ware, outlook=outlook, confidence=confidence, evidence=evidence, leakage=leakage or 0 }
+    end
+    local function priorWare(station, ware)
+        if not station then return nil end
+        for _, record in ipairs(station.wares or {}) do if menu.supplyWareId(record.ware) == menu.supplyWareId(ware) then return record end end
+        return nil
+    end
+    local function matchingCases(risk)
+        local matches = {}
+        local riskWare = menu.supplyWareId(risk.ware)
+        for _, caseData in ipairs(menu.cases or {}) do
+            if text(v(caseData, 1, "")) == risk.station then
+                local subjectId = menu.supplyWareId(v(caseData, 4, ""))
+                local actionId = menu.supplyWareId(v(caseData, 17, ""))
+                local retainedId = menu.supplyWareId(v(caseData, 40, ""))
+                if riskWare ~= "" and (riskWare == subjectId or riskWare == actionId or riskWare == retainedId) then matches[#matches + 1] = caseData end
+            end
+        end
+        return matches
+    end
+    local function stationIndex(risk)
+        for index, profile in ipairs(menu.stations or {}) do
+            if (risk.stationId ~= "" and tostring(v(profile, 24, "")) == tostring(risk.stationId)) or text(v(profile, 1, "")) == risk.station then return index end
+        end
+        return menu.selected
+    end
+    local function caseNeedsShip(caseData)
+        local cargo = text(v(caseData, 12, "UNKNOWN")):upper()
+        local supported = cargo == "CONTAINER" or cargo == "SOLID" or cargo == "LIQUID"
+        return supported and (tonumber(v(caseData, 24, 0)) or 0) == 0 and (tonumber(v(caseData, 9, 0)) or 0) > (tonumber(v(caseData, 8, 0)) or 0), cargo
+    end
+    local function openCase(risk, caseData)
+        captureNavigation("PREDICTIVE INTELLIGENCE")
+        menu.selected = stationIndex(risk)
+        menu.caseScope = "station"
+        menu.caseSeverity = "all"
+        menu.casePage = 1
+        menu.selectedCase = 1
+        for index, candidate in ipairs(filteredCases()) do if candidate == caseData then menu.selectedCase = index; break end end
+        menu.diagnosticCase = caseData
+        menu.page = "cases"
+        menu.activeTab = "cases"
+        menu.refresh()
+    end
+    local function openCaseReview(risk)
+        captureNavigation("PREDICTIVE INTELLIGENCE")
+        menu.selected = stationIndex(risk)
+        menu.caseScope = "station"
+        menu.caseSeverity = "all"
+        menu.casePage = 1
+        menu.selectedCase = 1
+        menu.diagnosticCase = nil
+        menu.page = "cases"
+        menu.activeTab = "cases"
+        menu.refresh()
+    end
+    local function openShipRecommendation(risk, caseData)
+        local _, cargo = caseNeedsShip(caseData)
+        captureNavigation("PREDICTIVE INTELLIGENCE")
+        menu.selected = stationIndex(risk)
+        menu.fleetScope = "station"
+        menu.fleetView = "recommendations"
+        menu.fleetPage = 1
+        menu.fleetRecommendationCargo = cargo
+        menu.page = "fleet"
+        menu.activeTab = "fleet"
+        menu.refresh()
+    end
+    for _, station in ipairs(current.stations or {}) do
+        local priorStation = priorStations[tostring(station.id or station.name)]
+        local totalStock, priorTotal = 0, 0
+        for _, record in ipairs(station.wares or {}) do totalStock = totalStock + math.max(0, tonumber(record.stock) or 0) end
+        for _, record in ipairs((priorStation and priorStation.wares) or {}) do priorTotal = priorTotal + math.max(0, tonumber(record.stock) or 0) end
+        local capacity = tonumber(station.storageCapacity) or 0
+        if capacity > 0 and totalStock / capacity >= 0.90 then
+            local sustained = priorStation and priorTotal / capacity >= 0.85
+            add("SHARED-STORAGE CONGESTION", sustained and 1 or 2, station.name, station.id, "ALL WARES", "Storage is " .. formatNumber(totalStock * 100 / capacity) .. "% occupied.", sustained and "HIGH" or "MEDIUM", sustained and "Two snapshots show the station remaining above the congestion threshold." or "Current occupancy is high; another separated snapshot is required to prove persistence.")
+        end
+        for _, record in ipairs(station.wares or {}) do
+            local prior = priorWare(priorStation, record.ware)
+            local stock, priorStock = math.max(0, tonumber(record.stock) or 0), prior and math.max(0, tonumber(prior.stock) or 0) or nil
+            local production, consumption = math.max(0, tonumber(record.effectiveProduction) or 0), math.max(0, tonumber(record.effectiveConsumption) or 0)
+            local netDepletion = math.max(0, consumption - production)
+            local observedDepletion = priorStock and elapsed > 0 and math.max(0, (priorStock - stock) * 3600 / elapsed) or 0
+            local depletion = math.max(netDepletion, observedDepletion)
+            if record.resource and depletion > 0 then
+                local hours = stock / depletion
+                if hours <= 4 then
+                    local confidence = prior and elapsed >= 300 and stock < priorStock and netDepletion > 0 and "HIGH" or prior and "MEDIUM" or "LOW"
+                    add("APPROACHING SHORTAGE", hours <= 1 and 1 or 2, station.name, station.id, record.name, "Estimated depletion in " .. string.format("%.1f", hours) .. " hour(s).", confidence, "Stock " .. formatNumber(stock) .. (priorStock and ("; prior " .. formatNumber(priorStock)) or "; no prior ware sample") .. "; effective production/use " .. formatNumber(production) .. "/h / " .. formatNumber(consumption) .. "/h.")
+                end
+            end
+            if (tonumber(record.installedProduction) or 0) > 0 and production <= 0 then
+                local confirmed = prior and (tonumber(prior.effectiveProduction) or 0) <= 0
+                add("PRODUCTION STALL", confirmed and 1 or 2, station.name, station.id, record.name, "Installed output is currently idle.", confirmed and "HIGH" or "MEDIUM", formatNumber(record.installedProduction) .. "/h installed versus 0/h effective" .. (confirmed and " across both retained snapshots." or "; a second separated snapshot is required to prove persistence."), (tonumber(record.installedProduction) or 0) * (tonumber(record.averageprice) or 0))
+            end
+            local cover = coverage[station.name .. "|" .. menu.supplyWareId(record.ware)]
+            local target = cover and math.max(0, tonumber(v(cover, 6, 0)) or 0) or 0
+            local working = cover and math.max(0, tonumber(v(cover, 8, 0)) or 0) or 0
+            local assigned = cover and math.max(0, tonumber(v(cover, 7, 0)) or 0) or 0
+            if record.product and target > 0 and stock >= target * 1.15 then
+                local sustained = priorStock and priorStock >= target * 1.10
+                add("SUSTAINED OVERSTOCK", sustained and 1 or 2, station.name, station.id, record.name, "Stock is " .. formatNumber(stock * 100 / target) .. "% of target.", sustained and "HIGH" or "MEDIUM", (sustained and "Both retained snapshots exceed target" or "Current stock exceeds target") .. "; assigned/working sellers " .. assigned .. "/" .. working .. ".", math.max(0, stock - target) * (tonumber(record.averageprice) or 0))
+                if working <= 0 then add("INSUFFICIENT SELLING CAPACITY", 1, station.name, station.id, record.name, "Overstock has no seller currently working.", assigned > 0 and "HIGH" or "MEDIUM", "Assigned/working sellers " .. assigned .. "/" .. working .. "; stock/target " .. formatNumber(stock) .. "/" .. formatNumber(target) .. ".") end
+            end
+        end
+    end
+    for _, record in ipairs(menu.reconciledLogisticsCoverage()) do
+        local assigned, working, blocked = tonumber(v(record,7,0)) or 0, tonumber(v(record,8,0)) or 0, tonumber(v(record,10,0)) or 0
+        local stock, target = tonumber(v(record,5,0)) or 0, tonumber(v(record,6,0)) or 0
+        if assigned > 0 and working == 0 and blocked == 0 and target > 0 and stock >= target then
+            add("UNDERUSED SHIPS", 3, text(v(record,1,"Unknown station")), "", text(v(record,3,"Unknown ware")), tostring(assigned) .. " assigned ship(s) have no current work while stock is covered.", "MEDIUM", "Stock/target " .. formatNumber(stock) .. "/" .. formatNumber(target) .. "; work/wait/block " .. working .. "/" .. tostring(v(record,9,0)) .. "/" .. blocked .. ".")
+        end
+    end
+    local history = menu.kpiHistory or {}
+    local latest, priorKpi = history[#history], history[#history - 1]
+    local priorWorkforce = {}
+    for _, item in ipairs((priorKpi and priorKpi.workforceStations) or {}) do priorWorkforce[item.name] = item end
+    for _, item in ipairs((latest and latest.workforceStations) or {}) do
+        local old = priorWorkforce[item.name]
+        if (tonumber(item.provision) or 100) < 25 and (tonumber(item.percent) or 0) < 90 then
+            local declining = old and (tonumber(item.percent) or 0) < (tonumber(old.percent) or 0)
+            add("WORKFORCE-SUPPLY COLLAPSE", declining and 1 or 2, item.name, "", "WORKFORCE", "Provision coverage is " .. formatNumber(item.provision) .. "% while staffing is " .. formatNumber(item.percent) .. "% of optimal.", declining and "HIGH" or (old and "MEDIUM" or "LOW"), declining and "Rolling KPI evidence shows staffing declining while provisions remain critical." or "Current KPI evidence is critical; more separated samples are required to prove direction.")
+        end
+    end
+    -- Profit exposure is an impact of the originating operating condition, not
+    -- a second incident or player action. Keep it on the primary forecast so a
+    -- station/ware/case chain exposes exactly one governed route.
+    for _, risk in ipairs(risks) do
+        risk.cases = matchingCases(risk)
+        risk.case = risk.cases[1]
+        risk.shipNeed = false
+        if risk.case then risk.shipNeed = caseNeedsShip(risk.case) end
+        risk.actionable = risk.case ~= nil or (meaningfulPrevious ~= nil and risk.severity == 1 and risk.confidence ~= "LOW")
+    end
+    table.sort(risks, function(a,b) if a.severity == b.severity then if a.category == b.category then return a.station < b.station end return a.category < b.category end return a.severity < b.severity end)
+    local status = t:addRow(false)
+    status[1]:setColSpan(4):createText(#risks .. " FORECAST(S) | " .. (meaningfulPrevious and ("TWO MEANINGFUL SNAPSHOTS, " .. formatNumber(elapsed / 60) .. " MIN APART") or (previous and ("BASELINE ONLY — SNAPSHOTS " .. formatNumber(elapsed / 60) .. " MIN APART; 5 MIN REQUIRED") or "ONE SNAPSHOT — LOW CONFIDENCE BASELINE")) .. " | NO BACKGROUND SCAN", { halign="center", color=#risks > 0 and investigationUnknownColor or investigationPassColor })
+    if #risks == 0 then local row=t:addRow(false); row[1]:setColSpan(4):createText("NO CURRENT FORECAST EXCEPTIONS. This means retained evidence did not cross a governed threshold; it does not prove future risk is impossible.", {wordwrap=true,color=investigationPassColor}); return end
+    menu.predictiveFilter = menu.predictiveFilter or "actionable"
+    local controls=t:addRow(true)
+    addButton(controls,1,(menu.predictiveFilter=="actionable" and "ACTIVE: " or "").."ACTIONABLE",function() menu.predictiveFilter="actionable"; menu.predictiveStationId=nil; menu.refresh() end,true,menu.predictiveFilter=="actionable" and investigationPassColor or nil)
+    addButton(controls,2,(menu.predictiveFilter=="watch" and "ACTIVE: " or "").."WATCH",function() menu.predictiveFilter="watch"; menu.predictiveStationId=nil; menu.refresh() end,true,menu.predictiveFilter=="watch" and investigationPassColor or nil)
+    addButton(controls,3,(menu.predictiveFilter=="all" and "ACTIVE: " or "").."ALL EVIDENCE",function() menu.predictiveFilter="all"; menu.predictiveStationId=nil; menu.refresh() end,true,menu.predictiveFilter=="all" and investigationPassColor or nil)
+    addButton(controls,4,"EMPIRE SUMMARY",function() menu.predictiveStationId=nil; menu.refresh() end,menu.predictiveStationId~=nil)
+    local groups, groupList = {}, {}
+    for _, risk in ipairs(risks) do
+        if menu.predictiveFilter=="all" or (menu.predictiveFilter=="actionable" and risk.actionable) or (menu.predictiveFilter=="watch" and not risk.actionable and risk.severity<=2) then
+            local key=tostring(risk.stationId~="" and risk.stationId or risk.station)
+            if not groups[key] then groups[key]={key=key,station=risk.station,stationId=risk.stationId,severity=risk.severity,actionable=0,watch=0,high=0,risks={},categories={}}; groupList[#groupList+1]=groups[key] end
+            local group=groups[key]; group.severity=math.min(group.severity,risk.severity); group.actionable=group.actionable+(risk.actionable and 1 or 0); group.watch=group.watch+(risk.actionable and 0 or 1); group.high=group.high+(risk.confidence=="HIGH" and 1 or 0); group.risks[#group.risks+1]=risk; group.categories[risk.category]=true
+        end
+    end
+    table.sort(groupList,function(a,b) if a.severity==b.severity then if a.high==b.high then return a.station<b.station end return a.high>b.high end return a.severity<b.severity end)
+    if menu.predictiveStationId then
+        local selectedGroup=groups[tostring(menu.predictiveStationId)]
+        if not selectedGroup then menu.predictiveStationId=nil else
+            local row=t:addRow(true); row[1]:setColSpan(4); addButton(row,1,"BACK TO RANKED EMPIRE RISKS",function() menu.predictiveStationId=nil; menu.refresh() end,true)
+            row=t:addRow(false); row[1]:setColSpan(4):createText(selectedGroup.station.." | "..#selectedGroup.risks.." FORECAST(S) | "..selectedGroup.actionable.." ACTIONABLE | "..selectedGroup.watch.." COLLECTING/REVIEW | "..selectedGroup.high.." HIGH CONFIDENCE",{color=selectedGroup.actionable>0 and investigationFailColor or investigationUnknownColor})
+            for _,risk in ipairs(selectedGroup.risks) do
+                row=t:addRow(false); row[1]:createText(risk.category,{color=risk.actionable and investigationFailColor or investigationUnknownColor}); row[2]:createText(risk.ware); row[3]:createText(risk.outlook,{wordwrap=true}); row[4]:createText(risk.confidence.." CONFIDENCE")
+                row=t:addRow(false); row[1]:setColSpan(4):createText("EVIDENCE: "..risk.evidence,{wordwrap=true})
+                if risk.leakage > 0 then
+                    row=t:addRow(false); row[1]:setColSpan(4):createText("BUSINESS IMPACT: Estimated exposed value/rate "..formatNumber(risk.leakage).." Cr. This is context from the same evidence, not a second incident or booked profit.",{wordwrap=true,color=navigationStoryColor})
+                end
+                row=t:addRow(false)
+                local playerText
+                if risk.case and risk.shipNeed then playerText = "EOC STATUS: EXACT CASE FOUND — PLAYER SHIP DECISION AVAILABLE. The case reports a real shortfall and zero compatible logistics ships; Fleet can evaluate one governed ship order."
+                elseif risk.case then playerText = "EOC STATUS: EXACT CASE FOUND — FOLLOW ITS GUIDED NEXT STEP. EOC has not proven that this forecast requires another ship."
+                elseif not meaningfulPrevious then playerText = "EOC STATUS: EVIDENCE COLLECTION REQUIRED — NO PLAYER ACTION YET. This baseline cannot prove whether delivery, an existing ship, or new construction is required."
+                else playerText = "EOC STATUS: NO EXACT CASE YET — EOC HAS NOT PROVEN A PLAYER CHANGE. Review this station's evidence and run the case workflow before changing ships or construction." end
+                row[1]:setColSpan(4):createText(playerText,{wordwrap=true,color=risk.actionable and navigationStoryColor or investigationUnknownColor})
+                row=t:addRow(true)
+                if risk.case and risk.shipNeed then
+                    row[1]:setColSpan(2); addButton(row,1,"OPEN EXACT CASE",(function(chosenRisk,chosenCase) return function() openCase(chosenRisk,chosenCase) end end)(risk,risk.case),true)
+                    row[3]:setColSpan(2); addButton(row,3,"REVIEW & AUTHORIZE 1 SHIP",(function(chosenRisk,chosenCase) return function() openShipRecommendation(chosenRisk,chosenCase) end end)(risk,risk.case),true,pendingChoiceBackground)
+                elseif risk.case then
+                    row[1]:setColSpan(4); addButton(row,1,"OPEN EXACT CASE — SEE WHAT EOC NEEDS",(function(chosenRisk,chosenCase) return function() openCase(chosenRisk,chosenCase) end end)(risk,risk.case),true)
+                elseif not meaningfulPrevious then
+                    row[1]:setColSpan(4); addButton(row,1,"COLLECT REQUIRED EVIDENCE — OPEN EMPIRE RESOURCE MATRIX",function() captureNavigation("PREDICTIVE INTELLIGENCE"); menu.page="supply"; menu.activeTab="supply"; menu.supplyView="balance"; menu.supplyPages.balance=menu.supplyPages.balance or 1; menu.refresh() end,true)
+                else
+                    row[1]:setColSpan(4); addButton(row,1,"OPEN STATION CASE REVIEW — NO EXACT CASE YET",(function(chosenRisk) return function() openCaseReview(chosenRisk) end end)(risk),true)
+                end
+            end
+            row=t:addRow(true); row[1]:setColSpan(4); addButton(row,1,"OPEN STATION — RETURN PATH PRESERVED",function() for i,p in ipairs(menu.stations or {}) do if (selectedGroup.stationId~="" and tostring(v(p,24,""))==tostring(selectedGroup.stationId)) or text(v(p,1,""))==selectedGroup.station then menu.selected=i; break end end; captureNavigation("PREDICTIVE INTELLIGENCE"); menu.page="stations"; menu.activeTab="stations"; menu.refresh() end,true)
+        end
+    else
+        local row=t:addRow(false); row[1]:setColSpan(4):createText(#groupList.." STATION(S) MATCH | RANKED BY SEVERITY, CONFIDENCE, THEN NAME | SELECT A STATION FOR RESOURCE EVIDENCE",{halign="center"})
+        for index=1,#groupList,2 do row=t:addRow(true); for offset=0,1 do local group=groupList[index+offset]; local col=1+offset*2; if group then row[col]:setColSpan(2); local categories={}; for category in pairs(group.categories) do categories[#categories+1]=category end; table.sort(categories); addButton(row,col,group.station.."\n"..group.actionable.." ACTIONABLE | "..group.watch.." COLLECTING/REVIEW | "..group.high.." HIGH CONFIDENCE\n"..table.concat(categories," / "),(function(chosen) return function() menu.predictiveStationId=chosen; menu.refresh() end end)(group.key),true,group.actionable>0 and investigationFailColor or investigationUnknownColor,Helper.standardButtonHeight*3,nil,nil,true) end end end
+        if #groupList==0 then row=t:addRow(false); row[1]:setColSpan(4):createText("No stations match this filter. Choose WATCH or ALL EVIDENCE to widen the view.",{color=investigationUnknownColor}) end
+    end
+    DebugError("[JKEOC][B318][PREDICTIVE_INCIDENT_ROUTING] forecasts="..tostring(#risks).." ranked_stations="..tostring(#groupList).." meaningful_snapshots="..tostring(meaningfulPrevious~=nil).." elapsed="..tostring(elapsed).." derived_impact_rows=0 exact_case_routing=1 return_context=1 background_scan=0 recurring_supply_scan=0")
+end
+
 local function kpiCenterResults(tableWidget)
     menu.kpiView=menu.kpiView or "cash"
     if menu.kpiView=="workforce" or menu.kpiView=="casetrends" or menu.kpiView=="shortages" then menu.kpiView="cash" end
-    if menu.kpiView=="construction" then menu.kpiConstructionGraph(tableWidget)
+    if menu.kpiView=="predictive" then menu.predictiveIntelligenceView(tableWidget)
+    elseif menu.kpiView=="construction" then menu.kpiConstructionGraph(tableWidget)
     elseif menu.kpiView=="attention" then menu.kpiAttentionSummary(tableWidget)
     elseif menu.kpiView=="trade" then menu.kpiTradeGraph(tableWidget)
     elseif menu.kpiView=="storage" then menu.kpiStorageGraph(tableWidget)
@@ -6417,6 +7066,7 @@ function menu.create()
     local headerHeight = createHeader(menu.frame, width)
     local contentY = Helper.borderSize + headerHeight + Helper.borderSize
     local contentHeight = height - contentY - 2 * Helper.borderSize
+    menu.coverageContentHeight = contentHeight
 
     if menu.page == "stations" then
         local usableWidth = width - 2 * Helper.borderSize
@@ -6602,9 +7252,20 @@ function menu.refresh(preserveScroll)
 end
 
 function menu.onCloseElement(reason, layer)
+    -- X4 can deliver a stale close callback after another full-screen menu has
+    -- already removed EOC from the tracked menu stack. Calling closeMenu again
+    -- in that state closes/exposes the menu now owned by X4 (including the
+    -- Station Build Plan). A missing frame or an in-flight close is therefore
+    -- a no-op; only the live EOC frame may alter the menu stack.
+    if menu.frame == nil or menu.closeInProgress then
+        DebugError("[JKEOC][B312][MENU_CLOSE_SUPPRESSED] reason=" .. tostring(reason or "close") .. " frame_present=" .. tostring(menu.frame ~= nil) .. " close_in_progress=" .. tostring(menu.closeInProgress == true))
+        return
+    end
+    menu.closeInProgress = true
     raise("closed", { reason = reason or "close" })
     Helper.closeMenu(menu, reason or "close", layer)
     menu.frame = nil
+    menu.closeInProgress = false
 end
 
 function menu.onUpdate()

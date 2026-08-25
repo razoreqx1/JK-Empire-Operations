@@ -1,6 +1,6 @@
 # EOC Development Roadmap — The Next Round
 
-With EOC 3.5 GA released, the next development cycle will focus on completing the larger logistics ecosystem.
+EOC 3.7 GA has now delivered Phase 1 Unified Logistics Coverage and Phase 2 Predictive Intelligence. Later phases remain future direction and require separate governed authorization.
 
 The long-term goal is simple:
 
@@ -8,7 +8,7 @@ The long-term goal is simple:
 
 This roadmap is an approved development direction, not authorization for a new build. Every implementation, package, installation, test, promotion, and publication stage remains separately governed.
 
-## Phase 1 — EOC 3.6 Unified Logistics Coverage
+## Phase 1 — EOC 3.6 Unified Logistics Coverage — Delivered
 
 EOC will develop a shared logistics model covering:
 
@@ -40,7 +40,7 @@ Expected statuses include:
 
 The goal is to let players see that “Do Everything” is actually doing everything—not simply assume automation is working in the background.
 
-## Phase 2 — Predictive Intelligence
+## Phase 2 — EOC 3.7 Predictive Intelligence — Delivered
 
 Once logistics coverage is trustworthy, EOC can begin predicting:
 

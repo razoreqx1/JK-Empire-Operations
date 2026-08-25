@@ -2,12 +2,12 @@
 <content
   id="ws_3778882957"
   name="EOC - Executive Operations Center"
-  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.5 GA - Build 304&#xA;&#xA;Assignment feedback and authority consistency.&#xA;&#xA;- Preserves Build 301's runtime-proven native MiningRoutine exact-resource pin.&#xA;- Disables the raw-source action through two immediate redraws, leaving one complete displayed disabled cycle.&#xA;- Suppresses a second callback before redraw and pushes final pin PASS or FAIL to the open Planner page.&#xA;- Retires the legacy unregistered direct-assignment surface in favor of registered-ship controls.&#xA;- Revalidates Disabled mode, ownership, operational state, purpose, cargo, registration, commander, and subordinates at shared assignment executors.&#xA;- Performs no new recurring scans and preserves existing bounded cadence.&#xA;- Never buys ships, steals assigned ships, constructs modules, or moves unrelated cargo.&#xA;&#xA;Build 304 is the EOC 3.5 GA release with the startup identity corrected from the accepted Build 303 runtime.&#xA;&#xA;Compatible with X4 8.x and 9.x."
+  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.7 GA - Build 321&#xA;&#xA;Predictive Intelligence and guided operations.&#xA;&#xA;- Ranks actionable station risks and separates low-confidence evidence collection from proven player action.&#xA;- Routes exact forecasts to their matching Case, guided recovery, station evidence, or governed ship recommendation.&#xA;- Explains what EOC found, what EOC is doing, what the player needs to do, and how the result will be verified.&#xA;- Preserves the return path so multiple issues can be reviewed from the same Predictive list.&#xA;- Keeps primary workflow controls steady without flashing or timed page redraws.&#xA;- Adds no construction, procurement, Supply-scan, gameplay watcher, MD scheduler, cargo, or credit authority.&#xA;&#xA;Build 321 is the identity-only GA promotion of the accepted Build 320 runtime.&#xA;&#xA;Compatible with X4 8.x and 9.x."
   author="RazorEQX"
-  version="404"
-  date="2026-08-23"
+  version="421"
+  date="2026-08-25"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.5 GA Build 304" description="GA assignment feedback, native raw-resource pinning, and authority consistency." />
+  <text language="44" name="EOC 3.7 GA Build 321" description="Predictive Intelligence with exact evidence, Cases, guided recovery, and preserved return paths." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

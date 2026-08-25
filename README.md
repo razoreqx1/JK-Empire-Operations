@@ -4,32 +4,27 @@ Transform your X4 empire from reactive management into intelligent operations.
 
 ## Current GA release
 
-- Version: 3.5 GA
-- Engineering build: 304
-- Extension version: 4.04
-- Status: **GENERAL AVAILABILITY** — runtime accepted and published to Steam Workshop
+- Version: 3.7 GA
+- Engineering build: 321
+- Extension version: 4.21
+- Status: **GENERAL AVAILABILITY** — runtime accepted; GitHub source and documentation published
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 304 preserves the accepted Build 303 runtime and corrects the visible startup identity so it reports the current GA release.
+Build 321 is the identity-only GA promotion of the human-accepted Build 320 runtime.
 
-## What is new in EOC 3.5 GA Build 304
+## What is new in EOC 3.7 GA Build 321
 
-- Adds a native Station Solution Planner that uses X4's owned-blueprint and library data for the exact module, blueprint ware, production method, cycle output, complete primary-input recipe, workforce, and storage classes.
-- Calculates recommended additional modules as the live non-negative hourly deficit divided by exact one-module hourly output, rounded up.
-- Keeps permanent planning locked behind explicit recovery-exhaustion and expansion-readiness evidence.
-- Adds selected-station Supply navigation, persistent two-snapshot Supply-to-Case handling, centralized duplicate-case prevention, and selected-station batch price confirmation with immediate read-back.
-- Uses bounded native scrolling across EOC pages and preserves the same-page top and selected row.
-- Keeps Supply analysis player-triggered: no Supply watcher, polling loop, per-frame analysis, or recurring Supply scan.
-- Does not add modules, place plots, alter build plans, create resources, or move cargo or credits.
-- Continues to exclude Raw Scrap from conventional Supply recommendations.
-- Adds exact raw-resource mining support through native X4 `MiningRoutine` orders and verifies both the general ware basket and one-entry manual override before claiming a resource pin.
-- Manages raw-resource fleets slowly and consistently: one station per five-minute cycle, no more than one assignment change per cycle, and up to three miners only after repeated low-stock evidence.
-- Gives explicit assignment feedback, suppresses rapid duplicate requests, preserves persistent station/ware records, and reports the final assigned ship and exact native pin result.
-- Keeps Auto, Approval Required, and Disabled assignment modes separate and revalidates ownership, operational state, purpose, cargo class, registration, commander, and subordinate state before mutation.
-- Leaves ordinary station trading behavior native and never buys ships, steals assigned ships, creates resources, or performs unauthorized construction, cargo, or credit actions.
-
-The promoted runtime passed live Planner, assignment-feedback, exact Helium pinning, duplicate-suppression, and bounded five-minute manager checks. Build 304 changes only release identity and the previously stale startup notification.
+- Adds Predictive Intelligence with ranked Actionable, Watch, All Evidence, and Empire Summary views.
+- Separates baseline-only and low-confidence evidence collection from issues that genuinely require player action.
+- Consolidates one station/ware operating chain into one forecast and one governed action route; derived profit exposure is shown as business impact rather than a duplicate incident.
+- Routes exact forecasts directly to their matching Case, Guided Recovery, station evidence, or governed ship recommendation.
+- Leads Case and Guided Recovery pages with what EOC found, what EOC is doing, what the player must do, and how EOC will verify the result.
+- Preserves the return path to the same Predictive filter and station detail so several issues can be reviewed together.
+- Adds Unified Logistics Coverage for miners, station inputs, product selling, build storage, and bounded EOC trade actions.
+- Keeps player-requested Supply snapshots and confidence boundaries explicit; opening Predictive Intelligence performs no background Supply scan.
+- Keeps primary workflow controls steady without flashing or timed full-page redraws.
+- Adds no free ships, unauthorized construction, hidden resource creation, cargo movement, credit movement, watcher, or per-frame analysis.
 ## Preserved EOC 3.2 foundation
 
 - Makes Dock Interactions access self-contained within EOC, so a separate UI framework installation is not required for the EOC button.
@@ -71,8 +66,9 @@ Build 259 also preserves the complete EOC 3.2 feature set:
 ## Documentation and support
 
 - [EOC Development Roadmap](docs/EOC_ROADMAP.md)
+- [EOC 3.7 GA Player Guide](docs/EOC_3.7_GA_PLAYER_GUIDE.md)
+- [EOC 3.7 GA Release Notes](docs/RELEASE_NOTES_3.7_GA.md)
 - [EOC 3.5 GA User and Support Guide](docs/EOC_3.5_GA_USER_SUPPORT_GUIDE.md)
-- [EOC 3.5 GA Release Notes](docs/RELEASE_NOTES_3.5_GA.md)
 - [Archived EOC 3.5 TEST Public Test Guide](docs/EOC_3.5_TEST_PUBLIC_TEST_GUIDE.md)
 - [EOC 3.2 GA User and Support Guide](docs/EOC_3.2_GA_USER_SUPPORT_GUIDE.md)
 - [EOC 3.2 GA Release Notes](docs/RELEASE_NOTES_3.2_GA.md)
