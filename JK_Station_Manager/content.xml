@@ -2,12 +2,12 @@
 <content
   id="ws_3778882957"
   name="EOC - Executive Operations Center"
-  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.8 GA - Build 324&#xA;&#xA;Novice Operations and Supply Storytelling.&#xA;&#xA;- Preserves the accepted WAITING FOR TRADE CYCLE workflow.&#xA;- Translates hourly rates, coverage, shortages, surpluses, and snapshot changes into plain player language.&#xA;- Explains what Supply evidence proves and what ship, buyer, route, and market evidence remains unknown.&#xA;- Explains why EOC suggests each price or storage setting and what it will change.&#xA;- Makes Cases command-first and labels retained evidence as supporting context rather than extra tasks.&#xA;- Keeps advanced evidence available without requiring players to decode it before acting.&#xA;- Adds no construction, procurement, gameplay watcher, scheduler, cargo, credit, or background gameplay authority.&#xA;&#xA;Compatible with X4 8.x and 9.x."
+  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.9 GA - Build 339&#xA;&#xA;Command-First Decisions and Background Test Ownership.&#xA;&#xA;- Leads with the conclusion, one next instruction, and the primary action.&#xA;- Keeps technical evidence behind exact-case Deep Dive controls.&#xA;- One verification request is retained and completed by EOC through its existing bounded scan.&#xA;- Returns the result automatically through notification, Logbook, and retained UI state.&#xA;- Adds no new watcher, timer, gameplay, or automation authority.&#xA;&#xA;Runtime accepted by RazorEQX. Compatible with X4 8.x and 9.x."
   author="RazorEQX"
-  version="424"
+  version="439"
   date="2026-08-26"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.8 GA Build 324" description="Novice-first Supply explanations, command-first Cases, and preserved trade-cycle guidance." />
+  <text language="44" name="EOC 3.9 GA Build 339" description="Command-first EOC with automatic background verification ownership." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

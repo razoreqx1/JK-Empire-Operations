@@ -1,0 +1,31 @@
+EOC 3.9 GA - Build 339
+Command-First Decisions and Background Test Ownership
+
+GA promotion
+- Identity-only promotion of the RazorEQX-accepted Build 338 runtime.
+- No accepted feature logic, cadence, gameplay authority, or protected behavior changed during promotion.
+- Runtime acceptance proved first-request persistence, next-scan completion, visible notification delivery, and Station Build mode operation after completion.
+
+Runtime correction
+- Corrected the defined-null existing-record check that prevented the first background-test request from being stored.
+- EOC now reports TEST ACCEPTED only after the persistent request was successfully created or updated.
+- The accepted and in-progress messages tell the player not to enter Station Build mode until EOC reports TEST COMPLETE.
+- The completion message explicitly releases that Station Build mode restriction.
+
+Correction
+- A player requests verification once; EOC retains the exact station, subject, severity and amount baseline.
+- The next completed established empire-analysis cycle performs the comparison automatically.
+- EOC reports IMPROVING, UNCHANGED, WORSENING or BLOCKED through a notification, Logbook result and retained UI status.
+- Tests persist in governed global state across menu close and save/reload.
+- The 64-record safety cap prevents unbounded pending-test growth.
+
+Player-facing audit
+- Removed prompts asking the player to certify a meaningful cycle.
+- Removed instructions to wait, return later, repeat verification, request a recheck, take another snapshot, leave KPI Center open or refresh after a cycle.
+- Updated market, remediation, production, planner, logistics, KPI, Supply, Predictive and Overview text to assign test follow-through to EOC.
+
+Architecture and authority
+- Uses the existing five-minute empire scan completion; no new watcher, timer, countdown, per-frame hook or scheduler was added.
+- No station, ship, order, funding, construction, mining, escort, trade, installation, promotion or publication authority was added.
+
+PENDING RUNTIME ACCEPTANCE.

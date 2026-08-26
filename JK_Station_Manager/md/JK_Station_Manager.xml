@@ -1868,7 +1868,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
             </do_elseif>
             <do_elseif value="global.$JKEOC_RecoveryRootCause == 'LOCAL PRODUCTION MANUALLY PAUSED'">
               <set_value name="global.$JKEOC_RecoveryInvestigationChain" exact="'%1 empty -> produced locally -> module manually paused'.[global.$JKEOC_RecoveryObjectiveWare]" />
-              <set_value name="global.$JKEOC_RecoveryNextStep" exact="'Resume the production module, then refresh after a production cycle begins.'" />
+              <set_value name="global.$JKEOC_RecoveryNextStep" exact="'Resume the production module. EOC will evaluate the later production evidence automatically.'" />
             </do_elseif>
             <do_elseif value="global.$JKEOC_FocusObjectiveProducesWare? and global.$JKEOC_FocusObjectiveProducesWare">
               <set_value name="global.$JKEOC_RecoveryInvestigationChain" exact="'%1 empty -> produced locally -> no empty input confirmed'.[global.$JKEOC_RecoveryObjectiveWare]" />
@@ -1964,6 +1964,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <set_value name="global.$JKEOC_LastCompletedScanSequence" exact="global.$JKEOC_ScanSequence" />
         <debug_text text="'[JKEOC][V440] SCAN COMPLETE | Sequence=' + global.$JKEOC_ScanSequence + ' Stations=' + $stations.count + ' Operational=' + $operational + ' ConstructionSkipped=' + $skippedconstruction + ' Productive=' + $productive + ' Mixed=' + $mixed + ' TradeHubs=' + $tradehubs + ' EmptyResources=' + $emptyresources + ' Cargo90=' + $fullcargo + ' NoStorage=' + $nostorage + ' NoSupport=' + $nosupport + ' Populated=' + $populated + ' WorkforceWarnings=' + global.$JKEOC_WorkforceIssueCount + ' Recommendations=' + $recommendations" filter="general" />
         <debug_text text="'[JKEOC][V333] =================================================='" filter="general" />
+        <signal_cue_instantly cue="md.JKEOC_Settings_Interface.JKEOC_Settings_ProcessBackgroundTests" />
         <remove_value name="global.$JKEOC_ScanInProgress" />
       </actions>
     </cue>
@@ -3626,7 +3627,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
         <do_elseif value="global.$JKEOC_UpstreamStage == 2">
           <set_value name="global.$JKEOC_RecoveryRootCause" exact="'SUPPLIER PRODUCTION OFFLINE'" />
           <set_value name="global.$JKEOC_RecoveryRootEvidence" exact="'The intended supplier is not currently producing the required ware.'" />
-          <set_value name="global.$JKEOC_RecoveryNextStep" exact="'Repair, complete or restart the supplier production modules for %1. Confirm production cycles begin, then refresh.'.[global.$JKEOC_RecoveryObjectiveWare]" />
+          <set_value name="global.$JKEOC_RecoveryNextStep" exact="'Repair, complete or restart the supplier production modules for %1. EOC will confirm later production evidence automatically.'.[global.$JKEOC_RecoveryObjectiveWare]" />
         </do_elseif>
         <do_elseif value="global.$JKEOC_UpstreamStage == 3">
           <set_value name="global.$JKEOC_RecoveryRootCause" exact="'UPSTREAM INPUT SHORTAGE'" />

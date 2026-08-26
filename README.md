@@ -4,27 +4,27 @@ Transform your X4 empire from reactive management into intelligent operations.
 
 ## Current GA release
 
-- Version: 3.8 GA
-- Engineering build: 324
-- Extension version: 4.24
+- Version: 3.9 GA
+- Engineering build: 339
+- Extension version: 4.39
 - Status: **GENERAL AVAILABILITY** — runtime accepted and published to Steam Workshop and GitHub
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 324 is the identity-only GA promotion of the human-accepted Build 323 runtime.
+Build 339 is the identity-only GA promotion of the human-accepted Build 338 runtime.
 
-## What is new in EOC 3.8 GA Build 324
+## What is new in EOC 3.9 GA Build 339
 
-- Explains Supply results in plain language, including whether production is short or excessive, what `100% coverage` means, and that `/h` means units per game hour.
-- Separates hourly production and demand rates from stored inventory and clearly identifies ship, buyer, route, price, and permission evidence that remains unknown.
-- Explains why EOC suggests a buy price, sell price, or storage allocation and what accepting the change will do before confirmation.
-- Makes Cases command-first: player responsibility, EOC responsibility, and the next step appear before supporting evidence.
-- Routes existing investigations directly to their matching Case instead of displaying a duplicate create action.
-- Replaces unexplained Executive Attention scores with state, issue count, and plain-language reasons.
-- Ranks Storage highest-first with named thresholds, exact fill, prior-sample change, and a readable capacity bar.
-- Explains percentage baselines throughout KPI and Supply views and retains up to one hour of Cash Flow history.
-- Preserves Predictive Intelligence, exact Case and Guided Recovery routing, return paths, and the accepted `WAITING FOR TRADE CYCLE` workflow.
-- Adds no free ships, unauthorized construction, hidden resource creation, cargo movement, credit movement, watcher, or per-frame analysis.
+- Leads Cases, Guided Recovery, and Solution Planner with the conclusion, one next instruction, and the primary action.
+- Keeps technical evidence available behind exact-case Deep Dive controls.
+- Lets the player request verification once; EOC retains the exact baseline and completes the comparison through its existing bounded empire-analysis cycle.
+- Returns `IMPROVING`, `UNCHANGED`, `WORSENING`, or an honest `BLOCKED` result through a notification, Logbook entry, and retained EOC status.
+- Warns the player not to enter Station Build mode while a verification job is in progress and explicitly releases that restriction at `TEST COMPLETE`.
+- Removes prompts that required the player to certify elapsed time, return later, repeat verification, request another check, or keep a page open.
+- Adds adaptive boundaries to variable-length EOC lists while retaining the complete underlying data.
+- Adds observation-only dynamic fleet-capacity evidence with learning state, confidence, trend, and bounded sampling.
+- Preserves the EOC 3.8 plain-language Supply, pricing, storage, Cases, KPI, and Predictive Intelligence improvements.
+- Adds no watcher, countdown, per-frame hook, free ship, unauthorized construction, hidden resource creation, cargo movement, or credit movement.
 ## Preserved EOC 3.2 foundation
 
 - Makes Dock Interactions access self-contained within EOC, so a separate UI framework installation is not required for the EOC button.
@@ -66,6 +66,8 @@ Build 259 also preserves the complete EOC 3.2 feature set:
 ## Documentation and support
 
 - [EOC Development Roadmap](docs/EOC_ROADMAP.md)
+- [EOC 3.9 GA Illustrated Player Guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md)
+- [EOC 3.9 GA Release Notes](docs/RELEASE_NOTES_3.9_GA.md)
 - [EOC 3.8 GA Player Guide](docs/EOC_3.8_GA_PLAYER_GUIDE.md)
 - [EOC 3.8 GA Release Notes](docs/RELEASE_NOTES_3.8_GA.md)
 - [EOC 3.7 GA Player Guide](docs/EOC_3.7_GA_PLAYER_GUIDE.md)

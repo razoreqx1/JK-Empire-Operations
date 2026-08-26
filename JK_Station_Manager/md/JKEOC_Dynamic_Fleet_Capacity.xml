@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<mdscript name="JKEOC_Dynamic_Fleet_Capacity" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!--
+    BUILD 328 — OBSERVATION-ONLY DYNAMIC FLEET CAPACITY
+    Learns a per-station operational minimum from current X4 station offers,
+    ware volume, active/queued subordinate trade deals, assigned cargo capacity,
+    and repeated five-minute samples. This subsystem never assigns, removes,
+    builds, or rebalances a ship.
+
+    Upward hysteresis: sustained work may raise the recommendation immediately.
+    Downward hysteresis: six consecutive lower-pressure samples reduce it by one.
+    Donor authority: NONE. LEARNING/LOW confidence is never actionable.
+  -->
+  <cues>
+    <cue name="JKEOC_B328_CapacityInit" instantiate="true" namespace="this">
+      <conditions><event_game_loaded /></conditions><delay exact="60s" />
+      <actions>
+        <do_if value="not global.$JKEOC_B328CapacityRecords?"><set_value name="global.$JKEOC_B328CapacityRecords" exact="[]" /></do_if>
+        <remove_value name="global.$JKEOC_B327RebalancePending" />
+        <signal_cue_instantly cue="JKEOC_B328_CapacitySample" />
+      </actions>
+    </cue>
+    <cue name="JKEOC_B328_CapacityScheduler" instantiate="true" namespace="this" checktime="player.age + 5min" checkinterval="5min">
+      <conditions><check_value value="global.$JKEOC_B328CapacityRecords?" /></conditions>
+      <actions><signal_cue_instantly cue="JKEOC_B328_CapacitySample" /></actions>
+    </cue>
+    <cue name="JKEOC_B328_CapacitySample" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <do_if value="not global.$JKEOC_B328CapacityRecords?"><set_value name="global.$JKEOC_B328CapacityRecords" exact="[]" /></do_if>
+        <do_for_each name="$stale" in="global.$JKEOC_B328CapacityRecords" reverse="true"><do_if value="not $stale.$station? or not $stale.$station.exists or $stale.$station.owner != faction.player"><remove_from_list name="global.$JKEOC_B328CapacityRecords" exact="$stale" /></do_if></do_for_each>
+        <do_if value="global.$JKEOC_B67Profiles?">
+          <do_for_each name="$profile" in="global.$JKEOC_B67Profiles">
+            <do_if value="$profile.$station? and $profile.$station.exists and $profile.$station.owner == faction.player">
+              <set_value name="$station" exact="$profile.$station" />
+              <find_buy_offer result="$buyoffers" buyer="$station" multiple="true" />
+              <find_sell_offer result="$selloffers" seller="$station" multiple="true" />
+
+              <!-- Container trade/cargo demand: inbound and outbound open station offers. -->
+              <set_value name="$tradeorders" exact="0" /><set_value name="$tradevolume" exact="0" />
+              <do_for_each name="$offer" in="$buyoffers"><do_if value="$offer.ware.waretransport == waretransport.container and $offer.offeramount gt 0"><set_value name="$tradeorders" exact="$tradeorders + 1" /><set_value name="$tradevolume" exact="$tradevolume + ($offer.offeramount * $offer.ware.volume)" /></do_if></do_for_each>
+              <do_for_each name="$offer" in="$selloffers"><do_if value="$offer.ware.waretransport == waretransport.container and $offer.offeramount gt 0"><set_value name="$tradeorders" exact="$tradeorders + 1" /><set_value name="$tradevolume" exact="$tradevolume + ($offer.offeramount * $offer.ware.volume)" /></do_if></do_for_each>
+              <set_value name="$tradeassigned" exact="$station.subordinates.{assignment.trade}.count" /><set_value name="$tradeactive" exact="0" /><set_value name="$tradedeals" exact="0" /><set_value name="$tradecapacity" exact="0" />
+              <do_for_each name="$ship" in="$station.subordinates.{assignment.trade}"><do_if value="$ship.exists and $ship.isoperational"><set_value name="$tradecapacity" exact="$tradecapacity + $ship.cargo.capacity.container" /><set_value name="$tradedeals" exact="$tradedeals + $ship.tradeorders.count" /><do_if value="$ship.tradeorders.count gt 0 or (@$ship.order.id and $ship.order.id == 'TradePerform')"><set_value name="$tradeactive" exact="$tradeactive + 1" /></do_if></do_if></do_for_each>
+              <set_value name="$tradeavg" exact="if $tradeassigned gt 0 then ($tradecapacity / $tradeassigned)i else 0" /><set_value name="$traderaw" exact="[global.$JKEOC_MinTrade, $tradeactive].max" /><do_if value="$tradeorders gt 0 and $tradeassigned == 0"><set_value name="$traderaw" exact="[$traderaw, 1].max" /></do_if><do_elseif value="$tradeassigned gt 0 and $tradeactive ge $tradeassigned and $tradevolume gt $tradecapacity"><set_value name="$traderaw" exact="[$traderaw, $tradeassigned + 1].max" /></do_elseif>
+              <signal_cue_instantly cue="JKEOC_B328_UpdateRecord" param="table[$station=$station, $stationname=$station.name, $role='TRADE FOR COMMANDER', $assigned=$tradeassigned, $floor=global.$JKEOC_MinTrade, $raw=$traderaw, $openorders=$tradeorders, $active=$tradeactive, $deals=$tradedeals, $capacity=$tradecapacity, $average=$tradeavg, $openvolume=$tradevolume, $source='CONTAINER BUY + SELL OFFERS']" />
+
+              <!-- Raw mining demand: open solid/liquid station buy offers only. -->
+              <do_if value="$profile.$role == 'MINING' or $profile.$role == 'MINING HUB'">
+                <set_value name="$miningorders" exact="0" /><set_value name="$miningvolume" exact="0" />
+                <do_for_each name="$offer" in="$buyoffers"><do_if value="($offer.ware.waretransport == waretransport.solid or $offer.ware.waretransport == waretransport.liquid) and $offer.offeramount gt 0"><set_value name="$miningorders" exact="$miningorders + 1" /><set_value name="$miningvolume" exact="$miningvolume + ($offer.offeramount * $offer.ware.volume)" /></do_if></do_for_each>
+                <set_value name="$miningassigned" exact="$station.subordinates.{assignment.mining}.count" /><set_value name="$miningactive" exact="0" /><set_value name="$miningdeals" exact="0" /><set_value name="$miningcapacity" exact="0" />
+                <do_for_each name="$ship" in="$station.subordinates.{assignment.mining}"><do_if value="$ship.exists and $ship.isoperational"><set_value name="$miningcapacity" exact="$miningcapacity + $ship.cargo.capacity.solid + $ship.cargo.capacity.liquid" /><set_value name="$miningdeals" exact="$miningdeals + $ship.tradeorders.count" /><do_if value="$ship.tradeorders.count gt 0 or (@$ship.order.id and ($ship.order.id == 'MiningRoutine' or $ship.order.id == 'TradePerform'))"><set_value name="$miningactive" exact="$miningactive + 1" /></do_if></do_if></do_for_each>
+                <set_value name="$miningavg" exact="if $miningassigned gt 0 then ($miningcapacity / $miningassigned)i else 0" /><set_value name="$miningraw" exact="[global.$JKEOC_MinMining, $miningactive].max" /><do_if value="$miningorders gt 0 and $miningassigned == 0"><set_value name="$miningraw" exact="[$miningraw, 1].max" /></do_if><do_elseif value="$miningassigned gt 0 and $miningactive ge $miningassigned and $miningvolume gt $miningcapacity"><set_value name="$miningraw" exact="[$miningraw, $miningassigned + 1].max" /></do_elseif>
+                <signal_cue_instantly cue="JKEOC_B328_UpdateRecord" param="table[$station=$station, $stationname=$station.name, $role='MINE FOR COMMANDER', $assigned=$miningassigned, $floor=global.$JKEOC_MinMining, $raw=$miningraw, $openorders=$miningorders, $active=$miningactive, $deals=$miningdeals, $capacity=$miningcapacity, $average=$miningavg, $openvolume=$miningvolume, $source='SOLID + LIQUID BUY OFFERS']" />
+              </do_if>
+
+              <!-- Build storage: exact outstanding construction resource orders. -->
+              <do_if value="$profile.$constructionactive? and $profile.$constructionactive and $station.buildstorage? and $station.buildstorage.buildprocessor?">
+                <set_value name="$buildorders" exact="0" /><set_value name="$buildvolume" exact="0" /><do_for_each name="$ware" in="$station.buildstorage.buildprocessor.neededsequenceresources.list"><set_value name="$needed" exact="$station.buildstorage.buildprocessor.neededsequenceresources.{$ware}.count" /><do_if value="$needed gt 0"><set_value name="$buildorders" exact="$buildorders + 1" /><set_value name="$buildvolume" exact="$buildvolume + ($needed * $ware.volume)" /></do_if></do_for_each>
+                <set_value name="$buildassigned" exact="$station.subordinates.{assignment.tradeforbuildstorage}.count" /><set_value name="$buildactive" exact="0" /><set_value name="$builddeals" exact="0" /><set_value name="$buildcapacity" exact="0" />
+                <do_for_each name="$ship" in="$station.subordinates.{assignment.tradeforbuildstorage}"><do_if value="$ship.exists and $ship.isoperational"><set_value name="$buildcapacity" exact="$buildcapacity + $ship.cargo.capacity.container" /><set_value name="$builddeals" exact="$builddeals + $ship.tradeorders.count" /><do_if value="$ship.tradeorders.count gt 0 or (@$ship.order.id and $ship.order.id == 'TradePerform')"><set_value name="$buildactive" exact="$buildactive + 1" /></do_if></do_if></do_for_each>
+                <set_value name="$buildavg" exact="if $buildassigned gt 0 then ($buildcapacity / $buildassigned)i else 0" /><set_value name="$buildraw" exact="[global.$JKEOC_MinBuildStorage, $buildactive].max" /><do_if value="$buildorders gt 0 and $buildassigned == 0"><set_value name="$buildraw" exact="[$buildraw, 1].max" /></do_if><do_elseif value="$buildassigned gt 0 and $buildactive ge $buildassigned and $buildvolume gt $buildcapacity"><set_value name="$buildraw" exact="[$buildraw, $buildassigned + 1].max" /></do_elseif>
+                <signal_cue_instantly cue="JKEOC_B328_UpdateRecord" param="table[$station=$station, $stationname=$station.name, $role='BUILD STORAGE TRADE', $assigned=$buildassigned, $floor=global.$JKEOC_MinBuildStorage, $raw=$buildraw, $openorders=$buildorders, $active=$buildactive, $deals=$builddeals, $capacity=$buildcapacity, $average=$buildavg, $openvolume=$buildvolume, $source='OUTSTANDING CONSTRUCTION RESOURCES']" />
+              </do_if>
+
+              <!-- Defence is explicitly policy-derived, never inferred from commercial orders. -->
+              <signal_cue_instantly cue="JKEOC_B328_UpdateRecord" param="table[$station=$station, $stationname=$station.name, $role='DEFEND COMMANDER', $assigned=$station.subordinates.{assignment.defence}.count, $floor=global.$JKEOC_MinDefence, $raw=global.$JKEOC_MinDefence, $openorders=0, $active=0, $deals=0, $capacity=0, $average=0, $openvolume=0, $source='PLAYER DEFENCE POLICY — COMMERCIAL DEMAND NOT APPLICABLE']" />
+            </do_if>
+          </do_for_each>
+        </do_if>
+        <debug_text text="'[JKEOC][B328][CAPACITY_SAMPLE] records=%1 cadence=5min mutation=NONE donor_authority=NONE'.[global.$JKEOC_B328CapacityRecords.count]" filter="general" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_B328_UpdateRecord" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="$sample" exact="event.param" /><remove_value name="$record" />
+        <do_for_each name="$candidate" in="global.$JKEOC_B328CapacityRecords"><do_if value="$candidate.$station == $sample.$station and $candidate.$role == $sample.$role"><set_value name="$record" exact="$candidate" /></do_if></do_for_each>
+        <do_if value="not $record?">
+          <set_value name="$record" exact="table[$station=$sample.$station, $stationname=$sample.$stationname, $role=$sample.$role, $recommended=$sample.$raw, $previous=$sample.$raw, $samples=0, $lowsamples=0, $trend='LEARNING', $status='LEARNING', $confidence='LOW', $reason='Collecting the first six five-minute samples before capacity can be considered stable.', $created=player.age]" /><append_to_list name="global.$JKEOC_B328CapacityRecords" exact="$record" />
+        </do_if>
+        <set_value name="$record.$samples" exact="$record.$samples + 1" /><set_value name="$record.$stationname" exact="$sample.$stationname" /><set_value name="$record.$assigned" exact="$sample.$assigned" /><set_value name="$record.$floor" exact="$sample.$floor" /><set_value name="$record.$raw" exact="$sample.$raw" /><set_value name="$record.$openorders" exact="$sample.$openorders" /><set_value name="$record.$active" exact="$sample.$active" /><set_value name="$record.$deals" exact="$sample.$deals" /><set_value name="$record.$capacity" exact="$sample.$capacity" /><set_value name="$record.$average" exact="$sample.$average" /><set_value name="$record.$openvolume" exact="$sample.$openvolume" /><set_value name="$record.$source" exact="$sample.$source" /><set_value name="$record.$sampletime" exact="player.age" />
+        <set_value name="$record.$previous" exact="$record.$recommended" />
+        <do_if value="$sample.$raw gt $record.$recommended"><set_value name="$record.$recommended" exact="$sample.$raw" /><set_value name="$record.$lowsamples" exact="0" /><set_value name="$record.$trend" exact="'RISING'" /><set_value name="$record.$reason" exact="'Observed concurrent work or saturated unserved cargo pressure raised the operational requirement.'" /></do_if>
+        <do_elseif value="$sample.$raw lt $record.$recommended"><set_value name="$record.$lowsamples" exact="$record.$lowsamples + 1" /><set_value name="$record.$trend" exact="'HOLDING FOR PROOF'" /><set_value name="$record.$reason" exact="'%1 of 6 consecutive lower-pressure samples observed; recommendation will not fall yet.'.[$record.$lowsamples]" /><do_if value="$record.$lowsamples ge 6"><set_value name="$record.$recommended" exact="[$record.$recommended - 1, $sample.$floor].max" /><set_value name="$record.$lowsamples" exact="0" /><set_value name="$record.$trend" exact="'FALLING SLOWLY'" /><set_value name="$record.$reason" exact="'Six consecutive lower-pressure samples support reducing the recommendation by one ship.'" /></do_if></do_elseif>
+        <do_else><set_value name="$record.$lowsamples" exact="0" /><set_value name="$record.$trend" exact="'STABLE'" /><set_value name="$record.$reason" exact="'Current concurrent work and open-order pressure support the existing recommendation.'" /></do_else>
+        <do_if value="$record.$samples lt 6"><set_value name="$record.$status" exact="'LEARNING'" /><set_value name="$record.$confidence" exact="'LOW'" /></do_if><do_else><set_value name="$record.$status" exact="'ADVISORY ONLY'" /><set_value name="$record.$confidence" exact="if $record.$samples ge 12 then 'HIGH' else 'MEDIUM'" /></do_else>
+        <debug_text text="'[JKEOC][B328][CAPACITY_RECORD] station=%1 role=%2 assigned=%3 player_floor=%4 recommended=%5 raw=%6 open_orders=%7 active_ships=%8 queued_deals=%9 open_volume=%10 assigned_capacity=%11 samples=%12 confidence=%13 trend=%14 mutation=NONE'.[$record.$stationname, $record.$role, $record.$assigned, $record.$floor, $record.$recommended, $record.$raw, $record.$openorders, $record.$active, $record.$deals, $record.$openvolume, $record.$capacity, $record.$samples, $record.$confidence, $record.$trend]" filter="general" />
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

@@ -205,10 +205,11 @@
           <do_if value="not $applied and global.$JKEOC_B64Policies.count lt 64"><append_to_list name="global.$JKEOC_B64Policies" exact="table[$station=global.$JKEOC_FocusStationObject, $stationname=global.$JKEOC_FocusStationObject.name, $goal=global.$JKEOC_B64PendingGoal, $autonomy=false, $originalstate='NOT CAPTURED', $lastverified=0]" /></do_if>
         </do_if>
         <do_else><set_value name="global.$JKEOC_B64DefaultGoal" exact="global.$JKEOC_B64PendingGoal" /></do_else>
-        <show_notification text="'ACTION: Operating mode changed to %1. NOTE: Analysis was not run; select Run Analysis Now to refresh recommendations.'.[global.$JKEOC_B64PendingGoal]" timeout="10s" />
+        <show_notification text="'ACTION: Operating mode changed to %1. EOC is refreshing recommendations automatically.'.[global.$JKEOC_B64PendingGoal]" timeout="10s" />
+        <signal_cue_instantly cue="JKEOC_B64_RunCycle" />
         <add_player_choice_sub text="'OPERATING MODE CHANGED - ANALYSIS NOT RUN'" position="left" section="JKEOC_B64_Console" />
         <add_player_choice_sub text="'RUN ANALYSIS NOW'" position="right" section="JKEOC_B64_Refresh" />
-        <add_player_choice_sub text="'RETURN - REFRESH REQUIRED'" position="bottom_right" section="JKEOC_B64_Console" />
+        <add_player_choice_sub text="'RETURN - EOC REFRESHED AUTOMATICALLY'" position="bottom_right" section="JKEOC_B64_Console" />
       </actions>
     </cue>
 
