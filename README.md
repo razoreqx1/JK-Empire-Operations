@@ -4,26 +4,26 @@ Transform your X4 empire from reactive management into intelligent operations.
 
 ## Current GA release
 
-- Version: 3.7 GA
-- Engineering build: 321
-- Extension version: 4.21
+- Version: 3.8 GA
+- Engineering build: 324
+- Extension version: 4.24
 - Status: **GENERAL AVAILABILITY** — runtime accepted and published to Steam Workshop and GitHub
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 321 is the identity-only GA promotion of the human-accepted Build 320 runtime.
+Build 324 is the identity-only GA promotion of the human-accepted Build 323 runtime.
 
-## What is new in EOC 3.7 GA Build 321
+## What is new in EOC 3.8 GA Build 324
 
-- Adds Predictive Intelligence with ranked Actionable, Watch, All Evidence, and Empire Summary views.
-- Separates baseline-only and low-confidence evidence collection from issues that genuinely require player action.
-- Consolidates one station/ware operating chain into one forecast and one governed action route; derived profit exposure is shown as business impact rather than a duplicate incident.
-- Routes exact forecasts directly to their matching Case, Guided Recovery, station evidence, or governed ship recommendation.
-- Leads Case and Guided Recovery pages with what EOC found, what EOC is doing, what the player must do, and how EOC will verify the result.
-- Preserves the return path to the same Predictive filter and station detail so several issues can be reviewed together.
-- Adds Unified Logistics Coverage for miners, station inputs, product selling, build storage, and bounded EOC trade actions.
-- Keeps player-requested Supply snapshots and confidence boundaries explicit; opening Predictive Intelligence performs no background Supply scan.
-- Keeps primary workflow controls steady without flashing or timed full-page redraws.
+- Explains Supply results in plain language, including whether production is short or excessive, what `100% coverage` means, and that `/h` means units per game hour.
+- Separates hourly production and demand rates from stored inventory and clearly identifies ship, buyer, route, price, and permission evidence that remains unknown.
+- Explains why EOC suggests a buy price, sell price, or storage allocation and what accepting the change will do before confirmation.
+- Makes Cases command-first: player responsibility, EOC responsibility, and the next step appear before supporting evidence.
+- Routes existing investigations directly to their matching Case instead of displaying a duplicate create action.
+- Replaces unexplained Executive Attention scores with state, issue count, and plain-language reasons.
+- Ranks Storage highest-first with named thresholds, exact fill, prior-sample change, and a readable capacity bar.
+- Explains percentage baselines throughout KPI and Supply views and retains up to one hour of Cash Flow history.
+- Preserves Predictive Intelligence, exact Case and Guided Recovery routing, return paths, and the accepted `WAITING FOR TRADE CYCLE` workflow.
 - Adds no free ships, unauthorized construction, hidden resource creation, cargo movement, credit movement, watcher, or per-frame analysis.
 ## Preserved EOC 3.2 foundation
 
@@ -66,8 +66,9 @@ Build 259 also preserves the complete EOC 3.2 feature set:
 ## Documentation and support
 
 - [EOC Development Roadmap](docs/EOC_ROADMAP.md)
+- [EOC 3.8 GA Player Guide](docs/EOC_3.8_GA_PLAYER_GUIDE.md)
+- [EOC 3.8 GA Release Notes](docs/RELEASE_NOTES_3.8_GA.md)
 - [EOC 3.7 GA Player Guide](docs/EOC_3.7_GA_PLAYER_GUIDE.md)
-- [EOC 3.7 GA Release Notes](docs/RELEASE_NOTES_3.7_GA.md)
 - [EOC 3.5 GA User and Support Guide](docs/EOC_3.5_GA_USER_SUPPORT_GUIDE.md)
 - [Archived EOC 3.5 TEST Public Test Guide](docs/EOC_3.5_TEST_PUBLIC_TEST_GUIDE.md)
 - [EOC 3.2 GA User and Support Guide](docs/EOC_3.2_GA_USER_SUPPORT_GUIDE.md)

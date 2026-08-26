@@ -2,12 +2,12 @@
 <content
   id="ws_3778882957"
   name="EOC - Executive Operations Center"
-  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.7 GA - Build 321&#xA;&#xA;Predictive Intelligence and guided operations.&#xA;&#xA;- Ranks actionable station risks and separates low-confidence evidence collection from proven player action.&#xA;- Routes exact forecasts to their matching Case, guided recovery, station evidence, or governed ship recommendation.&#xA;- Explains what EOC found, what EOC is doing, what the player needs to do, and how the result will be verified.&#xA;- Preserves the return path so multiple issues can be reviewed from the same Predictive list.&#xA;- Keeps primary workflow controls steady without flashing or timed page redraws.&#xA;- Adds no construction, procurement, Supply-scan, gameplay watcher, MD scheduler, cargo, or credit authority.&#xA;&#xA;Build 321 is the identity-only GA promotion of the accepted Build 320 runtime.&#xA;&#xA;Compatible with X4 8.x and 9.x."
+  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.8 GA - Build 324&#xA;&#xA;Novice Operations and Supply Storytelling.&#xA;&#xA;- Preserves the accepted WAITING FOR TRADE CYCLE workflow.&#xA;- Translates hourly rates, coverage, shortages, surpluses, and snapshot changes into plain player language.&#xA;- Explains what Supply evidence proves and what ship, buyer, route, and market evidence remains unknown.&#xA;- Explains why EOC suggests each price or storage setting and what it will change.&#xA;- Makes Cases command-first and labels retained evidence as supporting context rather than extra tasks.&#xA;- Keeps advanced evidence available without requiring players to decode it before acting.&#xA;- Adds no construction, procurement, gameplay watcher, scheduler, cargo, credit, or background gameplay authority.&#xA;&#xA;Compatible with X4 8.x and 9.x."
   author="RazorEQX"
-  version="421"
-  date="2026-08-25"
+  version="424"
+  date="2026-08-26"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.7 GA Build 321" description="Predictive Intelligence with exact evidence, Cases, guided recovery, and preserved return paths." />
+  <text language="44" name="EOC 3.8 GA Build 324" description="Novice-first Supply explanations, command-first Cases, and preserved trade-cycle guidance." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

@@ -128,7 +128,10 @@ menu.supplyBlackboardKey = "$JKEOC_B277SupplyModel"
 menu.supplyPages = {}
 local EOC_CHECKLIST_SCHEMA = 4
 local KPI_REFRESH_SECONDS = 30
-menu.KPI_HISTORY_LIMIT = 64
+-- Cash sampling runs every 30 seconds. Retain a bounded hour so the player can
+-- compare more than the former 30-minute window without creating a background
+-- watcher or persisting an unbounded session history.
+menu.KPI_HISTORY_LIMIT = 128
 menu.KPI_REFRESH_INTERVALS = { cash = 30, shipyard = 30, construction = 60, trade = 60, storage = 120, earners = 120, drains = 120, attention = 120 }
 function menu.kpiRefreshInterval(view) return menu.KPI_REFRESH_INTERVALS[view or "cash"] or KPI_REFRESH_SECONDS end
 local EOC_OS_BOOT_DELAY = 1.35
@@ -2963,11 +2966,38 @@ function menu.supplySuggestedPrices(record, coverage)
 end
 
 function menu.supplyLegend(tableWidget)
+    local explanation = tableWidget:addRow(false)
+    explanation[1]:setColSpan(4):createText("HOW TO READ COVERAGE: 100% means installed supply exactly matches measured demand. Below 100% is a shortage; above 100% is surplus. For example, 350% means supply is 3.5 times measured demand — not a score of 350 out of 100.", { wordwrap = true, color = navigationStoryColor })
     local row = tableWidget:addRow(false)
     row[1]:createText("RED  SEVERE <50%", { color = investigationFailColor })
     row[2]:createText("AMBER  SHORTAGE <100%", { color = investigationUnknownColor })
     row[3]:createText("GREEN  BALANCED 100-125%", { color = investigationPassColor })
     row[4]:createText("CYAN  SURPLUS >125%", { color = navigationStoryColor, halign = "right" })
+end
+
+function menu.supplyPlainLanguage(tableWidget, record)
+    local supply = tonumber(record and record.installed) or 0
+    local demand = tonumber(record and record.demand) or 0
+    local gap = supply - demand
+    local coverage = tonumber(record and record.coverage) or 0
+    local verdict
+    if demand <= 0 then
+        verdict = "NO INTERNAL NEED MEASURED: Your stations did not report using this ware in this snapshot. EOC cannot judge whether outside customers will buy it."
+    elseif supply <= 0 then
+        verdict = "NOT MAKING ENOUGH: Your stations use " .. formatNumber(demand) .. " units each game hour, but EOC found no installed player-owned production."
+    elseif gap < 0 then
+        verdict = "NOT MAKING ENOUGH: Your stations can make " .. formatNumber(supply) .. " units each game hour but use " .. formatNumber(demand) .. ". The measured shortfall is " .. formatNumber(math.abs(gap)) .. " units each game hour."
+    elseif coverage <= 125 then
+        verdict = "SUPPLY ROUGHLY MATCHES NEED: Your stations can make " .. formatNumber(supply) .. " units each game hour and use " .. formatNumber(demand) .. "."
+    else
+        verdict = "MAKING MORE THAN YOUR STATIONS USE: Your stations can make " .. formatNumber(supply) .. " units each game hour but use " .. formatNumber(demand) .. ". The measured surplus is " .. formatNumber(gap) .. " units each game hour."
+    end
+    local row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("PLAIN-LANGUAGE RESULT: " .. verdict, { wordwrap = true, color = gap < 0 and investigationFailColor or (coverage > 125 and navigationStoryColor or investigationPassColor), font = Helper.headerFont })
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("WHAT THE NUMBERS MEAN: '/h' means units per game hour; it is a production or use rate, not stored inventory. Coverage compares installed player-owned production with measured use by your own stations. 100% means equal rates; " .. string.format("%.1f%%", coverage) .. " means production is " .. string.format("%.1f", demand > 0 and supply / demand or 0) .. " times measured internal use.", { wordwrap = true, color = navigationStoryColor })
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("WHAT THIS SNAPSHOT DOES NOT PROVE: It does not track individual ships currently in flight, guarantee an NPC buyer, or prove that price, trade rules, travel time, cargo space, or station-manager range can move the ware. Use Fleet & Logistics for ship coverage and the station's trade settings for buyers and permissions.", { wordwrap = true, color = investigationNeutralColor })
 end
 
 function menu.supplyGrid(tableWidget, view, records, previous, detailHandler)
@@ -2984,7 +3014,7 @@ function menu.supplyGrid(tableWidget, view, records, previous, detailHandler)
                 local prior = menu.supplyPreviousRow(previous, record.ware)
                 local label
                 local gap = (tonumber(record.installed) or 0) - (tonumber(record.demand) or 0)
-                local gapText = gap < 0 and ("DEFICIT " .. formatNumber(math.abs(gap)) .. "/h") or ("SURPLUS " .. formatNumber(gap) .. "/h")
+                local gapText = gap < 0 and ("SHORT " .. formatNumber(math.abs(gap)) .. " UNITS PER GAME HOUR") or ("EXTRA " .. formatNumber(gap) .. " UNITS PER GAME HOUR")
                 local trend = prior and ("CHANGE " .. menu.supplyDelta(record.coverage, prior.coverage) .. " POINTS") or "FIRST SNAPSHOT"
                 label = record.name .. "\n" .. state .. " | COVERAGE " .. string.format("%.0f%%", tonumber(record.coverage) or 0) .. "\n" .. gapText .. " | " .. trend
                 row[column]:setColSpan(2)
@@ -3207,6 +3237,7 @@ function menu.supplyOverviewView(tableWidget, view, current, previous)
         local prior = menu.supplyPreviousRow(previous, detailRecord.ware)
         local state, color = menu.supplyCoverageState(detailRecord)
         section(tableWidget, detailRecord.name .. " | " .. state)
+        menu.supplyPlainLanguage(tableWidget, detailRecord)
         if view == "bottlenecks" then
             menu.supplyBar(tableWidget, "MEASURED DEFICIT", detailRecord.deficit, maximumDeficit, "/h", color)
         else
@@ -3214,9 +3245,9 @@ function menu.supplyOverviewView(tableWidget, view, current, previous)
             menu.supplyBar(tableWidget, "INTERNAL DEMAND", detailRecord.demand, math.max(1, detailRecord.installed, detailRecord.demand), "/h", investigationFailColor)
         end
         local evidence = tableWidget:addRow(false)
-        evidence[1]:setColSpan(4):createText((detailRecord.demand > 0 and ("Coverage " .. string.format("%.1f%%", detailRecord.coverage)) or "NO MEASURED INTERNAL DEMAND") .. " | supply " .. formatNumber(detailRecord.installed) .. "/h | demand " .. formatNumber(detailRecord.demand) .. "/h | " .. detailRecord.producers .. " producer(s) | " .. detailRecord.consumers .. " consumer(s)", { wordwrap = true })
+        evidence[1]:setColSpan(4):createText((detailRecord.demand > 0 and ("Coverage " .. string.format("%.1f%%", detailRecord.coverage)) or "NO MEASURED INTERNAL DEMAND") .. " | installed production " .. formatNumber(detailRecord.installed) .. " units per game hour | internal use " .. formatNumber(detailRecord.demand) .. " units per game hour | " .. detailRecord.producers .. " producing station(s) | " .. detailRecord.consumers .. " consuming station(s)", { wordwrap = true })
         local delta = tableWidget:addRow(false)
-        delta[1]:setColSpan(4):createText("Coverage delta " .. menu.supplyDelta(detailRecord.coverage, prior and prior.coverage or nil) .. " percentage points | deficit delta " .. menu.supplyDelta(detailRecord.deficit, prior and prior.deficit or nil) .. "/h", { wordwrap = true })
+        delta[1]:setColSpan(4):createText("CHANGE SINCE THE PREVIOUS PLAYER-RUN SNAPSHOT: coverage changed " .. menu.supplyDelta(detailRecord.coverage, prior and prior.coverage or nil) .. " percentage points; the shortage changed " .. menu.supplyDelta(detailRecord.deficit, prior and prior.deficit or nil) .. " units per game hour. NO PREVIOUS SNAPSHOT means EOC has nothing earlier to compare yet.", { wordwrap = true })
         if view == "bottlenecks" then
             section(tableWidget, "CASE SYSTEM BRIDGE")
             local persistentSevere = prior and (tonumber(prior.coverage) or 100) < 50 and (tonumber(detailRecord.coverage) or 100) < 50
@@ -3370,7 +3401,7 @@ function menu.supplySelectedStationView(tableWidget, view, current, previous)
                     local record = displayWares[index + slot]
                     if record then
                         local column = slot == 0 and 1 or 3
-                        local label = record.name .. "\nOUTPUT " .. formatNumber(record.effectiveProduction) .. "/h | INPUT " .. formatNumber(record.installedConsumption) .. "/h\nSTOCK " .. formatNumber(record.stock)
+                        local label = record.name .. "\nMAKING NOW " .. formatNumber(record.effectiveProduction) .. " / GAME HOUR | USING " .. formatNumber(record.installedConsumption) .. " / GAME HOUR\nSTORED NOW " .. formatNumber(record.stock)
                         row[column]:setColSpan(2)
                         addButton(row, column, label, function() menu.supplyStationDetailWare = record.ware; menu.refresh() end, true, inactiveModeBackground, menu.supplyCardHeight(), record.installedProduction > 0 and navigationStoryColor or investigationNeutralColor, true, true)
                     end
@@ -3380,6 +3411,8 @@ function menu.supplySelectedStationView(tableWidget, view, current, previous)
             local back = tableWidget:addRow(true); back[1]:setColSpan(4)
             addButton(back, 1, "BACK TO STATION RESOURCE GRID", function() menu.supplyStationDetailWare = nil; menu.refresh() end, true)
             section(tableWidget, chosen.name)
+            local explanation = tableWidget:addRow(false)
+            explanation[1]:setColSpan(4):createText("READ THIS FIRST: Installed output is what this station could make if supplied and operating. Effective output is what its current inputs and operating conditions support. Installed input is what its modules could use. Each rate is units per game hour; STOCK is the number of units currently stored.", { wordwrap = true, color = navigationStoryColor })
             local maximum = math.max(1, chosen.installedProduction, chosen.installedConsumption)
             menu.supplyBar(tableWidget, "INSTALLED OUTPUT", chosen.installedProduction, maximum, "/h", navigationStoryColor)
             menu.supplyBar(tableWidget, "INSTALLED INPUT", chosen.installedConsumption, maximum, "/h", investigationUnknownColor)
@@ -3434,6 +3467,11 @@ function menu.supplySelectedStationView(tableWidget, view, current, previous)
         menu.supplyPreview = nil
     end
     local draft = menu.supplyDraft
+    local priceReason = tableWidget:addRow(false)
+    local priceVerdict = coverage < 100 and "SHORTAGE: EOC leans toward a higher valid buy price to attract supply. It is not recommending more selling while your own stations are short." or (coverage > 125 and "SURPLUS: EOC leans toward a lower valid sell price to help excess stock leave the station. It is not recommending that you buy more of this ware." or "BALANCED: Current owned production is close to measured internal use, so EOC avoids a large price change.")
+    priceReason[1]:setColSpan(4):createText("WHY EOC SUGGESTED THIS: " .. priceVerdict .. " Buy price is what this station offers suppliers. Sell price is what customers pay. Storage allocation is the share of station storage reserved for this ware; increasing it can take space away from other wares.", { wordwrap = true, color = coverage < 100 and investigationUnknownColor or navigationStoryColor, font = Helper.headerFont })
+    priceReason = tableWidget:addRow(false)
+    priceReason[1]:setColSpan(4):createText("EVIDENCE USED: Empire coverage is " .. string.format("%.1f%%", coverage) .. ". 100% means installed production equals measured use by your own stations. Current stock is " .. formatNumber(record.stock) .. " units; installed production is " .. formatNumber(record.installedProduction) .. " units per game hour; installed use is " .. formatNumber(record.installedConsumption) .. " units per game hour. This advice cannot prove outside market demand or that a ship can reach a buyer.", { wordwrap = true })
     pair(tableWidget, "CURRENT BUY PRICE", formatNumber(record.buyprice) .. " Cr", "EOC SUGGESTED", formatNumber(suggestedBuy) .. " Cr")
     pair(tableWidget, "CURRENT SELL PRICE", formatNumber(record.sellprice) .. " Cr", "EOC SUGGESTED", formatNumber(suggestedSell) .. " Cr")
     pair(tableWidget, "CURRENT STORAGE ALLOCATION", formatNumber(record.storage), "EOC SUGGESTED", formatNumber(suggestedStorage))
@@ -3500,12 +3538,12 @@ function menu.supplySelectedStationView(tableWidget, view, current, previous)
         local preview = tableWidget:addRow(false)
         preview[1]:setColSpan(4):createText("PENDING CONFIRMATION: " .. record.name .. " at " .. station.name .. ". Buy " .. formatNumber(record.buyprice) .. " -> " .. formatNumber(buy) .. " Cr; sell " .. formatNumber(record.sellprice) .. " -> " .. formatNumber(sell) .. " Cr; storage " .. formatNumber(record.storage) .. " -> " .. formatNumber(storage) .. ". This explicitly enables manual price and storage overrides for this ware. No credits or cargo are moved by this click.", { wordwrap = true, color = investigationUnknownColor })
     end
-    section(tableWidget, "APPLY ALL PROPOSED BUY / SELL PRICES")
+    section(tableWidget, "OPTIONAL: REVIEW ALL PRICE CHANGES FOR THIS STATION")
     local batchNote = tableWidget:addRow(false)
-    batchNote[1]:setColSpan(4):createText("STATION-SCOPED BULK TRANSACTION: Preview every changed price proposal for " .. station.name .. ". Each ware keeps its own valid range and EOC proposal; manually edited proposals are retained. Storage allocations are never included. A separate confirmation and immediate per-ware read-back are required.", { wordwrap = true, color = investigationNeutralColor })
+        batchNote[1]:setColSpan(4):createText("WHAT THIS DOES: Shows only wares whose suggested buy or sell price differs from the station's current price. It never changes storage. Preview changes nothing; Confirm applies the listed prices and immediately asks X4 to report them back. If there are no meaningful changes, EOC will say NO PRICE CHANGES NEEDED.", { wordwrap = true, color = investigationNeutralColor })
     if not menu.supplyBatchPreview or menu.supplyBatchPreview.stationid ~= station.id then
         local batchRow = tableWidget:addRow(true); batchRow[1]:setColSpan(4)
-        addButton(batchRow, 1, "PREVIEW ALL PROPOSED PRICES FOR THIS STATION", function()
+        addButton(batchRow, 1, "PREVIEW ONLY THE PRICES EOC WOULD CHANGE", function()
             menu.supplyBatchPreview = menu.supplyBuildPriceBatch(station, wares, current)
             menu.supplyApplyResult = nil
             menu.refresh()
@@ -3513,7 +3551,7 @@ function menu.supplySelectedStationView(tableWidget, view, current, previous)
     else
         local batch = menu.supplyBatchPreview
         local summary = tableWidget:addRow(false)
-        summary[1]:setColSpan(4):createText("PENDING BATCH CONFIRMATION: " .. tostring(#(batch.rows or {})) .. " changed ware(s) | " .. tostring(batch.skipped or 0) .. " invalid skipped | " .. tostring(batch.unchanged or 0) .. " unchanged | storage changes 0.", { wordwrap = true, color = investigationUnknownColor })
+        summary[1]:setColSpan(4):createText(#(batch.rows or {}) == 0 and ("NO PRICE CHANGES NEEDED: " .. tostring(batch.unchanged or 0) .. " ware(s) already match EOC's suggestion. Storage will not change.") or ("PENDING CONFIRMATION: EOC would change prices for " .. tostring(#(batch.rows or {})) .. " ware(s). " .. tostring(batch.unchanged or 0) .. " already need no change; " .. tostring(batch.skipped or 0) .. " invalid proposal(s) were safely skipped. Storage will not change."), { wordwrap = true, color = #(batch.rows or {}) == 0 and investigationPassColor or investigationUnknownColor })
         for _, proposal in ipairs(batch.rows or {}) do
             local proposalRow = tableWidget:addRow(false)
             proposalRow[1]:setColSpan(4):createText(proposal.name .. ": BUY " .. formatNumber(proposal.beforeBuy) .. " -> " .. formatNumber(proposal.buy) .. " Cr | SELL " .. formatNumber(proposal.beforeSell) .. " -> " .. formatNumber(proposal.sell) .. " Cr", { wordwrap = true })
@@ -3910,7 +3948,7 @@ local function casesCenter(tableWidget)
     local selectedObservations = selectedProfile and stationObservations(selectedProfile) or {}
     local selectedDifference = math.max(0, #selectedObservations - selectedEOCCases)
     local brief = tableWidget:addRow(false)
-    brief[1]:setColSpan(4):createText(menu.caseScope == "station" and "STATION REVIEW: This screen is locked to the working station. It shows every retained observation contributing to its operational history, confirmed cases, and player-requested investigations. Choose ALL STATIONS only when you want to leave this station context." or "DECISION BRIEF: Select a station to review its confirmed cases and complete retained observation history.", { wordwrap = true })
+    brief[1]:setColSpan(4):createText(menu.caseScope == "station" and "READ THIS FIRST: A CASE is one problem EOC is actively following for this station. Start with PLAYER COMMAND SUMMARY below: it says whether EOC is handling the case, waiting for normal game activity, or needs one action from you. The longer incident and evidence history is supporting detail, not a second to-do list." or "READ THIS FIRST: Each row is one station problem EOC is following. Open a case to see one plain-language next action. Use the filters only when you need to narrow the list.", { wordwrap = true, color = navigationStoryColor, font = Helper.headerFont })
     row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
     if menu.clearCasesConfirm then
@@ -3934,7 +3972,7 @@ local function casesCenter(tableWidget)
             menu.refresh()
         end, true)
     else
-        addButton(row, 1, "CLEAR ALL EOC CASES", function()
+        addButton(row, 1, "ADVANCED: CLEAR ALL EOC CASE HISTORY", function()
             menu.clearCasesConfirm = true
             menu.refresh()
         end, not actionState("case.clearall").running)
@@ -3995,7 +4033,7 @@ local function casesCenter(tableWidget)
         menu.refresh()
     end, menu.caseScope ~= "global" or menu.caseSeverity ~= "all")
 
-    section(tableWidget, "STATION HEALTH AND ISSUE INVENTORY")
+    section(tableWidget, "STATION SUMMARY — CONTEXT, NOT EXTRA TASKS")
     pair(tableWidget, "SELECTED STATION", text(v(selectedProfile, 1, "NONE")), "HEALTH / TREND", text(v(selectedProfile, 3, "UNKNOWN")) .. " / " .. text(v(selectedProfile, 4, "UNKNOWN")))
     pair(tableWidget, "CURRENT ISSUES", selectedProfileIssues, "RETAINED OBSERVATIONS", #selectedObservations)
     pair(tableWidget, "EOC-CONFIRMED CASES", selectedEOCCases, "PLAYER-REQUESTED CASES", selectedPlayerCases)
@@ -4013,14 +4051,23 @@ local function casesCenter(tableWidget)
         local priority = { RELAPSED=5, SYSTEMIC=4, RECURRING=3, CANDIDATE=2, RECOVERING=1, RESOLVED=0 }
         if (priority[string.upper(text(v(observation,4,"BASELINE")))] or 0) > (priority[string.upper(text(v(incident.leading,4,"BASELINE")))] or 0) then incident.leading=observation end
     end
-    section(tableWidget, "OPERATIONAL INCIDENTS FOR THIS STATION  |  " .. #incidentOrder .. " INCIDENT(S) / " .. #selectedObservations .. " OBSERVATION(S)")
+    section(tableWidget, "SUPPORTING ISSUE HISTORY  |  " .. #incidentOrder .. " SUBJECT(S) / " .. #selectedObservations .. " RETAINED EVIDENCE RECORD(S)")
     if #incidentOrder == 0 then
         row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("No retained issue record is available for this station. Run a fresh Empire Analysis to reconcile its profile.", { wordwrap = true })
     else
         for _, subject in ipairs(incidentOrder) do
             local incident, leading = incidents[subject], incidents[subject].leading
             local existing = observationHasPlayerCase(text(v(selectedProfile, 1, "")), subject)
-            section(tableWidget, subject .. " FLOW INCIDENT | " .. #incident.observations .. " SUPPORTING OBSERVATION(S)")
+            local existingPlayerCase
+            if existing then
+                for _, caseData in ipairs(menu.cases or {}) do
+                    if text(v(caseData, 1, "")) == text(v(selectedProfile, 1, "")) and text(v(caseData, 4, "")) == subject and v(caseData, 11, "") == "PLAYER" then
+                        existingPlayerCase = caseData
+                        break
+                    end
+                end
+            end
+            section(tableWidget, subject .. " | " .. #incident.observations .. " SUPPORTING EVIDENCE RECORD(S)")
             row=tableWidget:addRow(false); row[1]:setColSpan(4):createText("STORY: EOC grouped these records because they concern the same station and subject. They may represent one operating chain rather than separate failures.",{wordwrap=true,color=investigationUnknownColor})
             local missionStation, missionWare, missionText = text(v(menu.missionContext,1,"")), text(v(menu.missionContext,2,"")), text(v(menu.missionContext,3,""))
             if missionStation == text(v(selectedProfile,1,"")) and missionWare == subject then
@@ -4032,21 +4079,26 @@ local function casesCenter(tableWidget)
             end
             row=tableWidget:addRow(false); row[1]:setColSpan(4):createText("LEADING EXPLANATION: "..text(v(leading,6,"Cause not yet confirmed")).." DO THIS NEXT: "..text(v(leading,7,"Continue monitoring")),{wordwrap=true})
             row=tableWidget:addRow(true); row[1]:setColSpan(4)
-            addButton(row,1,"OPEN ONE PLAYER INVESTIGATION: "..subject,function()
-                if existing then
-                    local createState = actionState("case.create")
-                    createState.result = nil
-                    createState.lastRun = nil
-                    menu.caseDuplicateNotice = "CASE ALREADY EXISTS: A player-requested case is already open for " .. text(v(selectedProfile,1,"this station")) .. " and " .. subject .. ". No duplicate was created."
+            if existingPlayerCase then
+                local boundCase = existingPlayerCase
+                addButton(row,1,"OPEN EXISTING INVESTIGATION: "..subject,function()
+                    menu.caseDuplicateNotice = nil
+                    menu.focusCaseStation(boundCase)
+                    menu.diagnosticCase = boundCase
+                    captureNavigation("CASE - " .. subject)
+                    menu.diagnosticView = "recovery"
+                    menu.page = "diagnostics"
+                    menu.activeTab = "diagnostics"
                     menu.refresh()
-                elseif selectedProfile and startAction("case.create") then
+                end,true)
+            else
+                addButton(row,1,"ASK EOC TO INVESTIGATE: "..subject,function()
+                if selectedProfile and startAction("case.create") then
                     table.insert(menu.cases,{text(v(selectedProfile,1,"Selected station")),"PLAYER","PLAYER-REPORTED",subject,"OPEN - PLAYER REQUESTED",text(v(leading,6,"Grouped retained evidence requires focused investigation.")),text(v(leading,7,"Review grouped evidence and run focused diagnostics.")),#incident.observations,0,0,"PLAYER"})
                     raise("case.create",{index=v(selectedProfile,16,menu.selected),subject=subject,issues=#incident.observations,rootcause=text(v(leading,6,"Grouped retained evidence requires focused investigation.")),corrective=text(v(leading,7,"Review grouped evidence and run focused diagnostics.")),observationindex=v(leading,14,0),observationcount=#incident.observations})
                     menu.refresh()
                 end
-            end,not actionState("case.create").running)
-            if existing and menu.caseDuplicateNotice then
-                row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(menu.caseDuplicateNotice,{wordwrap=true,color=investigationUnknownColor})
+                end,not actionState("case.create").running)
             end
         end
     end
@@ -4058,7 +4110,7 @@ local function casesCenter(tableWidget)
     end
 
     menu.selectedCase = clamp(menu.selectedCase, 1, #cases)
-    section(tableWidget, "ACTIVE CASES  |  SHOWING ALL " .. #cases .. "  |  SCROLL FOR MORE")
+    section(tableWidget, "ACTIVE CASES — CHOOSE ONE PROBLEM TO FOLLOW  |  " .. #cases .. " SHOWN")
     local header = tableWidget:addRow(false)
     header[1]:setColSpan(2):createText("STATION")
     header[3]:createText("SEVERITY")
@@ -4095,7 +4147,7 @@ local function casesCenter(tableWidget)
     local selectedChecks = prerequisiteRows(selected)
     local selectedAction, selectedActionColor = managedActionText(selected)
     local selectedBlocked = string.find(string.upper(selectedAction), "BLOCKED", 1, true) ~= nil
-    section(tableWidget, "PLAYER COMMAND SUMMARY")
+    section(tableWidget, "PLAYER COMMAND SUMMARY — START HERE")
     row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText(selectedBlocked and "PLAYER ACTION REQUIRED" or "NO PLAYER ACTION RIGHT NOW — EOC IS HANDLING THIS CASE", { wordwrap = true, color = selectedBlocked and investigationFailColor or investigationPassColor, font = Helper.headerFont })
     row = tableWidget:addRow(false)
@@ -5448,6 +5500,16 @@ local function kpiStateLabel(score)
     return "HEALTHY"
 end
 
+function menu.attentionReason(item)
+    local reasons = {}
+    if (tonumber(item.critical) or 0) > 0 then table.insert(reasons, tostring(item.critical) .. " critical case(s)") end
+    if (tonumber(item.warning) or 0) > 0 then table.insert(reasons, tostring(item.warning) .. " warning case(s)") end
+    if (tonumber(item.issues) or 0) > 0 then table.insert(reasons, tostring(item.issues) .. " active issue(s)") end
+    if item.trend == "WORSENING" then table.insert(reasons, "worsening") end
+    if #reasons == 0 then table.insert(reasons, "no confirmed operational pressure") end
+    return table.concat(reasons, "; ")
+end
+
 local function buildKpiRows()
     local rows = {}
     local healthWeights = {
@@ -5542,14 +5604,16 @@ local function kpiAttentionView(tableWidget)
     section(tableWidget, "EMPIRE KPI CENTER")
     pair(tableWidget, "CRITICAL", counts.CRITICAL, "WARNING", counts.WARNING)
     section(tableWidget, "EXECUTIVE ATTENTION QUEUE")
-    kpiHeader(tableWidget, { "RANK / STATE", "STATION", "HEALTH / TREND", "SCORE / ISSUES" })
+    local explanation = tableWidget:addRow(false)
+    explanation[1]:setColSpan(4):createText("HOW TO READ THIS: EOC ranks the stations needing attention first. There is no player-facing numeric score: the state, issue count, and reason below explain the priority.", { wordwrap = true, color = navigationStoryColor })
+    kpiHeader(tableWidget, { "RANK / STATE", "STATION", "HEALTH / TREND", "WHY IT IS RANKED" })
     kpiPagedRows(tableWidget, rows, function(item, rank)
         local selectedItem = item
         local row = tableWidget:addRow(true)
         row[1]:createText(rank .. ". " .. item.state)
         addButton(row, 2, item.name, function() menu.kpiSelected = selectedItem.index; menu.refresh() end, true)
         row[3]:createText(item.health .. " / " .. item.trend)
-        row[4]:createText(item.score .. " / " .. item.issues)
+        row[4]:createText(menu.attentionReason(item), { wordwrap = true })
     end, "No player stations are currently available.")
     if #rows == 0 then return end
     local selectedIndex, selected = menu.kpiSelected or rows[1].index, rows[1]
@@ -5557,11 +5621,11 @@ local function kpiAttentionView(tableWidget)
     menu.kpiSelected = selected.index
     section(tableWidget, "FOCUS: " .. selected.name)
     local summary = tableWidget:addRow(false)
-    summary[1]:setColSpan(4):createText(selected.state .. " | SCORE " .. selected.score .. " | " .. selected.health .. " / " .. selected.trend .. " | NEXT: " .. selected.recommendation, { wordwrap = true })
+    summary[1]:setColSpan(4):createText(selected.state .. " | " .. menu.attentionReason(selected) .. " | NEXT: " .. selected.recommendation, { wordwrap = true })
     local row = tableWidget:addRow(true)
-    addButton(row, 1, "OPEN STATION", function() menu.selected=selected.index; captureNavigation("KPI CENTER"); menu.page="stations"; menu.activeTab="stations"; menu.refresh() end, true)
-    addButton(row, 2, "OPEN CASES", function() menu.selected=selected.index; captureNavigation("KPI CENTER"); menu.caseScope="station"; menu.caseSeverity="all"; menu.selectedCase=1; menu.casePage=1; menu.page="cases"; menu.activeTab="cases"; menu.refresh() end, selected.issues>0 or selected.critical>0 or selected.warning>0)
-    addButton(row, 3, "DIAGNOSTICS", function() menu.selected=selected.index; captureNavigation("KPI CENTER"); menu.diagnosticView="recovery"; menu.page="diagnostics"; menu.activeTab="diagnostics"; menu.refresh() end, true)
+    addButton(row, 1, "OPEN THIS STATION", function() menu.selected=selected.index; captureNavigation("KPI CENTER"); menu.page="stations"; menu.activeTab="stations"; menu.refresh() end, true)
+    addButton(row, 2, "OPEN THIS STATION'S CASES", function() menu.selected=selected.index; captureNavigation("KPI CENTER"); menu.caseScope="station"; menu.caseSeverity="all"; menu.selectedCase=1; menu.casePage=1; menu.page="cases"; menu.activeTab="cases"; menu.refresh() end, selected.issues>0 or selected.critical>0 or selected.warning>0)
+    addButton(row, 3, "OPEN THIS STATION'S GUIDED RECOVERY", function() menu.selected=selected.index; captureNavigation("KPI CENTER"); menu.diagnosticView="recovery"; menu.page="diagnostics"; menu.activeTab="diagnostics"; menu.refresh() end, true)
     addButton(row, 4, "RUN ANALYSIS", function() if not menu.analysisRunning then menu.analysisRunning=true; menu.analysisStatus="ANALYSIS RUNNING"; menu.refresh(); raise("analysis.run",{}) end end, not menu.analysisRunning)
 end
 local function kpiStationOptions()
@@ -5661,14 +5725,14 @@ local function kpiDashboardControls(tableWidget)
     row = tableWidget:addRow(true)
     addButton(row, 1, menu.kpiPaused and "RESUME LIVE" or "PAUSE LIVE", function() menu.kpiPaused = not menu.kpiPaused; if not menu.kpiPaused then menu.kpiNextRefreshAt = getElapsedTime() end; menu.refresh() end, true)
     addButton(row, 2, "REFRESH VIEW", function() menu.kpiNextRefreshAt = getElapsedTime(); menu.refresh(true) end, true)
-    row[3]:setColSpan(2):createText("SCOPE: FILTERED VIEW | TREND WINDOW: ROLLING 30 MIN", { wordwrap = false })
+    row[3]:setColSpan(2):createText("SCOPE: FILTERED VIEW | SELECT THE TIME RANGE BELOW EACH TREND", { wordwrap = false })
     row = tableWidget:addRow(false); local seconds = math.max(0, math.ceil((tonumber(menu.kpiNextRefreshAt) or getElapsedTime()) - getElapsedTime()))
     row[1]:setColSpan(4):createText((menu.kpiPaused and "LIVE PAUSED" or menu.kpiRefreshing and "LIVE REFRESH IN PROGRESS" or ("LIVE - " .. tostring(menu.kpiRefreshInterval(menu.kpiView)) .. "s | NEXT REFRESH: " .. tostring(seconds) .. "s")) .. " | Sampling stops when KPI Center closes or another page opens.", { wordwrap = true, color = investigationPassColor })
 end
 
 local function kpiBar(value, maximum) value=tonumber(value) or 0; maximum=math.max(1,tonumber(maximum) or 1); return (value<0 and "-" or "+") .. string.rep("=", math.max(1,math.min(30,math.floor((math.abs(value)/maximum)*30+0.5)))) end
 local function stationMoneyMap(sample) local result={}; for _,station in ipairs((sample and sample.stations) or {}) do result[tostring(station.name or "Unknown station")]=tonumber(station.money) or 0 end; return result end
-menu.KPI_GRAPH_RANGES = { { seconds = 300, label = "5 MIN" }, { seconds = 600, label = "10 MIN" }, { seconds = 1800, label = "30 MIN" } }
+menu.KPI_GRAPH_RANGES = { { seconds = 300, label = "5 MIN" }, { seconds = 600, label = "10 MIN" }, { seconds = 1800, label = "30 MIN" }, { seconds = 3600, label = "1 HOUR" } }
 
 function menu.kpiGraphHistory()
     local history = menu.kpiHistory or {}
@@ -5695,7 +5759,6 @@ function menu.kpiGraphRangeButtons(t)
         local selected = (tonumber(menu.kpiGraphRange) or 1800) == choice.seconds
         addButton(row, column, choice.label, function() menu.kpiGraphRange = choice.seconds; menu.refresh() end, true, selected and selectedModeBackground or availableModeBackground)
     end
-    row[4]:createText("ROLLING LIVE SESSION | MAX 30 MIN", { halign = "center" })
 end
 
 menu.KPI_GRAPH_COLORS = { Color["transactionlog_graph_data"], investigationPassColor, investigationUnknownColor, investigationFailColor, investigationNeutralColor, navigationStoryColor }
@@ -5778,7 +5841,22 @@ function menu.kpiStorageGraph(t)
     section(t,"STORAGE LEVELS - CAPACITY USED")
     local selected=menu.kpiStation_storage or "__all__"; local definitions={}
     if selected=="__all__" then
-        local names=menu.kpiLatestNames("storageStations",selected); for index,item in ipairs(names) do local name=item.name; table.insert(definitions,{label=name,color=menu.KPI_GRAPH_COLORS[((index-1)%#menu.KPI_GRAPH_COLORS)+1],value=function(sample)local highest; for _,x in ipairs(sample.storageStations or {}) do if x.name==name then highest=math.max(highest or 0,tonumber(x.percent) or 0) end end; return highest end}) end
+        local history=menu.kpiGraphHistory(); local latest=history[#history] or {}; local prior=history[#history-1] or {}; local stations, priorMap={},{}
+        for _,x in ipairs(prior.storageStations or {}) do priorMap[x.name]=math.max(priorMap[x.name] or 0,tonumber(x.percent) or 0) end
+        for _,x in ipairs(latest.storageStations or {}) do
+            local name=tostring(x.name or "Unknown station"); local fill=tonumber(x.percent) or 0
+            if not stations[name] or fill>stations[name].fill then stations[name]={name=name,fill=fill} end
+        end
+        local rows={}; for _,item in pairs(stations) do item.change=priorMap[item.name] and item.fill-priorMap[item.name] or nil; table.insert(rows,item) end
+        table.sort(rows,function(a,b) if a.fill==b.fill then return a.name<b.name end return a.fill>b.fill end)
+        local help=t:addRow(false); help[1]:setColSpan(4):createText("HIGHEST STORAGE FILL BY STATION — highest first. Green is below 80%, amber is 80–89.9%, and red is 90% or more. Change is measured from the prior live sample.",{wordwrap=true,color=navigationStoryColor})
+        kpiHeader(t,{"STATION","STATUS","FILL / CHANGE","CAPACITY BAR"})
+        for index=1,math.min(12,#rows) do
+            local item=rows[index]; local state=item.fill>=90 and "CRITICAL — NEAR FULL" or item.fill>=80 and "HIGH" or "AVAILABLE"; local color=item.fill>=90 and investigationFailColor or item.fill>=80 and investigationUnknownColor or investigationPassColor
+            local row=t:addRow(false); row[1]:createText(item.name,{wordwrap=true}); row[2]:createText(state,{color=color}); row[3]:createText(string.format("%.1f%% FULL%s",item.fill,item.change and string.format(" | %+.1f points",item.change) or " | FIRST SAMPLE"),{color=color}); row[4]:createText("["..string.rep("=",math.max(0,math.min(20,math.floor(item.fill/5+0.5))))..string.rep(".",math.max(0,20-math.min(20,math.floor(item.fill/5+0.5)))).."]",{color=color})
+        end
+        if #rows==0 then pair(t,"STATUS","Waiting for the first storage sample.","NEXT","Leave KPI Center open for one refresh.") end
+        return
     else
         local names=menu.kpiLatestNames("storageStations",selected,"kind"); definitions=menu.kpiGraphDefinitions("storageStations",names,"percent","kind")
     end
@@ -5800,18 +5878,20 @@ function menu.kpiEarnersDrainsGraph(t, drains)
     local history=menu.kpiGraphHistory(); section(t,drains and "CASH DRAINS - FIVE FASTEST DECLINES" or "TOP EARNERS - FIVE FASTEST GAINS")
     if #history<2 then pair(t,"STATUS","Waiting for the second live sample.","WINDOW","Bounded live session"); return end
     local first,last=stationMoneyMap(history[1]),stationMoneyMap(history[#history]); local ranked={}
-    for name,amount in pairs(last) do local baseline=first[name]; if baseline and baseline>0 then local change=(amount-baseline)*100/baseline; if (drains and change<0) or (not drains and change>0) then table.insert(ranked,{name=name,change=change,baseline=baseline}) end end end
+    for name,amount in pairs(last) do local baseline=first[name]; if baseline and baseline>0 then local delta=amount-baseline; local change=delta*100/baseline; if (drains and delta<0) or (not drains and delta>0) then table.insert(ranked,{name=name,amount=amount,delta=delta,change=change,baseline=baseline}) end end end
     table.sort(ranked,function(a,b)
-        if drains then return a.change < b.change end
-        return a.change > b.change
+        if drains then return a.delta < b.delta end
+        return a.delta > b.delta
     end); while #ranked>5 do table.remove(ranked) end
-    local definitions={}; for index,item in ipairs(ranked) do local current=item; table.insert(definitions,{label=current.name,color=menu.KPI_GRAPH_COLORS[((index-1)%#menu.KPI_GRAPH_COLORS)+1],value=function(sample)local amount=stationMoneyMap(sample)[current.name]; return amount and (amount-current.baseline)*100/current.baseline or nil end}) end
-    menu.kpiNativeGraph(t,drains and "ACCOUNT DECLINE FROM WINDOW START" or "ACCOUNT GROWTH FROM WINDOW START",definitions,"CHANGE","%")
+    local help=t:addRow(false); help[1]:setColSpan(4):createText("Ranked by actual credit movement in the selected window. The percentage is change from that station's starting account, not a score; a large percentage can come from a small starting balance.",{wordwrap=true,color=navigationStoryColor})
+    kpiHeader(t,{"STATION","CURRENT ACCOUNT","CREDIT CHANGE","CHANGE FROM START"})
+    for _,item in ipairs(ranked) do local color=item.delta<0 and investigationFailColor or investigationPassColor; local row=t:addRow(false); row[1]:createText(item.name,{wordwrap=true}); row[2]:createText(formatNumber(item.amount).." Cr"); row[3]:createText(string.format("%+.0f Cr",item.delta),{color=color}); row[4]:createText(string.format("%+.1f%% (start %s Cr)",item.change,formatNumber(item.baseline)),{color=color,wordwrap=true}) end
+    if #ranked==0 then pair(t,"STATUS",drains and "No station account declined in this window." or "No station account increased in this window.","WINDOW","Select another range or continue playing.") end
 end
 
 function menu.kpiAttentionSummary(t)
-    local rows=buildKpiRows(); section(t,"EXECUTIVE ATTENTION - FIVE HIGHEST PRIORITIES"); kpiHeader(t,{"RANK / STATE","STATION","HEALTH / TREND","SCORE / ISSUES"})
-    for index=1,math.min(5,#rows) do local item=rows[index]; local row=t:addRow(false); row[1]:createText(index..". "..item.state); row[2]:createText(item.name); row[3]:createText(item.health.." / "..item.trend); row[4]:createText(item.score.." / "..item.issues) end
+    local rows=buildKpiRows(); section(t,"EXECUTIVE ATTENTION - FIVE HIGHEST PRIORITIES"); local help=t:addRow(false); help[1]:setColSpan(4):createText("Highest operational priority appears first. State and reasons replace the former unexplained numeric score.",{wordwrap=true,color=navigationStoryColor}); kpiHeader(t,{"RANK / STATE","STATION","HEALTH / TREND","WHY IT IS RANKED"})
+    for index=1,math.min(5,#rows) do local item=rows[index]; local row=t:addRow(false); row[1]:createText(index..". "..item.state); row[2]:createText(item.name); row[3]:createText(item.health.." / "..item.trend); row[4]:createText(menu.attentionReason(item),{wordwrap=true}) end
     if #rows==0 then pair(t,"STATUS","No player stations are available.","PRIORITIES","0") end
 end
 
@@ -6048,7 +6128,7 @@ function menu.predictiveIntelligenceView(t)
         local capacity = tonumber(station.storageCapacity) or 0
         if capacity > 0 and totalStock / capacity >= 0.90 then
             local sustained = priorStation and priorTotal / capacity >= 0.85
-            add("SHARED-STORAGE CONGESTION", sustained and 1 or 2, station.name, station.id, "ALL WARES", "Storage is " .. formatNumber(totalStock * 100 / capacity) .. "% occupied.", sustained and "HIGH" or "MEDIUM", sustained and "Two snapshots show the station remaining above the congestion threshold." or "Current occupancy is high; another separated snapshot is required to prove persistence.")
+            add("SHARED-STORAGE CONGESTION", sustained and 1 or 2, station.name, station.id, "ALL WARES", "Storage is " .. formatNumber(totalStock * 100 / capacity) .. "% FULL — higher is worse; 100% means no capacity remains.", sustained and "HIGH" or "MEDIUM", sustained and "Two snapshots show the station remaining above the congestion threshold." or "Current occupancy is high; another separated snapshot is required to prove persistence.")
         end
         for _, record in ipairs(station.wares or {}) do
             local prior = priorWare(priorStation, record.ware)
@@ -6074,7 +6154,7 @@ function menu.predictiveIntelligenceView(t)
             local assigned = cover and math.max(0, tonumber(v(cover, 7, 0)) or 0) or 0
             if record.product and target > 0 and stock >= target * 1.15 then
                 local sustained = priorStock and priorStock >= target * 1.10
-                add("SUSTAINED OVERSTOCK", sustained and 1 or 2, station.name, station.id, record.name, "Stock is " .. formatNumber(stock * 100 / target) .. "% of target.", sustained and "HIGH" or "MEDIUM", (sustained and "Both retained snapshots exceed target" or "Current stock exceeds target") .. "; assigned/working sellers " .. assigned .. "/" .. working .. ".", math.max(0, stock - target) * (tonumber(record.averageprice) or 0))
+                add("SUSTAINED OVERSTOCK", sustained and 1 or 2, station.name, station.id, record.name, "Stock is " .. formatNumber(stock * 100 / target) .. "% OF TARGET — above 100% means excess inventory; " .. string.format("%.1f", stock / target) .. " times the target is currently stored.", sustained and "HIGH" or "MEDIUM", (sustained and "Both retained snapshots exceed target" or "Current stock exceeds target") .. "; assigned/working sellers " .. assigned .. "/" .. working .. ".", math.max(0, stock - target) * (tonumber(record.averageprice) or 0))
                 if working <= 0 then add("INSUFFICIENT SELLING CAPACITY", 1, station.name, station.id, record.name, "Overstock has no seller currently working.", assigned > 0 and "HIGH" or "MEDIUM", "Assigned/working sellers " .. assigned .. "/" .. working .. "; stock/target " .. formatNumber(stock) .. "/" .. formatNumber(target) .. ".") end
             end
         end
@@ -6094,7 +6174,7 @@ function menu.predictiveIntelligenceView(t)
         local old = priorWorkforce[item.name]
         if (tonumber(item.provision) or 100) < 25 and (tonumber(item.percent) or 0) < 90 then
             local declining = old and (tonumber(item.percent) or 0) < (tonumber(old.percent) or 0)
-            add("WORKFORCE-SUPPLY COLLAPSE", declining and 1 or 2, item.name, "", "WORKFORCE", "Provision coverage is " .. formatNumber(item.provision) .. "% while staffing is " .. formatNumber(item.percent) .. "% of optimal.", declining and "HIGH" or (old and "MEDIUM" or "LOW"), declining and "Rolling KPI evidence shows staffing declining while provisions remain critical." or "Current KPI evidence is critical; more separated samples are required to prove direction.")
+            add("WORKFORCE-SUPPLY COLLAPSE", declining and 1 or 2, item.name, "", "WORKFORCE", "Provision stock is " .. formatNumber(item.provision) .. "% OF ITS TARGET (100% = enough) while staffing is " .. formatNumber(item.percent) .. "% OF OPTIMAL WORKFORCE (100% = fully staffed).", declining and "HIGH" or (old and "MEDIUM" or "LOW"), declining and "Rolling KPI evidence shows staffing declining while provisions remain critical." or "Current KPI evidence is critical; more separated samples are required to prove direction.")
         end
     end
     -- Profit exposure is an impact of the originating operating condition, not
@@ -6690,25 +6770,6 @@ local function stationWorkspace(tableWidget)
             menu.page = "construction"; menu.activeTab = "construction"; menu.refresh()
         end, true)
     end
-
-    row = tableWidget:addRow(true)
-    addButton(row, 1, "OPEN STATION CASES", function()
-        captureNavigation("STATIONS - " .. text(v(station, 1, "SELECTED STATION")))
-        menu.caseScope = "station"; menu.caseSeverity = "all"; menu.selectedCase = 1; menu.casePage = 1; menu.diagnosticCase = nil
-        menu.page = "cases"; menu.activeTab = "cases"; menu.refresh()
-    end, true)
-    addButton(row, 2, "GUIDED DIAGNOSTICS", function()
-        captureNavigation("STATIONS - " .. text(v(station, 1, "SELECTED STATION")))
-        menu.diagnosticView = "recovery"; menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh()
-    end, true)
-    addButton(row, 3, "FLEET & LOGISTICS", function()
-        captureNavigation("STATIONS - " .. text(v(station, 1, "SELECTED STATION")))
-        menu.page = "fleet"; menu.activeTab = "fleet"; menu.refresh()
-    end, true)
-    addButton(row, 4, "GLOBAL SETTINGS", function()
-        captureNavigation("STATIONS - " .. text(v(station, 1, "SELECTED STATION")))
-        menu.page = "settings"; menu.activeTab = "settings"; menu.refresh()
-    end, true)
 
     section(tableWidget, "STATION ROLE")
     for roleIndex = 1, #roles, 4 do

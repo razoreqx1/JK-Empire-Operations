@@ -1,6 +1,6 @@
 # EOC Development Roadmap — The Next Round
 
-EOC 3.7 GA has now delivered Phase 1 Unified Logistics Coverage and Phase 2 Predictive Intelligence. Later phases remain future direction and require separate governed authorization.
+EOC 3.8 GA has delivered Phase 1 Unified Logistics Coverage, Phase 2 Predictive Intelligence, and the novice-clarity pass that turns internal rates, percentages, scores, Cases, and recommendations into player-facing explanations. Later phases remain future direction and require separate governed authorization.
 
 The long-term goal is simple:
 
@@ -54,6 +54,10 @@ Once logistics coverage is trustworthy, EOC can begin predicting:
 - Profit leakage from idle production or missed sales
 
 Every prediction must include supporting evidence and confidence. If EOC cannot prove something, it must report it as unknown rather than guess.
+
+## Player Clarity — EOC 3.8 — Delivered
+
+EOC now leads with the decision a player needs to make rather than internal evidence terminology. Supply views define hourly rates and coverage, Cases lead with responsibility and next action, storage is ranked with named thresholds, and Executive Attention explains its reasons instead of exposing an unexplained score. Advanced evidence remains available below the plain-language summary.
 
 ## Phase 3 — Fleet Staffing and Procurement
 

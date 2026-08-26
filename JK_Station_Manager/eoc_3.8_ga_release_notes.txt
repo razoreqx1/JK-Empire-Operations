@@ -1,0 +1,14 @@
+EOC 3.8 GA — Build 324
+
+Novice Operations and Supply Storytelling
+
+- Preserves the accepted WAITING FOR TRADE CYCLE lifecycle and its no-repeat-check guidance.
+- Translates Supply rates, coverage, shortages, surpluses, and changes into novice plain English.
+- States that /h means units per game hour and distinguishes flow rates from stored inventory.
+- Explains what the Supply snapshot cannot prove about ships in flight, buyers, routes, prices, and trade permissions.
+- Explains why EOC suggests each buy price, sell price, and storage allocation before preview or confirmation.
+- Makes Cases command-first and labels retained observations as supporting evidence rather than extra tasks.
+- Preserves contextual return paths, exact Case routes, confirmations, ranked storage, and all accepted Build 322 behavior.
+- Adds no construction, procurement, gameplay watcher, scheduler, cargo movement, credit movement, or background gameplay mutation.
+
+Build 324 is the GA promotion of the runtime-accepted Build 323 feature set.
