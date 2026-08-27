@@ -259,6 +259,16 @@ local function text(value)
     return tostring(value)
 end
 
+function menu.playerDisplayText(value)
+    local displayed = tostring(value or "")
+    displayed = string.gsub(displayed, "—", " - ")
+    displayed = string.gsub(displayed, "–", "-")
+    displayed = string.gsub(displayed, "→", " -> ")
+    displayed = string.gsub(displayed, "↔", " <-> ")
+    displayed = string.gsub(displayed, "…", "...")
+    return displayed
+end
+
 local formatNumber
 
 local function managedActionForCase(caseData)
@@ -526,14 +536,24 @@ local function executeFleetBuildPlan(plan)
 end
 local function minimumBuildBlueprint(role)
     local candidates = {}
-    for _, blueprint in ipairs(menu.shipBlueprints or {}) do
-        local candidate = { name = tostring(v(blueprint, 1, "")), size = tostring(v(blueprint, 2, "")), macro = tostring(v(blueprint, 3, "")) }
-        local lower = string.lower(candidate.macro)
+    local ok, count = pcall(function() return C.GetNumBlueprints("", "", "") end)
+    if not ok then return nil, "BLUEPRINT_DATA_UNAVAILABLE" end
+    count = tonumber(count) or 0
+    if count <= 0 then return nil, "NO_COMPATIBLE_OWNED_BLUEPRINT" end
+    local blueprints = ffi.new("UIBlueprint[?]", count)
+    local fetched, actual = pcall(function() return C.GetBlueprints(blueprints, count, "", "", "") end)
+    if not fetched then return nil, "BLUEPRINT_DATA_UNAVAILABLE" end
+    for i = 0, (tonumber(actual) or 0) - 1 do
+        local macro = blueprints[i].macro ~= nil and ffi.string(blueprints[i].macro) or ""
+        local lower = string.lower(macro)
         local compatible = (role == "MINING_SOLID" and string.find(lower, "_miner_solid_", 1, true) ~= nil)
             or (role == "MINING_LIQUID" and string.find(lower, "_miner_liquid_", 1, true) ~= nil)
             or ((role == "TRADE" or role == "BUILDSTORAGE") and string.find(lower, "_trans_", 1, true) ~= nil)
             or (role == "DEFENCE" and (string.find(lower, "fighter", 1, true) ~= nil or string.find(lower, "corvette", 1, true) ~= nil or string.find(lower, "frigate", 1, true) ~= nil or string.find(lower, "destroyer", 1, true) ~= nil))
-        if compatible then candidates[#candidates + 1] = candidate end
+        if compatible then
+            local size = string.find(lower, "_m_", 1, true) and "M" or string.find(lower, "_s_", 1, true) and "S" or string.find(lower, "_l_", 1, true) and "L" or string.find(lower, "_xl_", 1, true) and "XL" or "UNKNOWN"
+            candidates[#candidates + 1] = { name = tostring(GetMacroData(macro, "name") or macro), size = size, macro = macro }
+        end
     end
     table.sort(candidates, function(a, b)
         local rank = { M = 1, S = 2, L = 3, XL = 4, UNKNOWN = 5 }
@@ -541,7 +561,7 @@ local function minimumBuildBlueprint(role)
         if ar == br then return a.name < b.name end
         return ar < br
     end)
-    return candidates[1]
+    return candidates[1], candidates[1] and nil or "NO_COMPATIBLE_OWNED_BLUEPRINT"
 end
 
 local function minimumBuildStation(_, value)
@@ -558,29 +578,27 @@ local function minimumBuildCommit()
     local request = menu.minimumBuildRequest or {}
     menu.minimumBuildRequest = nil
     local role, station = tostring(request.role or ""), tostring(request.station or "")
-    local blueprint = minimumBuildBlueprint(role)
+    local blueprint, reason = minimumBuildBlueprint(role)
     if not blueprint then
-        raise("minimum.build.result", { success = false, station = station, role = role, reason = "NO_COMPATIBLE_OWNED_BLUEPRINT" })
+        raise("minimum.build.result", { success = false, station = station, role = role, reason = reason or "BLUEPRINT_DATA_UNAVAILABLE" })
         return
     end
-    local yards = {}
-    for _, route in ipairs(menu.shipWharfRoutes or {}) do
-        if tostring(v(route, 9, "")) == blueprint.macro then
-            yards[#yards + 1] = { id=tostring(v(route,10,"")), name=tostring(v(route,2,"Unknown shipyard")), queued=tonumber(v(route,6,0)) or 0, building=tonumber(v(route,7,0)) or 0, distance=tonumber(v(route,5,999999)) or 999999 }
-        end
-    end
-    table.sort(yards, function(a, b)
-        local aload, bload = a.queued + a.building, b.queued + b.building
-        if aload == bload then return a.distance < b.distance end
-        return aload < bload
-    end)
-    local yard = yards[1]
-    if not yard then
-        raise("minimum.build.result", { success = false, station = station, role = role, reason = "NO_COMPATIBLE_PLAYER_WHARF" })
+    raise("minimum.build.blueprint", { station=station, role=role, blueprint=blueprint.name, macro=blueprint.macro })
+end
+function menu.minimumBuildBlueprintName(_, value) menu.minimumBuildRequest = menu.minimumBuildRequest or {}; menu.minimumBuildRequest.blueprint = tostring(value or "") end
+function menu.minimumBuildMacro(_, value) menu.minimumBuildRequest = menu.minimumBuildRequest or {}; menu.minimumBuildRequest.macro = tostring(value or "") end
+function menu.minimumBuildYardName(_, value) menu.minimumBuildRequest = menu.minimumBuildRequest or {}; menu.minimumBuildRequest.yard = tostring(value or "") end
+function menu.minimumBuildYardId(_, value) menu.minimumBuildRequest = menu.minimumBuildRequest or {}; menu.minimumBuildRequest.yardid = tostring(value or "") end
+function menu.minimumBuildExecute()
+    local request = menu.minimumBuildRequest or {}
+    menu.minimumBuildRequest = nil
+    local station, role = tostring(request.station or ""), tostring(request.role or "")
+    if request.macro == nil or request.macro == "" or request.yardid == nil or request.yardid == "" then
+        raise("minimum.build.result", { success=false, station=station, role=role, reason="BACKGROUND_BUILD_DATA_UNAVAILABLE" })
         return
     end
-    local success, result, queued, building = queueEOCShipOrder(yard.id, blueprint.macro, "EOC Minimum " .. role)
-    raise("minimum.build.result", { success=success and true or false, station=station, role=role, blueprint=blueprint.name, macro=blueprint.macro, yard=yard.name, task=tostring(result or ""), queued=tonumber(queued) or 0, building=tonumber(building) or 0, reason=success and "X4_BUILD_TASK_ACCEPTED" or tostring(result or "X4_BUILD_TASK_REJECTED") })
+    local success, result, queued, building = queueEOCShipOrder(request.yardid, request.macro, "EOC Minimum " .. role)
+    raise("minimum.build.result", { success=success and true or false, station=station, role=role, blueprint=request.blueprint, macro=request.macro, yard=request.yard, task=tostring(result or ""), queued=tonumber(queued) or 0, building=tonumber(building) or 0, reason=success and "X4_BUILD_TASK_ACCEPTED" or tostring(result or "X4_BUILD_TASK_REJECTED") })
 end
 local function actionState(action)
     menu.actions[action] = menu.actions[action] or {
@@ -755,20 +773,24 @@ local function actionLabel(action, readyLabel, runningLabel)
 end
 
 local actionNextSteps = {
-    ["shipping.register"] = "Review Registered Ships, then run Scan Shipping Needs.",
-    ["shipping.scan"] = "Review Pending in Approval Required mode, or Registered Ships in Auto-Assign mode.",
-    ["shipping.approve"] = "Review Pending to confirm the completed row was removed.",
-    ["trade.review"] = "Review Fleet & Logistics > Trade Offers.",
-    ["station.auto"] = "Review Stations for any role that remains UNDEFINED.",
-    ["station.role"] = "Review the selected station, then open Diagnostics or Cases if attention is still required.",
-    ["diagnostics.goal"] = "Run Refresh Bounded Analysis to update recommendations.",
-    ["analysis.run"] = "Open Cases or View Stations Requiring Action.",
-    ["diagnostics.status"] = "Open the player Logbook > Tips to read the saved status.",
-    ["diagnostics.probe"] = "Read the mailbox result below; no additional authority was granted.",
-    ["diagnostics.proof"] = "Review the result and debug log for verification and automatic rollback.",
-    ["case.create"] = "Review the new player-requested case, then choose Diagnostics or the station workspace for the recommended test.",
-    ["case.close"] = "The player-requested case was closed. EOC-confirmed evidence remains separate and is not deleted.",
-    ["case.monitor"] = "Continue playing normally. EOC owns the retained test and will report when it has an answer.",
+    ["shipping.register"] = "Open Fleet & Logistics > Registered Ships. If eligible ships are listed, run Scan Shipping Needs once. If none are listed, assign or free a compatible player-owned trade/mining ship, reopen EOC, register again once, and then scan. Do not repeat registration without changing ship eligibility.",
+    ["shipping.scan"] = "Open Fleet & Logistics > Pending. In Approval Required mode, approve only the displayed exact assignment or do nothing. In Auto-Assign Registered mode, verify the result names the assigned ship and station; if no supported need was found, no repeat is required until station need or registered-ship availability changes.",
+    ["shipping.approve"] = "Open Fleet & Logistics > Pending and confirm the exact row is gone, then review Registered Ships for the named ship's assignment. If the row remains or the result is blocked, correct the stated ownership, registration, cargo, commander, or station condition and submit approval once more; otherwise do not repeat.",
+    ["trade.review"] = "Open Fleet & Logistics > EOC-Managed Offers. If the result reports verified offers, no repeat is required. If it reports blocked or removed records, correct the exact case, station rule, funds, range, or supplier condition named in the result, then run Review Trade Actions once after that condition changes.",
+    ["station.auto"] = "Open Stations and inspect the Role column. If no station remains UNDEFINED, no repeat is required. If a station remains UNDEFINED, select that station, choose its exact role manually, and confirm once; do not repeatedly run automatic assignment against the unchanged station list.",
+    ["station.role"] = "Review the selected station and confirm the requested role is displayed. If it is correct, no repeat is required. If the result is blocked or the old role remains, keep the same station selected, correct the ownership/identity condition stated in the result, and confirm the role change once more.",
+    ["diagnostics.goal"] = "Run Refresh Bounded Analysis once, then read the retained result on this page. Do not repeat unless the selected station, evidence, or requested goal changes.",
+    ["analysis.run"] = "Open Cases or View Stations Requiring Action and read the refreshed retained evidence. If the expected case is present, follow its exact Next Action. If no matching case exists, do not repeat immediately; continue normal operation and rerun only after station evidence changes.",
+    ["diagnostics.status"] = "Open Player Information > Logbook > Tips and read the saved status. This is a report-only job; no repeat is required unless you intentionally want a later snapshot after evidence changes.",
+    ["diagnostics.probe"] = "Read the retained mailbox result below. No gameplay change was authorized. If BLOCKED or EXPIRED, correct the named target/expiry condition and submit one new probe; if COMPLETE, no repeat is required.",
+    ["diagnostics.proof"] = "Read the retained verification and rollback fields below. If both are proven, no repeat is required. If either is NOT PROVEN or BLOCKED, do not authorize gameplay use; correct the exact missing proof and run the proof job once more.",
+    ["case.create"] = "Open the exact case now. Follow its Next Action once, then use its Verify Result page. If EOC opened an existing matching case, do not create another. If creation was blocked, satisfy the stated two-snapshot/evidence prerequisite before requesting once more.",
+    ["case.close"] = "No further action is required for this player-requested case. Do not repeat Close. EOC-confirmed evidence remains separate and will reappear only if later analysis still proves an active condition.",
+    ["case.monitor"] = "Do nothing and continue normal play. EOC owns the retained observation and will report the answer. Do not request another monitor or recheck while this result remains REQUESTED, CHECKING, WAITING, or IN PROGRESS.",
+    ["case.clearall"] = "Review Cases after the automatic fresh analysis finishes. If the list is empty, no repeat is required. Any cases that return are newly supported by current evidence; open them and follow their exact Next Action instead of clearing again.",
+    ["market.test"] = "Open the retained market-test result below. If the bounded EOC offer was created, leave it active for the stated operating cycle and do not create another. If blocked, correct the exact station, ware, funds, rule, range, or supplier condition named in the result, then submit one new test.",
+    ["market.test.remove"] = "If the result confirms removal, no further action or repeat is required. If blocked, verify the same station, ware, direction, and EOC-owned offer still exist, then retry removal once; ordinary player offers and station rules must remain untouched.",
+    ["minimum.build"] = "If X4 accepted the task, no repeat is required: the named player shipyard now owns normal resource delivery and construction. If blocked, open Fleet & Logistics > Fleet Staffing, correct the exact shortage, blueprint, shipyard, or native rejection named above, then allow the next bounded minimum scan; do not submit an extra manual EOC request.",
 }
 
 local actionResultRoutes = {
@@ -784,14 +806,32 @@ local actionResultRoutes = {
 
 local addButton
 
+function menu.jobOutcomeGuidance(action, result)
+    local value = string.upper(text(result, ""))
+    local meaning
+    if value == "WORKING" or string.find(value, "IN PROGRESS", 1, true) or string.find(value, "REQUESTED", 1, true) or string.find(value, "CHECKING", 1, true) or string.find(value, "WAITING", 1, true) then
+        meaning = "THIS JOB IS STILL RUNNING. EOC does not have an answer yet. Do not press the same button again."
+    elseif string.find(value, "BLOCKED", 1, true) or string.find(value, "FAILED", 1, true) or string.find(value, "REJECT", 1, true) or string.find(value, "UNAVAILABLE", 1, true) then
+        meaning = "THIS JOB DID NOT FINISH. The result above names the problem that stopped it. Nothing was proven successful."
+    elseif string.find(value, "COMPLETE", 1, true) or string.find(value, "VERIFIED", 1, true) or string.find(value, "ACCEPTED", 1, true) or string.find(value, "APPLIED", 1, true) or string.find(value, "ASSIGNED", 1, true) or string.find(value, "SAVED", 1, true) or string.find(value, "CLOSED", 1, true) then
+        meaning = "THIS JOB FINISHED. The result above is the final answer. Do not repeat it just to get the same answer again."
+    else
+        meaning = "EOC RETURNED AN ANSWER. Read the result above. If information is missing, EOC does not know the answer yet and will not pretend the job succeeded."
+    end
+    return meaning, actionNextSteps[action] or "If the result says COMPLETE, stop. If it names a problem, fix that problem first. Run the job one more time only after something has changed."
+end
+
 local function actionResult(tableWidget, action, purpose)
     local state = actionState(action)
     local row = tableWidget:addRow(false)
     local message = state.result and ("RESULT: " .. state.result) or ("WHAT THIS DOES: " .. purpose)
     row[1]:setColSpan(4):createText(message, { wordwrap = true })
-    if state.result and actionNextSteps[action] then
+    if state.result then
+        local meaning, nextStep = menu.jobOutcomeGuidance(action, state.result)
         row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText("DO THIS NEXT: " .. actionNextSteps[action], { wordwrap = true })
+        row[1]:setColSpan(4):createText("WHAT THIS MEANS: " .. meaning, { wordwrap = true })
+        row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText("WHAT TO DO NEXT: " .. nextStep, { wordwrap = true })
     end
     local route = state.result and actionResultRoutes[action] or nil
     if route then
@@ -827,7 +867,9 @@ function menu.adaptiveListWindow(total, pageKey, options)
     if measured and type(measuredHeight) == "number" then rowPitch = math.max(rowPitch, Helper.scaleY(Helper.standardTextOffsety) + measuredHeight) end
     rowPitch = math.max(1, rowPitch + Helper.borderSize)
     local contentPixels = tonumber(options.contentPixels) or tonumber(menu.listContentHeight) or Helper.scaleY(config.maxHeight)
-    local fixedRows = math.max(0, tonumber(options.fixedRows) or 0)
+    -- Build 343 adds one heading and three plain-language guide rows to every
+    -- main page. Reserve those four shared rows for every bounded list.
+    local fixedRows = math.max(0, tonumber(options.fixedRows) or 0) + 4
     local rowUnits = math.max(1, tonumber(options.rowUnits) or 1)
     local columns = math.max(1, tonumber(options.columns) or 1)
     local pixelUnits = math.max(1, math.floor(contentPixels / rowPitch) - fixedRows)
@@ -986,8 +1028,8 @@ local function manualNextAction(caseData, rows)
             elseif check.label == "STATION OPERATING FUNDS" then local required = math.max(0, ((tonumber(v(caseData, 30, 0)) or 0) * (tonumber(v(caseData, 21, 0)) or 0)) - (tonumber(v(caseData, 32, 0)) or 0)); return "Open the station Information account and transfer at least " .. formatNumber(required) .. " Cr for the immediate purchase. EOC will not move player credits."
             elseif check.label == "REACHABLE SUPPLY" then return "Open the station buy offer for " .. text(v(caseData, 17, v(caseData, 4, "the required ware"))) .. " and verify trade rule, price, and manager range permit a supplier."
             elseif check.label == "STATION TRADER" then return "Assign one operational trader compatible with " .. text(v(caseData, 17, v(caseData, 4, "the required ware"))) .. " to " .. text(v(caseData, 1, "the station")) .. "."
-            elseif check.label == "LOCAL PRODUCTION" and v(caseData, 29, false) then return "Local production is inactive, but a manual pause is not confirmed. Investigate root cause before changing the module."
-            elseif check.label == "PRODUCTION INPUTS" then return "Restore the confirmed missing production input: " .. text(v(caseData, 28, "review station inputs")) .. "." end
+            elseif check.label == "LOCAL PRODUCTION" and v(caseData, 29, false) then return "1. Open the station's Logical Overview. 2. Find the production modules for " .. text(v(caseData, 4, "this ware")) .. ". 3. Check whether the modules are paused, missing workers, missing energy, or waiting for an input. 4. Fix the problem you find. 5. Let one normal production cycle finish."
+            elseif check.label == "PRODUCTION INPUTS" then return "1. Open the station's Logical Overview. 2. Find " .. text(v(caseData, 28, "the missing production input")) .. ". 3. Restore its buy offer, delivery, or local production. 4. Wait until the input reaches the station. 5. Let one normal production cycle finish." end
         end
     end
     local caseType = string.upper(text(v(caseData, 3, "")))
@@ -1112,6 +1154,30 @@ local function rootCauseAssessment(caseData, rows)
     return "PROBABLE", text(v(caseData, 6, "No single blocker is confirmed.")), "Ask EOC once for verification. EOC will own the later comparison and return the answer before recommending a station change.", facts, unknowns
 end
 
+function menu.backgroundTestInstruction(backgroundTest, caseData, checks)
+    local state = string.upper(text(backgroundTest and backgroundTest.status, "UNKNOWN"))
+    local station = text(v(caseData, 1, "the selected station"))
+    local subject = text(v(caseData, 4, "the selected subject"))
+    local baseline = formatNumber(backgroundTest and backgroundTest.baseline or "unavailable")
+    local samples = formatNumber(backgroundTest and backgroundTest.samples or 0)
+    local result = text(backgroundTest and backgroundTest.result, "No result was returned.")
+    local header = "WHAT EOC TESTED: " .. subject .. " at " .. station .. ".\nSTARTING VALUE: " .. baseline .. ". COMPLETED CHECKS: " .. samples .. "."
+    if state == "REQUESTED" or state == "CHECKING" or state == "WAITING" then
+        return header .. "\nWHAT THIS MEANS: The test is still running. EOC does not have an answer yet.\nWHAT TO DO NOW: 1. Keep playing normally. 2. Do not press the test button again. 3. Do not open Station Build mode. 4. Wait for TEST COMPLETE. EOC will update this page for you."
+    elseif state == "RESOLVED" or state == "SUCCESS" then
+        return header .. "\nRESULT: THE PROBLEM IS FIXED. " .. result .. "\nWHAT TO DO NOW: 1. Do not run this test again. 2. Return to Guided Recovery. 3. Close the case if EOC shows no other problem for it. Station Build mode is safe now."
+    elseif state == "IMPROVING" or state == "PARTIAL" then
+        return header .. "\nRESULT: THE STATION IS IMPROVING, BUT THE PROBLEM IS NOT FIXED YET. " .. result .. "\nWHAT TO DO NOW: 1. Leave the current fix and station orders alone. 2. Let one more normal operating cycle finish. 3. Return here and run this test one more time. 4. Follow the new result. Station Build mode is safe now."
+    elseif state == "UNCHANGED" then
+        return header .. "\nRESULT: NOTHING IMPROVED. " .. result .. "\nSTEPS TO FIX IT: " .. manualNextAction(caseData, checks) .. "\nWHEN THAT IS DONE: Return here and run this test one more time. Do not run it now. Station Build mode is safe now."
+    elseif state == "WORSENING" or state == "FAILED" then
+        return header .. "\nRESULT: THE PROBLEM GOT WORSE OR THE FIX FAILED. " .. result .. "\nSTEPS TO FIX IT: " .. manualNextAction(caseData, checks) .. "\nWHEN THAT IS DONE: Let one normal operating cycle finish, then run this test one time. Do not run it now. Station Build mode is safe unless the listed fix uses it."
+    elseif state == "BLOCKED" or state == "ABORTED" or string.find(state, "INSUFFICIENT", 1, true) then
+        return header .. "\nRESULT: EOC COULD NOT FINISH THE TEST. " .. result .. "\nWHAT TO DO NOW: 1. Open Next Action. 2. Run Fresh Empire Analysis once. 3. If this case disappears, stop; there is no proven problem to test. 4. If this case returns, complete the steps shown in Next Action. 5. Let one normal operating cycle finish. 6. Run this test one more time. Station Build mode is safe now."
+    end
+    return header .. "\nRESULT: EOC RECEIVED A RESULT IT CANNOT USE. " .. result .. "\nWHAT TO DO NOW: 1. Do not run the test again. 2. Open Next Action. 3. Run Fresh Empire Analysis once. 4. Follow the steps it gives you. 5. Run this test again only after the station condition changes. Station Build mode is safe now."
+end
+
 local function analysisComplete()
     menu.analysisRunning = false
     menu.analysisStatus = "ANALYSIS COMPLETE"
@@ -1167,7 +1233,7 @@ local function reportSaved()
     menu.reportOutput = text(menu.pendingReportText or "Report saved to Tips.")
     local latest = menu.reports and menu.reports[1]
     local unchanged = latest and text(v(latest, 1, "")) == menu.lastReport and text(v(latest, 2, "")) == menu.reportOutput
-    menu.reportStatus = unchanged and "REPORT UNCHANGED — LATEST COPY RETAINED" or "REPORT SAVED TO TIPS"
+    menu.reportStatus = unchanged and "REPORT UNCHANGED — LATEST COPY RETAINED. WHAT THIS MEANS: the new job returned the same report, so no duplicate was archived. DO THIS NEXT: read the selected report; no repeat is required until source evidence changes." or "REPORT SAVED TO TIPS. WHAT THIS MEANS: report generation completed and the newest retained output is selected below. DO THIS NEXT: read it now; this report-only job requires no repeat unless you intentionally want a later snapshot after evidence changes."
     menu.reportStatusUntil = getElapsedTime() + 4
     if not unchanged then
         table.insert(menu.reports, 1, {
@@ -1242,7 +1308,7 @@ local function constructionRefreshComplete()
     menu.activeConstructionSnapshot = snapshot
     menu.constructionRefresh = nil
     menu.constructionRefreshing = false
-    menu.constructionStatus = "REFRESH COMPLETE: Latest station construction facts loaded."
+    menu.constructionStatus = "REFRESH COMPLETE: Latest station construction facts loaded. WHAT THIS MEANS: this was a read-only job and no construction setting changed. DO THIS NEXT: read every checklist row below. If all required rows are MET, no repeat is required; if a row is NOT FUNDED, STALLED, or BLOCKED, complete that row's exact action and refresh exactly once afterward."
     -- A construction snapshot may arrive after the player has followed a newer
     -- route. Retain the data, but never let that stale completion redraw or
     -- replace the page the player is now using.
@@ -1256,8 +1322,50 @@ local function constructionFundingResult(_, value)
     local result = text(value or "Construction action completed.")
     menu.constructionFundingPending = nil
     if string.sub(result, 1, 29) == "CONFIRM BUILDER REASSIGNMENT:" then menu.constructionBuilderPending = true else menu.constructionBuilderPending = nil end
-    menu.constructionStatus = result
+    local upper = string.upper(result)
+    local nextStep
+    if string.find(upper, "CONFIRM BUILDER REASSIGNMENT", 1, true) then
+        nextStep = "WHAT THIS MEANS: EOC found a builder but has not changed its assignment. DO THIS NEXT: verify the named ship and station, then select CONFIRM BUILDER REASSIGNMENT once or leave it unchanged."
+    elseif string.find(upper, "BLOCKED", 1, true) or string.find(upper, "FAILED", 1, true) then
+        nextStep = "WHAT THIS MEANS: the requested funding or builder action was not applied. DO THIS NEXT: correct the exact queue, ownership, funds, builder, or station condition named above, then submit the action exactly once; do not repeat unchanged."
+    else
+        nextStep = "WHAT THIS MEANS: X4 returned a terminal construction-action result. DO THIS NEXT: refresh Construction Status exactly once and verify the corresponding budget or builder checklist row. If it is MET, no repeat is required; otherwise follow that row's stated correction."
+    end
+    menu.constructionStatus = result .. " " .. nextStep
     if menu.frame then menu.refresh() end
+end
+function menu.backgroundTestResultBegin()
+    menu.backgroundTestResultIncoming = {}
+end
+function menu.backgroundTestResultState()
+    if not menu.backgroundTestResultIncoming then menu.backgroundTestResultBegin() end
+    return menu.backgroundTestResultIncoming
+end
+function menu.backgroundTestResultStation(_, value) menu.backgroundTestResultState().station = text(value, "") end
+function menu.backgroundTestResultSubject(_, value) menu.backgroundTestResultState().subject = text(value, "") end
+function menu.backgroundTestResultStatus(_, value) menu.backgroundTestResultState().status = text(value, "UNKNOWN") end
+function menu.backgroundTestResultText(_, value) menu.backgroundTestResultState().result = text(value, "No result is available.") end
+function menu.backgroundTestResultRequested(_, value) menu.backgroundTestResultState().requested = tonumber(value) or 0 end
+function menu.backgroundTestResultCompleted(_, value) menu.backgroundTestResultState().completed = tonumber(value) or 0 end
+function menu.backgroundTestResultBaseline(_, value) menu.backgroundTestResultState().baseline = tonumber(value) or 0 end
+function menu.backgroundTestResultSeverity(_, value) menu.backgroundTestResultState().severity = text(value, "UNKNOWN") end
+function menu.backgroundTestResultSamples(_, value) menu.backgroundTestResultState().samples = tonumber(value) or 0 end
+function menu.backgroundTestResultCommit()
+    local result = menu.backgroundTestResultState()
+    local station, subject = text(result.station, ""), text(result.subject, "")
+    if station == "" or subject == "" then
+        DebugError("[JKEOC][B340][BACKGROUND_RESULT_REJECTED] reason=MISSING_IDENTITY station=" .. tostring(station) .. " subject=" .. tostring(subject))
+        menu.backgroundTestResultIncoming = nil
+        return
+    end
+    menu.backgroundTests = menu.backgroundTests or {}
+    menu.backgroundTests[station .. "|" .. subject] = result
+    menu.backgroundTestResultIncoming = nil
+    if menu.frame and menu.page == "diagnostics" then
+        menu.refresh()
+    else
+        DebugError("[JKEOC][B340][BACKGROUND_RESULT_RETAINED_NO_REDRAW] current_page=" .. tostring(menu.page) .. " station=" .. tostring(station) .. " subject=" .. tostring(subject) .. " status=" .. tostring(result.status))
+    end
 end
 function menu.kpiRefreshBegin()
     menu.kpiRefreshIncoming = { stations = {}, station = {}, shipyards = {}, shipyard = {} }
@@ -1417,6 +1525,17 @@ local function init()
     RegisterEvent(menu.name .. ".construction.ware.commit", constructionWareCommit)
     RegisterEvent(menu.name .. ".construction.refresh.complete", constructionRefreshComplete)
     RegisterEvent(menu.name .. ".construction.funding.result", constructionFundingResult)
+    RegisterEvent(menu.name .. ".background.result.begin", menu.backgroundTestResultBegin)
+    RegisterEvent(menu.name .. ".background.result.station", menu.backgroundTestResultStation)
+    RegisterEvent(menu.name .. ".background.result.subject", menu.backgroundTestResultSubject)
+    RegisterEvent(menu.name .. ".background.result.status", menu.backgroundTestResultStatus)
+    RegisterEvent(menu.name .. ".background.result.text", menu.backgroundTestResultText)
+    RegisterEvent(menu.name .. ".background.result.requested", menu.backgroundTestResultRequested)
+    RegisterEvent(menu.name .. ".background.result.completed", menu.backgroundTestResultCompleted)
+    RegisterEvent(menu.name .. ".background.result.baseline", menu.backgroundTestResultBaseline)
+    RegisterEvent(menu.name .. ".background.result.severity", menu.backgroundTestResultSeverity)
+    RegisterEvent(menu.name .. ".background.result.samples", menu.backgroundTestResultSamples)
+    RegisterEvent(menu.name .. ".background.result.commit", menu.backgroundTestResultCommit)
     RegisterEvent(menu.name .. ".kpi.refresh.begin", menu.kpiRefreshBegin)
     RegisterEvent(menu.name .. ".kpi.time", menu.kpiGameTime)
     RegisterEvent(menu.name .. ".kpi.playercredits", menu.kpiPlayerCredits)
@@ -1432,6 +1551,11 @@ local function init()
     RegisterEvent(menu.name .. ".minimum.build.station", minimumBuildStation)
     RegisterEvent(menu.name .. ".minimum.build.role", minimumBuildRole)
     RegisterEvent(menu.name .. ".minimum.build.commit", minimumBuildCommit)
+    RegisterEvent(menu.name .. ".minimum.build.blueprintname", menu.minimumBuildBlueprintName)
+    RegisterEvent(menu.name .. ".minimum.build.macro", menu.minimumBuildMacro)
+    RegisterEvent(menu.name .. ".minimum.build.yardname", menu.minimumBuildYardName)
+    RegisterEvent(menu.name .. ".minimum.build.yardid", menu.minimumBuildYardId)
+    RegisterEvent(menu.name .. ".minimum.build.execute", menu.minimumBuildExecute)
     RegisterEvent(menu.name .. ".rawsource.station", menu.rawSourceStation)
     RegisterEvent(menu.name .. ".rawsource.ware", menu.rawSourceWare)
     RegisterEvent(menu.name .. ".rawsource.status", menu.rawSourceStatus)
@@ -1673,7 +1797,7 @@ addButton = function(row, column, label, handler, active, background, height, te
         -- established that positive y moves this exact text block upward.
         textProperties.y = Helper.standardTextHeight / 2
     end
-    row[column]:createButton(properties):setText(label, textProperties)
+    row[column]:createButton(properties):setText(menu.playerDisplayText(label), textProperties)
     if feedbackActive then menu.oneCycleFeedback[feedbackKey] = math.max(0, (tonumber(menu.oneCycleFeedback[feedbackKey]) or 0) - 1) end
     row[column].handlers.onClick = function()
         if feedbackActive then return end
@@ -1713,7 +1837,7 @@ local function addModeButton(row, column, label, selected, enabled, handler, sta
     row[column]:createButton({
         active = isEnabled,
         bgColor = background,
-    }):setText(label)
+    }):setText(menu.playerDisplayText(label))
     row[column].handlers.onClick = function()
         acknowledgeClick(label)
         -- Mode handlers explicitly rebuild after updating their state.
@@ -1740,7 +1864,7 @@ local function addStationChoiceButton(row, column, label, current, confirming, h
     elseif confirming then
         background = pendingChoiceBackground
     end
-    row[column]:createButton({ active = true, bgColor = background }):setText(label)
+    row[column]:createButton({ active = true, bgColor = background }):setText(menu.playerDisplayText(label))
     row[column].handlers.onClick = function()
         acknowledgeClick(label)
         -- Apply the station choice before its handler performs the one required rebuild.
@@ -1755,7 +1879,7 @@ local function addTabButton(row, column, label, page)
         properties.bgColor = activeTabBackground
     end
 
-    row[column]:createButton(properties):setText(label)
+    row[column]:createButton(properties):setText(menu.playerDisplayText(label))
     row[column].handlers.onClick = function()
         menu.resetTabToRoot(page)
         DebugError("[JKEOC][B313][TAB_ROOT] page=" .. tostring(page) .. " explicit_tab_click=1")
@@ -1775,10 +1899,36 @@ end
 
 local function section(tableWidget, label)
     local row = tableWidget:addRow(false)
-    row[1]:setColSpan(4):createText(label, {
+    row[1]:setColSpan(4):createText(menu.playerDisplayText(label), {
         font = Helper.headerFont,
         fontsize = Helper.standardFontSize + 2,
     })
+end
+
+menu.playerPageGuides = {
+    dashboard = { purpose = "This page shows the most important problems across your stations.", steps = "1. Read WHAT NEEDS ATTENTION. 2. Open the first critical or warning item. 3. Follow the Next Action shown for that item.", finish = "If no station needs attention, keep playing. You do not need to press anything." },
+    stations = { purpose = "This page lets you choose one station, see its condition, and control only that station.", steps = "1. Choose a station on the left. 2. Read WHAT NEEDS ATTENTION. 3. Use the named button for the action you want. 4. Read the result before pressing another button.", finish = "Stop when the result says COMPLETE or when no action is required." },
+    kpi = { purpose = "This page turns your empire data into simple totals and trends. It does not change your game.", steps = "1. Choose a report at the top. 2. Read the newest result below. 3. Open the named station or case only when the result tells you to act.", finish = "If the result shows no warning, there is nothing else to do." },
+    supply = { purpose = "This page checks whether your stations make enough resources for your own empire.", steps = "1. Choose the view you want. 2. Press RUN THIS ANALYSIS. 3. Read the result. 4. Open a resource card for the exact shortage and next step.", finish = "Do not keep refreshing. Run it again only after production, demand, storage, or station selection changes." },
+    fleet = { purpose = "This page shows which stations need ships and which registered ships EOC may use.", steps = "1. Read Coverage first. 2. Open Pending Assignments if a decision is waiting. 3. Approve only the exact ship and station you want. 4. Read the result.", finish = "If no need or pending assignment is shown, do nothing." },
+    diagnostics = { purpose = "This page explains one station problem and tells you exactly what to check or fix.", steps = "1. Open Next Action. 2. Complete the listed steps. 3. Open Verify Result. 4. Ask EOC once and wait for TEST COMPLETE.", finish = "Never repeat a test until its result tells you what must change first." },
+    solution = { purpose = "This page helps you plan a permanent production solution after simpler fixes have been checked.", steps = "1. Choose a supported case. 2. Complete each required check. 3. Review the proposed production chain. 4. Build only if you agree with the plan.", finish = "EOC does not place modules or spend credits from this page." },
+    construction = { purpose = "This page shows active station construction, missing build resources, funding, and builder status.", steps = "1. Choose the station. 2. Read the first blocked or waiting item. 3. Use the exact funding, storage, or builder action shown. 4. Read the returned result.", finish = "If construction is moving and no blocker is shown, leave it alone." },
+    cases = { purpose = "This page keeps a list of station problems that still need attention or proof of recovery.", steps = "1. Open a case. 2. Read why it is open. 3. Follow its Next Action. 4. Use Verify Result only after that action is complete.", finish = "Close a player-created case only when you are finished with it. EOC evidence may return if the problem still exists." },
+    reports = { purpose = "This page stores completed EOC reports so you can read them again.", steps = "1. Choose a report. 2. Read the full result. 3. Use its named menu or action only if it tells you something needs attention.", finish = "Reports do not need to be generated again until you want newer information." },
+    settings = { purpose = "This page controls what EOC is allowed to do automatically across your empire.", steps = "1. Read each authority before changing it. 2. Choose only the access you want EOC to have. 3. Save the settings. 4. Read the confirmation.", finish = "Leave a setting off when you do not want EOC to perform that action." },
+}
+
+function menu.addPlayerPageGuide(tableWidget, page)
+    local guide = menu.playerPageGuides[page]
+    if not guide then return end
+    section(tableWidget, "START HERE")
+    local row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("WHAT THIS PAGE DOES: " .. guide.purpose, { wordwrap = true })
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("WHAT TO DO: " .. guide.steps, { wordwrap = true, color = navigationStoryColor })
+    row = tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("WHEN YOU ARE DONE: " .. guide.finish, { wordwrap = true })
 end
 
 local function checklistPlanId(caseData)
@@ -3598,7 +3748,7 @@ function menu.supplySelectedStationView(tableWidget, view, current, previous)
     editRow("PROPOSED SELL PRICE", "sell")
     editRow("PROPOSED STORAGE", "storage")
     local guidance = tableWidget:addRow(false)
-    guidance[1]:setColSpan(4):createText("EDITING WORKFLOW: Current values on the left are the settings X4 reports for this station. EOC Suggested values on the far right are advisory only and do not replace your settings. After typing in each Proposed field, press TAB to commit that field and move to the next one. Then select PREVIEW; Preview validates the committed values and makes no station change. A separate Confirm step is required to apply them.", { wordwrap = true, color = investigationNeutralColor })
+    guidance[1]:setColSpan(4):createText("HOW TO CHANGE THESE SETTINGS: 1. Read the current values on the left. 2. Read EOC's suggestions on the right. Suggestions do not change the station. 3. Type each value you want into Proposed. 4. Press TAB after each value. 5. Select PREVIEW. Preview changes nothing. 6. Check the preview, then select CONFIRM to apply it.", { wordwrap = true, color = investigationNeutralColor })
     local buy, sell, storage = tonumber(draft.buy), tonumber(draft.sell), tonumber(draft.storage)
     local valid = buy and sell and storage and buy >= record.minprice and buy <= record.maxprice and sell >= record.minprice and sell <= record.maxprice and sell - buy >= minimumSpread and storage >= 1 and (not physicalWareLimit or storage <= physicalWareLimit)
     local bounds = tableWidget:addRow(false)
@@ -3876,7 +4026,7 @@ local function solutionPlannerCenter(tableWidget)
     end
     if (readiness.notReady or 0) > 0 then
         local blocked = tableWidget:addRow(false)
-        blocked[1]:setColSpan(4):createText("RECOMMENDATION BLOCKED: Correct the NOT READY condition and run a fresh Diagnostics verification before planning permanent construction. EOC will not show a build sequence from failed prerequisites.", { wordwrap = true, color = investigationFailColor })
+        blocked[1]:setColSpan(4):createText("PLAN NOT READY: 1. Read the failed check above. 2. Fix that exact problem. 3. Open Diagnostics and run Fresh Empire Analysis once. 4. Return here only after the check passes. EOC will not suggest construction while a required check is failing.", { wordwrap = true, color = investigationFailColor })
         local returnRow = tableWidget:addRow(true)
         returnRow[1]:setColSpan(4)
         addButton(returnRow, 1, "RETURN TO DIAGNOSTICS", function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end, true)
@@ -3966,7 +4116,7 @@ local function solutionPlannerCenter(tableWidget)
     end
     addButton(checklistNav, 4, "NEXT", function() menu.plannerChecklistPage = math.min(pageCount, menu.plannerChecklistPage + 1); menu.refresh() end, menu.plannerChecklistPage < pageCount)
     local boundary = tableWidget:addRow(false)
-    boundary[1]:setColSpan(4):createText(nativePlan and nativePlan.state == "OWNED" and "EVIDENCE BOUNDARY: X4 has proven the owned module macro, blueprint ware, production method, hourly output, full primary-input recipe, workforce requirement, and capacity count shown above. Plot position, module connection compatibility, builder, build-storage inventory, final construction cost, and future storage allocation remain authoritative in the vanilla Station Build Plan. EOC will not alter it." or "EVIDENCE BOUNDARY: X4 did not return a complete owned module/recipe chain. The vanilla Station Build Plan is authoritative. EOC will not infer or alter it.", { wordwrap = true, color = investigationUnknownColor })
+    boundary[1]:setColSpan(4):createText(nativePlan and nativePlan.state == "OWNED" and "WHAT EOC KNOWS: X4 confirmed that you own this module and returned its recipe, output, workers and capacity. WHAT EOC DOES NOT KNOW: plot position, module connections, builder, build-storage supplies, final cost and future storage space. Check those items in the normal Station Build Plan. EOC will not change the plan." or "WHAT EOC KNOWS: X4 did not return a complete owned module and recipe. WHAT TO DO: Open the normal Station Build Plan and choose the module there. EOC will not guess or change the plan.", { wordwrap = true, color = investigationUnknownColor })
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(2); addButton(row, 1, "RETURN TO COMMAND SUMMARY", function() menu.solutionDeepDiveKey = nil; menu.refresh() end, true)
     row[3]:setColSpan(2); addButton(row, 3, "RETURN TO DIAGNOSTICS", function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end, true)
@@ -4245,7 +4395,7 @@ local function casesCenter(tableWidget)
     end
     section(tableWidget, "SUPPORTING ISSUE HISTORY  |  " .. #incidentOrder .. " SUBJECT(S) / " .. #selectedObservations .. " RETAINED EVIDENCE RECORD(S)")
     if #incidentOrder == 0 then
-        row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("No retained issue record is available for this station. Run a fresh Empire Analysis to reconcile its profile.", { wordwrap = true })
+        row = tableWidget:addRow(false); row[1]:setColSpan(4):createText("EOC has no saved problem for this station. Run Fresh Empire Analysis once to update its information.", { wordwrap = true })
     else
         local firstIncident, lastIncident = menu.adaptiveListNavigation(tableWidget, "cases.incidents", #incidentOrder, { fixedRows = 24, rowUnits = 7, maximum = 1 })
         for incidentIndex = firstIncident, lastIncident do
@@ -5308,7 +5458,7 @@ local function fleetCenter(tableWidget)
                     elseif persisted or orderState.task then
                         orderMessage = "ORDER STATUS: SUBMITTED. EOC will not submit another Medium or Large order for this station and cargo need. The player-owned shipyard consumes normal hull and equipment resources; missing resources delay construction."
                     elseif orderState.error then
-                        orderMessage = "ORDER STATUS: NOT SUBMITTED. " .. text(orderState.error)
+                        orderMessage = "ORDER STATUS: NOT SUBMITTED. " .. text(orderState.error) .. " WHAT THIS MEANS: no ship was ordered. DO THIS NEXT: correct the named blueprint, shipyard, ownership, loadout, resource, or native rejection condition, then preview and confirm exactly one ship once. Do not repeat against the unchanged condition."
                     elseif orderState.preview then
                         orderMessage = "CONFIRMATION REQUIRED: The next click queues exactly one " .. (selectedSize == "M" and "Medium" or "Large") .. " ship with an X4-generated, owned-blueprint loadout. No shipyard screen opens. This does not enable automatic or repeat production."
                     else
@@ -5323,7 +5473,7 @@ local function fleetCenter(tableWidget)
                     else
                         availability = "EOC found no owned Medium or Large blueprint matching " .. cargo .. " logistics."
                     end
-                    unavailable[1]:setColSpan(4):createText("SHIP SIZE: " .. availability .. " No order can be previewed or submitted.", { wordwrap = true })
+                    unavailable[1]:setColSpan(4):createText("SHIP SIZE: " .. availability .. " EOC cannot show or send this order. Nothing changed. WHAT TO DO: 1. Buy or research one matching Medium or Large ship blueprint. 2. Make sure you own a shipyard that can build it. 3. Return to this recommendation. 4. Preview the order once. Do not repeat this job until one of those missing items is fixed.", { wordwrap = true })
                 end
 
                 local reason = tableWidget:addRow(false)
@@ -5510,7 +5660,7 @@ local function diagnosticsCenter(tableWidget)
             row = tableWidget:addRow(false)
             local observations = stationObservations(station)
             local health = string.upper(text(v(station, 3, "MONITORING")))
-            row[1]:setColSpan(4):createText((health == "CHRONIC" and "This station is CHRONIC because retained observations reached SYSTEMIC status, but no confirmed recovery case is active. Diagnostics requires one exact working case. Open Cases to review every contributing issue and create an issue-specific player investigation." or "No confirmed recovery case is active for this station. Open Cases to review its " .. #observations .. " retained observation(s) or request an investigation."), { wordwrap = true, color = health == "CHRONIC" and investigationUnknownColor or nil })
+            row[1]:setColSpan(4):createText((health == "CHRONIC" and "This station has had the same serious problem for several checks, but no recovery case is open. Open Cases, choose the exact problem you want to solve, and create one player investigation for it." or "No recovery case is open for this station. Open Cases to review its " .. #observations .. " saved observation(s) or start one investigation."), { wordwrap = true, color = health == "CHRONIC" and investigationUnknownColor or nil })
             row = tableWidget:addRow(true); row[1]:setColSpan(4)
             addButton(row, 1, "OPEN THIS STATION'S CASE REVIEW", function() menu.caseScope = "station"; menu.caseSeverity = "all"; menu.selectedCase = 1; menu.casePage = 1; menu.diagnosticCase = nil; menu.page = "cases"; menu.activeTab = "cases"; menu.refresh() end, true)
             return
@@ -5663,7 +5813,7 @@ local function diagnosticsCenter(tableWidget)
         row = tableWidget:addRow(false); row[1]:setColSpan(4):createText(optionProblem and ("EVIDENCE: " .. optionProblem.evidence) or "No supported recovery test is currently required.", { wordwrap = true })
         if marketEligible then
             section(tableWidget, "OPTION 1 - TEST OUTSIDE TRADE WITHOUT CHANGING YOUR POLICY")
-            row = tableWidget:addRow(false); row[1]:setColSpan(4):createText(marketType == "BUY" and "Creates one bounded NPC-enabled EOC BUY offer. Your existing Empire-only ware rule and ordinary offers remain untouched." or "Creates one bounded NPC-enabled EOC SELL offer for evidenced excess. Your existing ware rule and ordinary offers remain untouched.", { wordwrap = true, color = navigationStoryColor })
+            row = tableWidget:addRow(false); row[1]:setColSpan(4):createText(marketType == "BUY" and "Creates one limited EOC buy offer that allows NPC traders. Your Empire-only rule and normal offers will not change." or "Creates one limited EOC sell offer for the proven extra stock. Your ware rule and normal offers will not change.", { wordwrap = true, color = navigationStoryColor })
             row = tableWidget:addRow(true); row[1]:setColSpan(2); row[3]:setColSpan(2)
             local marketState = actionState("market.test")
             if menu.marketActionKey == marketKey and marketState.running then
@@ -5704,7 +5854,7 @@ local function diagnosticsCenter(tableWidget)
             local detailChecks = prerequisiteRows(diagnosticCase)
             local detailConfidence, detailCause, detailRecommendation = rootCauseAssessment(diagnosticCase, detailChecks)
             row = tableWidget:addRow(false)
-            row[1]:setColSpan(4):createText(menu.lastUpdated and ("EVIDENCE SNAPSHOT TIME: " .. menu.lastUpdated .. ". These values remain unchanged until another analysis completes.") or "EVIDENCE SNAPSHOT TIME: X4 did not provide a completed-analysis timestamp with this retained case. The stock, allocation, action, and check values below are retained evidence, not a live reading.", { wordwrap = true, color = menu.lastUpdated and nil or investigationUnknownColor })
+            row[1]:setColSpan(4):createText(menu.lastUpdated and ("LAST COMPLETED CHECK: " .. menu.lastUpdated .. ". These numbers will not change until another analysis finishes.") or "LAST COMPLETED CHECK: time unavailable. The numbers below were saved with this case. They are not a live reading.", { wordwrap = true, color = menu.lastUpdated and nil or investigationUnknownColor })
             if menu.caseEvidenceHandoffMessage and menu.caseEvidenceKey == verificationKey then
                 row = tableWidget:addRow(false)
                 row[1]:setColSpan(4):createText(menu.caseEvidenceHandoffMessage, { wordwrap = true, color = workingCaseEvidenceMissing and investigationUnknownColor or investigationPassColor })
@@ -5785,28 +5935,50 @@ local function diagnosticsCenter(tableWidget)
         row = tableWidget:addRow(true)
         row[1]:setColSpan(2)
         local backgroundTest = menu.backgroundTests and menu.backgroundTests[verificationKey] or nil
-        local backgroundPending = backgroundTest and (backgroundTest.status == "REQUESTED" or backgroundTest.status == "CHECKING" or backgroundTest.status == "WAITING")
-        addButton(row, 1, workingEvidenceMissing and "RETURN TO NEXT ACTION — EVIDENCE IS MISSING" or (backgroundPending and "EOC TEST IN PROGRESS — DO NOT ENTER STATION BUILD MODE" or "ASK EOC TO VERIFY — RETURN WITH THE ANSWER"), function()
+        menu.backgroundTestAcknowledged = menu.backgroundTestAcknowledged or {}
+        local backgroundState = string.upper(text(backgroundTest and backgroundTest.status, ""))
+        local backgroundPending = backgroundTest and (backgroundState == "REQUESTED" or backgroundState == "CHECKING" or backgroundState == "WAITING")
+        local backgroundFinished = backgroundTest and not backgroundPending
+        local backgroundSuccess = backgroundState == "RESOLVED" or backgroundState == "SUCCESS"
+        local backgroundCanRetest = backgroundFinished and menu.backgroundTestAcknowledged[verificationKey] and not backgroundSuccess
+        local backgroundFinishedLabel = backgroundSuccess and "RETURN TO GUIDED RECOVERY - TEST COMPLETE"
+            or (backgroundState == "IMPROVING" or backgroundState == "PARTIAL") and "RETURN TO NEXT ACTION - WAIT ONE CYCLE"
+            or (backgroundState == "UNCHANGED" or backgroundState == "WORSENING" or backgroundState == "FAILED") and "OPEN NEXT ACTION - FIX THE PROBLEM"
+            or (backgroundState == "BLOCKED" or backgroundState == "ABORTED" or string.find(backgroundState, "INSUFFICIENT", 1, true)) and "OPEN NEXT ACTION - RUN FRESH ANALYSIS"
+            or "OPEN NEXT ACTION - REFRESH THE INFORMATION"
+        local backgroundButtonLabel = workingEvidenceMissing and "OPEN NEXT ACTION - EOC NEEDS MORE INFORMATION"
+            or (backgroundPending and "TEST RUNNING - WAIT FOR EOC"
+            or (backgroundCanRetest and "RUN ONE NEW TEST - ONLY AFTER YOU HAVE FINISHED THE STEPS"
+            or (backgroundFinished and backgroundFinishedLabel
+            or "ASK EOC TO RUN THIS TEST ONCE")))
+        addButton(row, 1, backgroundButtonLabel, function()
             if workingEvidenceMissing then menu.diagnosticView = "recovery"; menu.refresh(); return end
+            if backgroundFinished and not backgroundCanRetest then
+                menu.backgroundTestAcknowledged[verificationKey] = true
+                menu.diagnosticView = "recovery"
+                menu.refresh()
+                return
+            end
             raise("verification.request", { station = stationName, subject = diagnosticSubject, severity = text(v(diagnosticCase, 2, "UNKNOWN")), amount = tonumber(v(diagnosticCase, 8, 0)) or 0 })
             menu.backgroundTests = menu.backgroundTests or {}
-            menu.backgroundTests[verificationKey] = { status="REQUESTED", result="EOC accepted the test. Do not enter Station Build mode until EOC reports TEST COMPLETE." }
+            menu.backgroundTestAcknowledged[verificationKey] = nil
+            menu.backgroundTests[verificationKey] = { station=stationName, subject=diagnosticSubject, status="REQUESTED", result="EOC started the test. Keep playing normally. Do not press the test button again and do not open Station Build mode. Wait for TEST COMPLETE.", baseline=tonumber(v(diagnosticCase, 8, 0)) or 0, severity=text(v(diagnosticCase, 2, "UNKNOWN")), samples=0 }
             menu.refresh()
         end, not backgroundPending and (workingEvidenceMissing or string.upper(text(v(diagnosticCase, 2, ""))) ~= "PLAYER"))
         row[3]:setColSpan(2)
         addButton(row, 3, "RETURN TO GUIDED RECOVERY", function() menu.diagnosticView = "recovery"; menu.refresh() end, true)
         if backgroundTest then
             row = tableWidget:addRow(false)
-            row[1]:setColSpan(4):createText("EOC BACKGROUND TEST: " .. text(backgroundTest.status, "UNKNOWN") .. "\n" .. text(backgroundTest.result, "No result is available."), { wordwrap = true, color = resultColor(string.upper(text(backgroundTest.status, "UNKNOWN"))) })
+            row[1]:setColSpan(4):createText(menu.playerDisplayText("EOC BACKGROUND TEST: " .. text(backgroundTest.status, "UNKNOWN") .. "\n" .. menu.backgroundTestInstruction(backgroundTest, diagnosticCase, workingChecks)), { wordwrap = true, color = resultColor(string.upper(text(backgroundTest.status, "UNKNOWN"))) })
         elseif menu.verificationKey == verificationKey then
             row = tableWidget:addRow(false)
-            row[1]:setColSpan(4):createText("CASE VERIFICATION: " .. text(menu.verificationClass, "UNKNOWN") .. "\n" .. text(menu.verificationResult) .. "\nWORKING CASE: " .. stationName .. " -> " .. diagnosticSubject, { wordwrap = true, color = resultColor(string.upper(text(menu.verificationClass, "UNKNOWN"))) })
+            row[1]:setColSpan(4):createText(menu.playerDisplayText("CASE VERIFICATION: " .. text(menu.verificationClass, "UNKNOWN") .. "\n" .. text(menu.verificationResult) .. "\nWORKING CASE: " .. stationName .. " -> " .. diagnosticSubject), { wordwrap = true, color = resultColor(string.upper(text(menu.verificationClass, "UNKNOWN"))) })
         elseif menu.pendingVerificationKey == verificationKey then
             row = tableWidget:addRow(false)
-            row[1]:setColSpan(4):createText("CASE VERIFICATION: RUNNING\n" .. text(menu.verificationResult), { wordwrap = true })
+            row[1]:setColSpan(4):createText(menu.playerDisplayText("CASE VERIFICATION: RUNNING\n" .. text(menu.verificationResult)), { wordwrap = true })
         else
             row = tableWidget:addRow(false)
-            row[1]:setColSpan(4):createText(workingEvidenceMissing and "VERIFICATION STATUS: WAITING FOR EOC TO IDENTIFY A SUPPORTED ACTION" or "VERIFICATION STATUS: READY — ASK EOC ONCE; EOC OWNS THE TEST AND RESULT", { wordwrap = true })
+            row[1]:setColSpan(4):createText(menu.playerDisplayText(workingEvidenceMissing and "VERIFICATION STATUS: WAITING FOR EOC TO IDENTIFY A SUPPORTED ACTION" or "VERIFICATION STATUS: READY — ASK EOC ONCE; EOC OWNS THE TEST AND RESULT"), { wordwrap = true })
         end
     else
         section(tableWidget, "GUIDED RECOVERY")
@@ -6384,10 +6556,10 @@ function menu.predictiveIntelligenceView(t)
     local state = store.views and store.views.balance or nil
     local current, previous = state and state.current or nil, state and state.previous or nil
     local intro = t:addRow(false)
-    intro[1]:setColSpan(4):createText("Forecasts use retained player-requested Supply snapshots, rolling KPI evidence, and Unified Logistics Coverage. No scan runs when this page opens. Confidence reflects evidence depth; UNKNOWN remains unknown.", { wordwrap = true })
+    intro[1]:setColSpan(4):createText("Forecasts use your saved Supply checks, KPI history and Fleet coverage. Opening this page does not start a scan. More saved information gives EOC more confidence. UNKNOWN means EOC does not know yet.", { wordwrap = true })
     if not current then
         local row = t:addRow(false)
-        row[1]:setColSpan(4):createText("UNKNOWN — EOC does not yet have two separated evidence snapshots. Do not babysit this page or repeat a control; EOC must return only when retained evidence supports direction and timing.", { wordwrap = true, color = investigationUnknownColor })
+        row[1]:setColSpan(4):createText("NOT ENOUGH INFORMATION YET. EOC needs two checks taken at different times before it can show a trend. Do not keep this page open and do not press anything again. Keep playing; EOC will use the normal saved information when it is ready.", { wordwrap = true, color = investigationUnknownColor })
         row = t:addRow(true)
         row[1]:setColSpan(4)
         addButton(row, 1, "OPEN EMPIRE RESOURCE MATRIX", function()
@@ -6545,7 +6717,7 @@ function menu.predictiveIntelligenceView(t)
     table.sort(risks, function(a,b) if a.severity == b.severity then if a.category == b.category then return a.station < b.station end return a.category < b.category end return a.severity < b.severity end)
     local status = t:addRow(false)
     status[1]:setColSpan(4):createText(#risks .. " FORECAST(S) | " .. (meaningfulPrevious and ("TWO MEANINGFUL SNAPSHOTS, " .. formatNumber(elapsed / 60) .. " MIN APART") or (previous and ("BASELINE ONLY — SNAPSHOTS " .. formatNumber(elapsed / 60) .. " MIN APART; 5 MIN REQUIRED") or "ONE SNAPSHOT — LOW CONFIDENCE BASELINE")) .. " | NO BACKGROUND SCAN", { halign="center", color=#risks > 0 and investigationUnknownColor or investigationPassColor })
-    if #risks == 0 then local row=t:addRow(false); row[1]:setColSpan(4):createText("NO CURRENT FORECAST EXCEPTIONS. This means retained evidence did not cross a governed threshold; it does not prove future risk is impossible.", {wordwrap=true,color=investigationPassColor}); return end
+    if #risks == 0 then local row=t:addRow(false); row[1]:setColSpan(4):createText("NO CURRENT FORECAST WARNING. EOC does not have enough evidence to warn you about a future problem. This does not mean a future problem is impossible.", {wordwrap=true,color=investigationPassColor}); return end
     menu.predictiveFilter = menu.predictiveFilter or "actionable"
     local controls=t:addRow(true)
     addButton(controls,1,(menu.predictiveFilter=="actionable" and "ACTIVE: " or "").."ACTIONABLE",function() menu.predictiveFilter="actionable"; menu.predictiveStationId=nil; menu.refresh() end,true,menu.predictiveFilter=="actionable" and investigationPassColor or nil)
@@ -7304,6 +7476,8 @@ local function globalSettings(tableWidget)
         menu.refresh()
     end, startupDirty, startupDirty and investigationUnknownColor or investigationPassColor)
 
+    actionResult(tableWidget, "minimum.build", "AUTOMATIC MINIMUM BUILD: reports the last bounded one-ship procurement result. It never bypasses player-owned blueprints, shipyard compatibility, normal resources, or the current shortage check.")
+
     section(tableWidget, "GLOBAL SHIP MINIMUMS")
     local minimumHelp = tableWidget:addRow(false)
     minimumHelp[1]:setColSpan(4):createText("Every value defaults to zero. Zero disables that category. EOC fills at most one verified shortage per scan using compatible idle registered ships; it never creates free ships or queues an empire-wide build order.", { wordwrap = true })
@@ -7548,6 +7722,7 @@ function menu.create()
             returnRow[1]:setColSpan(4)
             addButton(returnRow, 1, "RETURN TO " .. text(menu.navigationOrigin.label), restoreNavigation, true)
         end
+        menu.addPlayerPageGuide(tableWidget, "stations")
         stationWorkspace(tableWidget)
     elseif menu.page == "kpi" then
         local contentWidth = width - 2 * Helper.borderSize
@@ -7566,6 +7741,7 @@ function menu.create()
         configureFourColumns(controlsTable, contentWidth)
         controlsTable.properties.maxVisibleHeight = controlsHeight
         addWorkingStationBanner(controlsTable)
+        menu.addPlayerPageGuide(controlsTable, "kpi")
         kpiDashboardControls(controlsTable)
 
         local resultsTable = menu.frame:addTable(4, {
@@ -7603,6 +7779,9 @@ function menu.create()
             addButton(returnRow, 1, "RETURN TO " .. text(menu.navigationOrigin.label), restoreNavigation, true)
         end
         addWorkingStationBanner(tableWidget)
+        if menu.page ~= "identity" and menu.page ~= "boot" then
+            menu.addPlayerPageGuide(tableWidget, menu.page)
+        end
 
         if menu.page == "identity" then
             commandIdentitySetup(tableWidget, true)

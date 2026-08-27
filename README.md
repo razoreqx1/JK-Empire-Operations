@@ -5,25 +5,26 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current GA release
 
 - Version: 3.9 GA
-- Engineering build: 339
-- Extension version: 4.39
+- Engineering build: 344
+- Extension version: 4.44
 - Status: **GENERAL AVAILABILITY** — runtime accepted and published to Steam Workshop and GitHub
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 339 is the identity-only GA promotion of the human-accepted Build 338 runtime.
+Build 344 is the identity-only GA promotion of the human-accepted Build 343 runtime.
 
-## What is new in EOC 3.9 GA Build 339
+## What is new in EOC 3.9 GA Build 344
 
-- Leads Cases, Guided Recovery, and Solution Planner with the conclusion, one next instruction, and the primary action.
+- Adds a clear **START HERE** guide to every main EOC page.
+- Explains what each page does, exactly what the player should do, and when the player is finished.
+- Gives player-started jobs and background tests plain-language results with numbered next steps.
+- Makes completed-test controls follow the displayed next action instead of immediately repeating the same test.
+- Tells the player whether to wait, do nothing, fix something, or run one new test after the required change.
 - Keeps technical evidence available behind exact-case Deep Dive controls.
-- Lets the player request verification once; EOC retains the exact baseline and completes the comparison through its existing bounded empire-analysis cycle.
-- Returns `IMPROVING`, `UNCHANGED`, `WORSENING`, or an honest `BLOCKED` result through a notification, Logbook entry, and retained EOC status.
-- Warns the player not to enter Station Build mode while a verification job is in progress and explicitly releases that restriction at `TEST COMPLETE`.
-- Removes prompts that required the player to certify elapsed time, return later, repeat verification, request another check, or keep a page open.
+- Warns the player not to enter Station Build mode while a verification job is active and releases that restriction at `TEST COMPLETE`.
+- Replaces unsupported display separators safely at the UI boundary without changing saved values or evidence keys.
 - Adds adaptive boundaries to variable-length EOC lists while retaining the complete underlying data.
-- Adds observation-only dynamic fleet-capacity evidence with learning state, confidence, trend, and bounded sampling.
-- Preserves the EOC 3.8 plain-language Supply, pricing, storage, Cases, KPI, and Predictive Intelligence improvements.
+- Preserves observation-only dynamic fleet-capacity evidence, command-first recovery, and the EOC 3.8 Supply, pricing, storage, KPI, and Predictive improvements.
 - Adds no watcher, countdown, per-frame hook, free ship, unauthorized construction, hidden resource creation, cargo movement, or credit movement.
 ## Preserved EOC 3.2 foundation
 

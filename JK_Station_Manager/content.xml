@@ -2,12 +2,12 @@
 <content
   id="ws_3778882957"
   name="EOC - Executive Operations Center"
-  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.9 GA - Build 339&#xA;&#xA;Command-First Decisions and Background Test Ownership.&#xA;&#xA;- Leads with the conclusion, one next instruction, and the primary action.&#xA;- Keeps technical evidence behind exact-case Deep Dive controls.&#xA;- One verification request is retained and completed by EOC through its existing bounded scan.&#xA;- Returns the result automatically through notification, Logbook, and retained UI state.&#xA;- Adds no new watcher, timer, gameplay, or automation authority.&#xA;&#xA;Runtime accepted by RazorEQX. Compatible with X4 8.x and 9.x."
+  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.9 GA - Build 344&#xA;&#xA;Player-First Language.&#xA;&#xA;- Explains every EOC page in clear language for a capable 15-year-old reader.&#xA;- Uses short steps that name the exact menu, action and repeat condition.&#xA;- Makes completed-test buttons follow the displayed next action.&#xA;- Replaces unsupported display separators with plain text.&#xA;- Preserves normal X4 resources and existing player authority.&#xA;&#xA;Runtime accepted by RazorEQX. Compatible with X4 8.x and 9.x."
   author="RazorEQX"
-  version="439"
-  date="2026-08-26"
+  version="444"
+  date="2026-08-27"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 GA Build 339" description="Command-first EOC with automatic background verification ownership." />
+  <text language="44" name="EOC 3.9 GA Build 344" description="Player-first instructions across every EOC menu and job result." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

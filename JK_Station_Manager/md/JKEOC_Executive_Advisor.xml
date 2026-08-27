@@ -13,7 +13,7 @@
       <conditions><event_game_loaded /></conditions>
       <actions>
         <show_notification text="'EOC INITIALIZING IN BACKGROUND — open EOC whenever you are ready.'" timeout="10s" />
-        <debug_text text="'[JKEOC][B339][INITIALIZING] ga=1 accepted_runtime=338 background_owned=1 lifecycle=preserved'" filter="general" />
+        <debug_text text="'[JKEOC][B344][INITIALIZING] ga=1 accepted_runtime=343 player_first_language=1 terminal_controls=aligned ascii_display=1 lifecycle=preserved'" filter="general" />
       </actions>
     </cue>
     <!-- Persistent, observation-only executive station knowledge. -->
@@ -21,8 +21,8 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-      <show_notification text="'EOC 3.9 GA Build 339 | Command-First Background Ownership'" timeout="12s" />
-      <debug_text text="'[JKEOC][B339][STARTUP] version=439 build=339 phase=3 accepted_runtime_build=338 background_test_ownership=1 request_record_fix=1 build_mode_warning=1 existing_scan_cycle=1 new_timer=0 new_watcher=0 countdown=0 observation_only=1 mining_pin_protected=1 sse_escort_protected=1 ga=1 test=0 runtime_acceptance=accepted'" filter="general" />
+      <show_notification text="'EOC 3.9 GA Build 344 | Player-First Language'" timeout="12s" />
+      <debug_text text="'[JKEOC][B344][STARTUP] version=444 build=344 phase=3 accepted_runtime_build=343 player_first_language=1 terminal_controls=aligned ascii_display=1 background_blueprint_authority=1 component_scalar_handoff=1 menu_cache_dependency=0 shortage_revalidation=1 build_bound=1 normal_resources=1 new_timer=0 new_watcher=0 countdown=0 mining_pin_protected=1 sse_escort_protected=1 ga=1 test=0 runtime_acceptance=accepted'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>

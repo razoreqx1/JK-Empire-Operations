@@ -1,28 +1,29 @@
-# EOC 3.9 GA — Build 339
+# EOC 3.9 GA - Build 344
 
-## Command-first decisions
+## Player-first menus
 
-- Cases, Guided Recovery, and Solution Planner lead with the conclusion, one next instruction, and the primary action.
+- Every main EOC page now begins with a **START HERE** guide.
+- Each guide explains what the page does, gives short ordered steps, and says when the player is finished.
+- Player-facing wording is written for a capable 15-year-old reader without removing honest evidence limits.
 - Technical evidence remains available behind exact-case Deep Dive controls.
-- Deep Dive open and close preserve the exact case context and return correctly.
 
-## Background verification ownership
+## Jobs and background verification
 
-- The player requests verification once; EOC retains the exact station, subject, severity, and amount baseline.
-- The next completed established empire-analysis cycle performs the comparison automatically.
-- EOC reports `IMPROVING`, `UNCHANGED`, `WORSENING`, or an honest `BLOCKED` result through a notification, Logbook entry, and retained UI state.
-- Acceptance and in-progress messages warn against entering Station Build mode; `TEST COMPLETE` explicitly releases that restriction.
-- Player prompts to certify a meaningful cycle, return later, repeat verification, request another check, or keep a page open were removed.
+- Player-started jobs retain a result that says what happened, what it means, and exactly what to do next.
+- Waiting states tell the player to continue normal play, avoid Station Build mode when required, and not start the same job again.
+- Completed background-test states tell the player to stop, wait, fix a named condition, refresh missing information, or run one new test only after the required change.
+- Completed-test buttons follow the displayed next action instead of immediately repeating the same test.
+- Results continue to return through EOC, notification, and Logbook routes supported by each workflow.
 
-## Presentation, evidence, and capacity
+## Display and compatibility
 
-- Variable-length EOC lists use adaptive page boundaries based on the available viewport and X4's shared row limits.
-- Dynamic fleet-capacity evidence is observation-only, bounded, persistent, confidence-labelled, and honest while still learning.
-- Supply, trade, logistics, Cases, and Reports retain exact identity, evidence limits, duplicate protection, and return context.
+- Unsupported separators are converted to plain display text at shared UI boundaries.
+- Saved state, evidence keys, comparison strings, and gameplay logic remain unchanged by display cleanup.
+- Adaptive row budgeting reserves space for the new page guides while respecting X4's shared table limits.
 
 ## Authority and performance
 
-- Background verification uses EOC's existing bounded empire-analysis cadence.
-- No new watcher, countdown, scheduler, per-frame hook, free ship, resource bypass, unauthorized construction, cargo movement, credit movement, or expanded gameplay authority was added.
+- Unknown information remains unknown; EOC does not claim success without evidence.
+- No watcher, countdown, polling loop, scheduler, per-frame hook, free ship, resource bypass, unauthorized construction, cargo movement, credit movement, or expanded gameplay authority was added.
 
-Build 339 is the identity-only GA promotion of the RazorEQX runtime-accepted Build 338 behavior. Compatible with X4 8.x and 9.x.
+Build 344 is the identity-only GA promotion of the RazorEQX runtime-accepted Build 343 behavior. Compatible with X4 8.x and 9.x.

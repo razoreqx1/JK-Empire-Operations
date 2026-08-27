@@ -1,12 +1,12 @@
 # EOC 3.9 GA Complete Player Manual
 
-**Applies to:** EOC 3.9 GA, Build 339, extension version 4.39
+**Applies to:** EOC 3.9 GA, Build 344, extension version 4.44
 
 **Game:** X4: Foundations 8.x / 9.x
 
 **Purpose:** Teach a player how to operate every EOC menu, understand its conclusions, and control what it is allowed to change.
 
-The screenshots in this manual were captured during EOC 3.9 development. Their filenames preserve the exact capture build. Build 339 retained the illustrated surfaces unless this manual explicitly explains a newer behavior.
+The screenshots in this manual were captured during EOC 3.9 development. Their filenames preserve the exact capture build. Build 344 retains the illustrated navigation even where its newer START HERE guidance and result wording are not shown in an older screenshot.
 
 ---
 
@@ -21,6 +21,16 @@ The Executive Operations Center is an empire operations console. It turns live X
 5. **How will the result be verified?**
 
 EOC is deliberately command-first. Start with the conclusion and the one next instruction. Open **DEEP DIVE** only when you want the supporting evidence.
+
+### How every main page starts in Build 344
+
+Each main page begins with **START HERE** and answers three questions:
+
+1. **WHAT THIS PAGE DOES** - why the page exists.
+2. **WHAT TO DO** - the exact controls or information to use, in order.
+3. **WHEN YOU ARE DONE** - when to stop instead of clicking or refreshing again.
+
+Read that guide first when a page is unfamiliar. If it says no action is required, stop there and continue playing.
 
 ### What EOC never does
 
@@ -555,10 +565,13 @@ The established cycle is normally scheduled at five-minute intervals, but total 
 
 Possible supported results include:
 
-- **IMPROVING** — fresh evidence moved in the expected direction.
-- **UNCHANGED** — fresh evidence did not materially change.
-- **WORSENING** — fresh evidence moved in the wrong direction.
-- **BLOCKED** — EOC could not obtain the required evidence and explains why.
+- **SUCCESS / RECOVERED** - the tested condition recovered. Do not repeat the test; follow the displayed close or return instruction.
+- **IMPROVING / PARTIAL** - the condition moved in the right direction but recovery is not proven. Keep the named operating condition in place and retest once only when the displayed instruction says to.
+- **UNCHANGED** - the completed comparison measured no improvement. Complete the exact inspection or correction shown, allow the named normal operating cycle, and then run one new test.
+- **WORSENING / FAILED** - the attempted remedy did not work. Follow the exact corrective route shown; do not repeat the same test before changing the condition.
+- **BLOCKED / INSUFFICIENT EVIDENCE / ABORTED** - EOC could not make a valid comparison. Follow the displayed steps to refresh or restore the missing evidence, then run one new test.
+
+The retained **VERIFY RESULT** panel is the authority for what to do next. Its button routes to that next step. A finished result does not immediately restart itself.
 
 ### Optional bounded trade test
 

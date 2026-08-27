@@ -1,0 +1,32 @@
+EOC 3.9 GA - Build 344
+Player-First Language
+
+GA PROMOTION
+
+- Identity-only promotion of the RazorEQX-accepted Build 343 runtime.
+- No accepted feature logic, cadence, gameplay authority or protected behavior changed during promotion.
+- Runtime acceptance covered every main EOC menu and one complete background verification job.
+
+PLAYER-FIRST LANGUAGE
+
+- Adds a clear START HERE guide to every main EOC page.
+- Explains what each page does, what the player should do and when the player is finished.
+- Rewrites background-test results in short language with numbered steps.
+- Makes completed-test buttons open the required next action instead of starting the same test again.
+- Uses plain display separators so X4 does not show broken symbols.
+- Applies the same result structure to player-started jobs across Stations, Cases, Fleet & Logistics, trade, shipping, reports, construction and Diagnostics.
+- Keeps EOC evidence honest. Unknown information stays unknown, and EOC never claims a change succeeded without proof.
+
+RUNTIME ACCEPTANCE
+
+- Build 343/version 443 loaded successfully in the live mod set.
+- RazorEQX opened and reviewed every main EOC menu.
+- EOC accepted and completed the Savage Spur I Wharf I / Food Rations background test.
+- The completed job returned UNCHANGED with one comparison, scalar Lua readback and the player-first next-step route.
+- No EOC Lua, widget, table-height, property-lookup or unknown-action runtime fault was found.
+
+ARCHITECTURE AND AUTHORITY
+
+- Preserves normal X4 resources, existing player authority, the one-build limit and established background-work limits.
+- Adds no timer, watcher, polling loop, scheduler, per-frame hook or menu-open dependency.
+- GA promotion does not install or publish the mod.
