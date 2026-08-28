@@ -1,12 +1,12 @@
 # EOC 3.9 GA Complete Player Manual
 
-**Applies to:** EOC 3.9 GA, Build 344, extension version 4.44
+**Applies to:** EOC 3.9 GA, Build 350, extension version 4.50
 
 **Game:** X4: Foundations 8.x / 9.x
 
 **Purpose:** Teach a player how to operate every EOC menu, understand its conclusions, and control what it is allowed to change.
 
-The screenshots in this manual were captured during EOC 3.9 development. Their filenames preserve the exact capture build. Build 344 retains the illustrated navigation even where its newer START HERE guidance and result wording are not shown in an older screenshot.
+The screenshots in this manual were captured during EOC 3.9 development. Their filenames preserve the exact capture build. Build 350 retains the illustrated navigation and adds the module-count calculator and persistent agreed build-list workflow shown in the newer Planner screenshot.
 
 ---
 
@@ -22,7 +22,7 @@ The Executive Operations Center is an empire operations console. It turns live X
 
 EOC is deliberately command-first. Start with the conclusion and the one next instruction. Open **DEEP DIVE** only when you want the supporting evidence.
 
-### How every main page starts in Build 344
+### How every main page starts
 
 Each main page begins with **START HERE** and answers three questions:
 
@@ -93,6 +93,10 @@ The optional computer loading screen is entertainment only. It does not prove th
 ---
 
 ## 4. Learn the screen before issuing commands
+
+![Build 344 Stations home screen](images/EOC_STATIONS_HOME_BUILD344_2026-08-27.png)
+
+The **STATIONS** home screen is the best orientation point: the full tab bar stays at the top, the station navigator stays on the left, and the selected station's condition, actions, role, and latest returned result appear on the right. Each main page begins with **WHAT THIS PAGE DOES**, **WHAT TO DO**, and **WHEN YOU ARE DONE**. Read those three lines before using a control.
 
 The header contains eleven main tabs:
 
@@ -227,7 +231,7 @@ The completed report opens in **REPORTS** and is also copied to **Player Informa
 
 The Overview is not a static scorecard. It explains how retained evidence developed for each station.
 
-![Overview Station Story](images/EOC_OVERVIEW_STATION_STORY_BUILD327_2026-08-26.png)
+![Overview Station Story](images/EOC_OVERVIEW_STATION_STORY_BUILD344_2026-08-27.png)
 
 ### Choose a time window
 
@@ -254,6 +258,8 @@ Evidence states can include candidate, recurring, systemic, recovering, or relap
 ## 8. KPI CENTER: watch performance without confusing samples with proof
 
 KPI Center collects live samples only while the KPI page is open. Moving to another page stops KPI sampling. The status line tells you whether the view is live, paused, or refreshing and shows the next page-scoped refresh.
+
+![KPI Center dashboard choices, live state, filters, and time ranges](images/EOC_KPI_CENTER_HOME_BUILD344_2026-08-27.png)
 
 ### Common controls
 
@@ -335,9 +341,9 @@ A supply snapshot does not by itself prove that a ship is in flight, an NPC buye
 4. Select a resource card to open its detail.
 5. Select **RETURN TO RESOURCE GRID** when finished.
 
-![Supply resource grid](images/EOC_SUPPLY_RESOURCE_GRID_BUILD327_2026-08-26.png)
+![Build 344 Supply resource grid](images/EOC_SUPPLY_RESOURCE_GRID_BUILD344_2026-08-27.png)
 
-![Supply resource detail](images/EOC_SUPPLY_RESOURCE_DETAIL_BUILD327_2026-08-26.png)
+![Build 344 Wheat resource detail](images/EOC_SUPPLY_WHEAT_DETAIL_BUILD344_2026-08-27.png)
 
 The detail explains installed supply, internal demand, what coverage means, and what the snapshot cannot prove. If a severe condition persists long enough, the Case bridge can open the exact existing case or allow one exact station/ware case. Duplicate cases remain locked.
 
@@ -363,6 +369,8 @@ Choose a product, then inspect the stations that produce it. This answers “whe
 ### Station Price & Storage Plan
 
 This workflow changes manual price or ware-allocation overrides only after preview and confirmation.
+
+![Station Price and Storage Plan showing Current, EOC Suggested, and Proposed values](images/EOC_SUPPLY_PRICE_STORAGE_PLAN_BUILD344_2026-08-27.png)
 
 1. Select the exact station.
 2. Select the exact ware.
@@ -414,7 +422,7 @@ This view separates:
 - **WAITING** — EOC lacks required movement, route, ship, reservation, or throughput evidence.
 - **COVERED** — current evidence supports adequate coverage.
 
-![Unified Logistics Coverage](images/EOC_FLEET_LOGISTICS_COVERAGE_BUILD327_2026-08-26.png)
+![Build 344 Unified Logistics Coverage](images/EOC_FLEET_LOGISTICS_COVERAGE_BUILD344_2026-08-27.png)
 
 1. Open a station card.
 2. Select a resource.
@@ -436,6 +444,14 @@ Registered ships are the pool EOC is allowed to consider for EOC ship assignment
 
 Separate ordinary empire trade work from EOC-managed offers. EOC ownership matters: it may reconcile or remove only the offers it created and retained.
 
+![Observed empire trade work](images/EOC_TRADE_ACTIVITY_OBSERVED_BUILD344_2026-08-27.png)
+
+The observed view summarizes station demand calls, assigned ships currently working, and queued ship trade deals. It is not an individual order manifest and does not claim completed delivery.
+
+![EOC-managed offers](images/EOC_TRADE_ACTIVITY_MANAGED_BUILD344_2026-08-27.png)
+
+In **EOC-MANAGED OFFERS**, `VERIFIED` means that the exact EOC-owned offer still exists and matches its retained record. It does **not** mean that cargo was delivered or that the underlying shortage recovered.
+
 ### Pending
 
 Use this view to find assignments, managed work, or other fleet actions waiting for evidence or player approval. Open the exact item and read why it is pending before authorizing it.
@@ -456,6 +472,8 @@ EOC never creates a free ship. The normal player shipyard, resources, queue, and
 Before building, consider the less expensive action: register and assign a suitable idle ship, scan shipping needs, or review an existing EOC order.
 
 ### Fleet Management: reusable build templates
+
+![Fleet Build Manager and saved templates](images/EOC_FLEET_MANAGEMENT_BUILD344_2026-08-27.png)
 
 To create a template:
 
@@ -485,7 +503,7 @@ Normal blueprint ownership, yard compatibility, resources, queues, and loadouts 
 
 Cases are keyed to exact evidence such as station, subject, ware, and issue family. EOC-owned operational cases and player-requested investigations remain distinct.
 
-![Cases and retained evidence](images/EOC_CASES_ACTIVE_CASE_LIST_BUILD327_2026-08-26.png)
+![Build 344 active Cases list and retained evidence](images/EOC_CASES_ACTIVE_CASE_LIST_BUILD344_2026-08-27.png)
 
 ### Filter the list
 
@@ -541,11 +559,15 @@ Diagnostics has three views:
 
 ### Start Guided Recovery
 
+![Guided Recovery command-first Next Action](images/EOC_DIAGNOSTICS_GUIDED_RECOVERY_BUILD344_2026-08-27.png)
+
 1. Open the exact case.
 2. Select **GUIDED NEXT ACTION**, or open **DIAGNOSTICS** with that case active.
 3. Read the root-cause conclusion and confidence.
 4. Perform only the named player action, if one is required.
 5. Use **DEEP DIVE** for the three-part explanation: what EOC found or cannot prove, what EOC is doing, and the long-term plan/checklist.
+
+![Guided Recovery Evidence Details and checklist](images/EOC_DIAGNOSTICS_DEEP_DIVE_BUILD344_2026-08-27.png)
 
 ### Request verification once
 
@@ -593,14 +615,39 @@ A storage-pressure case may require storage evidence rather than a trade test. R
 
 ## 13. SOLUTION PLANNER: choose recovery before permanent expansion
 
-Solution Planner is case-driven. If no exact case is loaded, use **OPEN DIAGNOSTICS** and select one.
+Solution Planner begins with the plain answer most players need: a best-current estimate of how many of each production module to add. The estimate is advisory and can change as station evidence changes.
 
 1. Read the conclusion.
-2. Follow the one next instruction.
-3. Use the primary action.
-4. Open **DEEP DIVE** for the technical evidence and dependency chain.
+2. Review the **WHAT TO ADD - BEST CURRENT ESTIMATE** list.
+3. Enter how many modules you plan to add.
+4. **Press TAB after every number to save that field.**
+5. Select **CHECK MY MODULE PLAN**.
+6. Resolve any workforce, storage, recipe, raw-source, underbuild, or overbuild warning.
+7. Open **ADVANCED - BUILD DETAILS** or **ADVANCED - EVIDENCE AND MATH** when you want the technical evidence.
 
 The planner gates permanent construction until immediate recovery options have been exhausted. If matching production is already planned, it helps you review that plan instead of recommending a duplicate. Headquarters and mixed-purpose stations receive additional caution because their ware flows can have several valid purposes.
+
+### How the module estimate works
+
+EOC starts with the supported final ware, subtracts installed and already planned output, and then walks backward through the native X4 recipe chain. It aggregates shared upstream demand before rounding module counts and stops conservatively when X4 exposes no supported recipe or reaches a native raw-resource boundary.
+
+The count is a best guess from the evidence available now—not a promise of exact future throughput. Workforce, storage allocation, plot position, module connections, builder availability, build-storage supplies, construction cost, and changing station demand can still alter the real result.
+
+### Save the final agreed build list
+
+When the committed module counts match EOC's estimate and the cascade check completes, save the plan as the agreed build list. The saved list remembers:
+
+- the agreed count for every listed production module
+- explicit zero-count duplicate-output guards
+- terminal raw-source requirements
+- safety conditions that still say **DO NOT BUILD YET**
+- approximate added/planned progress and how many modules remain
+
+![Build 349 no-case saved agreed build-list index after reload](images/EOC_SOLUTION_PLANNER_SAVED_LIST_INDEX_BUILD349_2026-08-27.png)
+
+Return through **SOLUTION PLANNER > OPEN SAVED AGREED BUILD LIST** while you build. After save/reload, the no-case Planner index still lists the exact station and subject. If current evidence genuinely changes, EOC keeps the saved list and marks it **PLAN NEEDS REVIEW** instead of silently replacing it. Use **REPLACE SAVED AGREED BUILD LIST** only after checking a new plan, or clear the saved list through its confirmation control.
+
+EOC never places the modules. Build them in X4's normal Station Build Plan and return to the saved list whenever you need the remaining counts.
 
 ### Expansion readiness
 
@@ -626,6 +673,8 @@ Review:
 ## 14. CONSTRUCTION: support a plan that already exists
 
 Construction works with the exact selected station and its existing X4 build queue.
+
+![Construction status and readiness checklist](images/EOC_CONSTRUCTION_STATUS_BUILD344_2026-08-27.png)
 
 1. Select the station.
 2. Open **CONSTRUCTION**.
@@ -655,6 +704,8 @@ Read the ordered missing-ware list and queue progress. A funded account does not
 
 Reports are generated from Stations, Overview, Cases, or other exact workflows.
 
+![Reports Center with retained report list, paging, timestamps, and selected result](images/EOC_REPORTS_CENTER_BUILD344_2026-08-27.png)
+
 1. Request a report.
 2. EOC opens **REPORTS** automatically when it completes.
 3. The newest report is selected.
@@ -666,6 +717,12 @@ The current session keeps up to 20 recent reports in the EOC list. Permanent arc
 ---
 
 ## 16. GLOBAL SETTINGS: decide what EOC may do
+
+![Global Settings identity, startup preference, ship minimums, and returned result](images/EOC_GLOBAL_SETTINGS_TOP_BUILD344_2026-08-27.png)
+
+![Global Settings construction, trade, ship-assignment, and station-automation authorities](images/EOC_GLOBAL_SETTINGS_AUTHORITIES_BUILD344_2026-08-27.png)
+
+Treat this page as EOC's authority boundary. Read the short explanation beside every mode, grant only the access you intend, save it, and read the returned confirmation. A global authority changes what EOC may do later; it is not merely a display preference.
 
 ### Identity and startup experience
 

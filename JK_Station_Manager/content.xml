@@ -2,12 +2,12 @@
 <content
   id="ws_3778882957"
   name="EOC - Executive Operations Center"
-  description="# EOC - Executive Operations Center&#xA;&#xA;# EOC 3.9 GA - Build 344&#xA;&#xA;Player-First Language.&#xA;&#xA;- Explains every EOC page in clear language for a capable 15-year-old reader.&#xA;- Uses short steps that name the exact menu, action and repeat condition.&#xA;- Makes completed-test buttons follow the displayed next action.&#xA;- Replaces unsupported display separators with plain text.&#xA;- Preserves normal X4 resources and existing player authority.&#xA;&#xA;Runtime accepted by RazorEQX. Compatible with X4 8.x and 9.x."
+  description="EOC 3.9 GA - Build 350. Solution Planner module-count calculator and persistent agreed build lists. EOC estimates the native production cascade, checks player-entered counts and safety gates, and remembers the final checklist without exercising construction authority. Runtime accepted by RazorEQX."
   author="RazorEQX"
-  version="444"
+  version="450"
   date="2026-08-27"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 GA Build 344" description="Player-first instructions across every EOC menu and job result." />
+  <text language="44" name="EOC 3.9 GA Build 350" description="Solution Planner module counts, cascade checks, player plan calculator, and persistent agreed build lists." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

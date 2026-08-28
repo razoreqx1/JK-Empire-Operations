@@ -13,7 +13,7 @@
       <conditions><event_game_loaded /></conditions>
       <actions>
         <show_notification text="'EOC INITIALIZING IN BACKGROUND — open EOC whenever you are ready.'" timeout="10s" />
-        <debug_text text="'[JKEOC][B344][INITIALIZING] ga=1 accepted_runtime=343 player_first_language=1 terminal_controls=aligned ascii_display=1 lifecycle=preserved'" filter="general" />
+        <debug_text text="'[JKEOC][B350][INITIALIZING] ga=1 baseline=349 accepted_runtime=1 agreed_list_stale_comparison=1 zero_guard_absence_matches=1 real_change_review=1 persistent_agreed_build_list=1 save_reload=1 remembered_safety_conditions=1 progress_estimate=1 simple_module_count_plan=1 player_plan_calculator=1 cascade_gate=1 generic_support_chain=1 planner_pixel_budget=1 planner_deep_dive_paging=1'" filter="general" />
       </actions>
     </cue>
     <!-- Persistent, observation-only executive station knowledge. -->
@@ -21,8 +21,8 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-      <show_notification text="'EOC 3.9 GA Build 344 | Player-First Language'" timeout="12s" />
-      <debug_text text="'[JKEOC][B344][STARTUP] version=444 build=344 phase=3 accepted_runtime_build=343 player_first_language=1 terminal_controls=aligned ascii_display=1 background_blueprint_authority=1 component_scalar_handoff=1 menu_cache_dependency=0 shortage_revalidation=1 build_bound=1 normal_resources=1 new_timer=0 new_watcher=0 countdown=0 mining_pin_protected=1 sse_escort_protected=1 ga=1 test=0 runtime_acceptance=accepted'" filter="general" />
+      <show_notification text="'EOC 3.9 GA Build 350 | Agreed Build Lists'" timeout="12s" />
+      <debug_text text="'[JKEOC][B350][STARTUP] version=450 build=350 phase=3 baseline_build=349 accepted_runtime=1 agreed_list_stale_comparison=1 zero_guard_absence_matches=1 real_change_review=1 persistent_agreed_build_list=1 save_reload=1 remembered_safety_conditions=1 explicit_replace_clear=1 progress_estimate=1 simple_module_count_plan=1 player_plan_calculator=1 cascade_gate=1 generic_support_chain=1 recovery_ware_native_id=1 advanced_evidence_retained=1 planner_pixel_budget=1 planner_deep_dive_paging=1 recovery_exhaustion_planner=1 support_chain_priority=1 duplicate_output_guard=1 repeat_without_correction=blocked normal_resources=1 new_timer=0 new_watcher=0 countdown=0 mining_pin_protected=1 sse_escort_protected=1 construction_authority=0 ga=1 test=0 runtime_acceptance=accepted'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>

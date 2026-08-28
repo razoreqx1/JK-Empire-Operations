@@ -284,7 +284,9 @@ end
 function menu.plannerAccessForCase(caseData)
     if not caseData then return false, "NO_CASE" end
     local action = managedActionForCase(caseData)
-    if action and string.upper(text(v(action, 6, ""))) == "RECOVERY EXHAUSTED - PLANNER AVAILABLE" then
+    local actionState = action and string.upper(text(v(action, 6, ""))) or ""
+    if actionState == "RECOVERY EXHAUSTED - PLANNER AVAILABLE"
+        or actionState == "INPUT DELIVERY TEST EXHAUSTED - LOCAL PRODUCTION CHECKS REMAIN" then
         return true, "RECOVERY_EXHAUSTED"
     end
     local readiness = menu.expansionReadiness
@@ -701,6 +703,32 @@ function menu.rawSourceCommit()
     else
         DebugError("[JKEOC][B326][RAW_SOURCE_FEEDBACK_DEFERRED] reason=MENU_CLOSED result_retained=1 redraw=NEXT_NORMAL_OPEN")
     end
+end
+
+function menu.agreedPlanKey(stationName, wareId)
+    return text(stationName) .. "|" .. menu.supplyWareId(wareId)
+end
+
+function menu.agreedPlanStatus(_, value)
+    menu.agreedPlanMessage = text(value)
+    if menu.agreedPlanMessage == "SAVED" and menu.pendingAgreedPlan then
+        menu.agreedBuildPlans = menu.agreedBuildPlans or {}
+        menu.agreedBuildPlans[menu.pendingAgreedPlan.key] = menu.pendingAgreedPlan.plan
+        menu.solutionAgreedKey = menu.pendingAgreedPlan.commandKey
+        menu.agreedBuildPage = 1
+        menu.agreedClearConfirm = nil
+        menu.pendingAgreedPlan = nil
+    elseif menu.agreedPlanMessage == "CLEARED" and menu.pendingAgreedClearKey then
+        if menu.agreedBuildPlans then menu.agreedBuildPlans[menu.pendingAgreedClearKey] = nil end
+        menu.pendingAgreedClearKey = nil
+        menu.agreedClearConfirm = nil
+        menu.solutionAgreedKey = nil
+        menu.solutionAgreedStandaloneKey = nil
+    elseif string.find(menu.agreedPlanMessage, "BLOCKED", 1, true) then
+        menu.pendingAgreedPlan = nil
+        menu.pendingAgreedClearKey = nil
+    end
+    if menu.frame ~= nil and type(menu.stations) == "table" then menu.refresh() end
 end
 
 local function shippingModeReceived(_, value)
@@ -1562,6 +1590,7 @@ local function init()
     RegisterEvent(menu.name .. ".rawsource.ship", menu.rawSourceShip)
     RegisterEvent(menu.name .. ".rawsource.detail", menu.rawSourceDetail)
     RegisterEvent(menu.name .. ".rawsource.commit", menu.rawSourceCommit)
+    RegisterEvent(menu.name .. ".agreed.status", menu.agreedPlanStatus)
 end
 
 function menu.resetTabToRoot(page)
@@ -1690,6 +1719,25 @@ function menu.onShowMenu()
             completed=tonumber(v(record, 6, 0)) or 0, baseline=tonumber(v(record, 7, 0)) or 0,
             severity=text(v(record, 8, "UNKNOWN")), samples=tonumber(v(record, 9, 0)) or 0
         }
+    end
+    menu.agreedBuildPlans = {}
+    for _, record in ipairs(v(menu.param, 42, {})) do
+        local rows = {}
+        for _, savedRow in ipairs(v(record, 7, {})) do
+            rows[#rows + 1] = {
+                kind=text(v(savedRow, 1, "MODULE")), wareId=menu.supplyWareId(v(savedRow, 2, "")),
+                ware=text(v(savedRow, 3, "Unknown ware")), module=text(v(savedRow, 4, "")),
+                agreed=tonumber(v(savedRow, 5, 0)) or 0, baselinePlanned=tonumber(v(savedRow, 6, 0)) or 0,
+                baselineProduction=tonumber(v(savedRow, 7, 0)) or 0, outputPerHour=tonumber(v(savedRow, 8, 0)) or 0,
+                requiredRate=tonumber(v(savedRow, 9, 0)) or 0, transport=text(v(savedRow, 10, "UNKNOWN"))
+            }
+        end
+        local plan = {
+            station=text(v(record, 1, "")), wareId=menu.supplyWareId(v(record, 2, "")), ware=text(v(record, 3, "")),
+            status=text(v(record, 4, "SAVED")), saved=tonumber(v(record, 5, 0)) or 0,
+            evidence=text(v(record, 6, "")), rows=rows, warnings=v(record, 8, {})
+        }
+        menu.agreedBuildPlans[menu.agreedPlanKey(plan.station, plan.wareId)] = plan
     end
     menu.staffingFilter = menu.staffingFilter or "attention"
     menu.minimumDraft = menu.minimumDraft or { mining = menu.minimums.mining, trade = menu.minimums.trade, buildstorage = menu.minimums.buildstorage, defence = menu.minimums.defence, escort = menu.minimums.escort }
@@ -1979,6 +2027,7 @@ local function expansionEvidenceKey(caseData)
         tostring(v(caseData, 34, 0)),
         tostring(v(caseData, 39, false)),
         text(v(caseData, 40, "")),
+        text(v(caseData, 41, "")),
         action and text(v(action, 6, "")) or "",
     }, "|")
 end
@@ -2132,13 +2181,29 @@ function menu.productionChainChecklist(nativePlan, caseData)
     local rootPlanned = math.max(tonumber(v(caseData, 34, 0)) or 0, plannedModules(rootRecipe))
     local rootNeeded = rootRecipe.outputPerHour > 0 and math.ceil(nativePlan.deficitPerHour / rootRecipe.outputPerHour) or 0
     local rootAdditional = math.max(rootNeeded - rootPlanned, 0)
+    local rootInstalled = math.max(tonumber(v(caseData, 16, 0)) or 0, (tonumber(v(caseData, 15, 0)) or 0) > 0 and 1 or 0)
+    local action = managedActionForCase(caseData)
+    local actionStateText = action and string.upper(text(v(action, 6, ""))) or ""
+    local recoveryExhausted = actionStateText == "RECOVERY EXHAUSTED - PLANNER AVAILABLE"
+        or actionStateText == "INPUT DELIVERY TEST EXHAUSTED - LOCAL PRODUCTION CHECKS REMAIN"
+    local recoveryWare = menu.supplyWareId(v(caseData, 41, ""))
+    local recoveryResource
+    if recoveryExhausted and recoveryWare ~= "" then
+        for _, resource in ipairs(rootRecipe.resources or {}) do
+            if menu.supplyWareId(resource.ware) == recoveryWare then recoveryResource = resource; break end
+        end
+    end
+    -- A recovery-exhausted missing input is an absolute support requirement
+    -- for the installed/planned final-output modules. It must not disappear
+    -- merely because current final-output consumption produces a zero deficit.
+    local recoveryMinimum = recoveryResource and ((recoveryResource.amountPerHour * rootInstalled) + (recoveryResource.amountPerHour * rootPlanned)) or 0
     -- Size the support chain to the proven requirement, never to an oversized
     -- queue. Surplus planned modules are flagged instead of creating a cascade.
-    local rootFuture = rootNeeded
+    local rootFuture = recoveryResource and 0 or rootNeeded
     local moduleCounts, demandExtra, depth = {}, {}, {}
     local converged = false
     for _ = 1, 24 do
-        local nextDemand, nextDepth = {}, {}
+        local nextDemand, nextDepth, absoluteMinimum = {}, {}, {}
         local function addDemand(resource, amount, itemDepth)
             if resource.ware ~= "" and amount > 0 then
                 nextDemand[resource.ware] = (nextDemand[resource.ware] or 0) + amount
@@ -2146,6 +2211,11 @@ function menu.productionChainChecklist(nativePlan, caseData)
             end
         end
         for _, resource in ipairs(rootRecipe.resources or {}) do addDemand(resource, resource.amountPerHour * rootFuture, 1) end
+        if recoveryResource then
+            nextDemand[recoveryResource.ware] = nextDemand[recoveryResource.ware] or 0
+            nextDepth[recoveryResource.ware] = 1
+            absoluteMinimum[recoveryResource.ware] = recoveryMinimum
+        end
         for ware, counts in pairs(moduleCounts) do
             local recipe = recipes[ware] and recipes[ware][1]
             local future = counts.needed or 0
@@ -2159,7 +2229,7 @@ function menu.productionChainChecklist(nativePlan, caseData)
             local recipe = recipes[ware] and recipes[ware][1]
             local consumption = menu.supplySafeRate(station64, ware, false, true)
             local production = menu.supplySafeRate(station64, ware, true, true)
-            local totalDemand = consumption + extra
+            local totalDemand = math.max(consumption, absoluteMinimum[ware] or 0) + extra
             local planned = plannedModules(recipe)
             local uncoveredBeforePlan = math.max(totalDemand - production, 0)
             local needed = recipe and recipe.outputPerHour > 0 and math.ceil(uncoveredBeforePlan / recipe.outputPerHour) or 0
@@ -2173,7 +2243,11 @@ function menu.productionChainChecklist(nativePlan, caseData)
         if not changed then converged = true; break end
     end
 
-    local items = {}
+    local items, simplePlan = {}, {}
+    local cascadePassed = not (recoveryExhausted and (tonumber(v(caseData, 27, 0)) or 0) > 0 and not recoveryResource)
+    local cascadeReason = cascadePassed
+        and "Every deeper tier has a supported native recipe or an explicit raw-resource boundary."
+        or "The recovery-exhausted case did not transport a native missing-ware identity that matches the final-output recipe."
     local function addItem(state, label, evidence, itemDepth, sortName, action)
         items[#items + 1] = { state = state, label = label, evidence = evidence, depth = itemDepth or 0, sortName = sortName or label, action = action }
     end
@@ -2182,6 +2256,19 @@ function menu.productionChainChecklist(nativePlan, caseData)
         and "Project-driven demand exists, but X4 did not expose that demand as a measurable hourly station-consumption rate. EOC cannot convert the project target into a safe module count. Confirm the active project still requires this ware; do not treat the calculated zero as a capacity recommendation."
         or ("Need " .. tostring(rootNeeded) .. " module(s) for the measured " .. formatNumber(nativePlan.deficitPerHour) .. "/h deficit | installed output " .. formatNumber(nativePlan.productionPerHour) .. "/h | planned " .. tostring(rootPlanned) .. " | additional required " .. tostring(rootAdditional) .. (rootPlanned > rootNeeded and (" | remove or reconsider " .. tostring(rootPlanned - rootNeeded) .. " surplus planned module(s) before expanding support; downstream counts are sized to the proven need, not the oversized queue.") or "."))
     addItem(rootState, "FINAL OUTPUT - " .. text(v(caseData, 4, nativePlan.ware)), rootEvidence, 0, "")
+    simplePlan[#simplePlan + 1] = {
+        depth = 0,
+        wareId = nativePlan.ware,
+        ware = text(v(caseData, 4, nativePlan.ware)),
+        module = rootRecipe.name,
+        installed = rootInstalled,
+        planned = rootPlanned,
+        production = nativePlan.productionPerHour or 0,
+        outputPerHour = rootRecipe.outputPerHour or 0,
+        additional = rootAdditional,
+        state = rootState,
+        finalOutput = true,
+    }
     for ware, counts in pairs(moduleCounts) do
         local recipe = recipes[ware] and recipes[ware][1]
         local name, transport = wareFacts(ware)
@@ -2238,8 +2325,31 @@ function menu.productionChainChecklist(nativePlan, caseData)
             end
         end
         addItem(state, "INPUT - " .. name .. " [" .. transport .. "]", evidence, depth[ware] or 1, name, action)
+        simplePlan[#simplePlan + 1] = {
+            depth = depth[ware] or 1,
+            wareId = ware,
+            ware = name,
+            module = recipe and recipe.name or "",
+            planned = counts.planned or 0,
+            production = counts.production or 0,
+            outputPerHour = recipe and recipe.outputPerHour or 0,
+            additional = recipe and counts.additional or nil,
+            requiredRate = counts.gap or 0,
+            state = state,
+            transport = transport,
+            recoveryPriority = menu.supplyWareId(ware) == recoveryWare,
+        }
+        if not recipe and transport ~= "SOLID" and transport ~= "LIQUID" then
+            cascadePassed = false
+            cascadeReason = "EOC reached " .. name .. " without an owned readable production recipe or a native raw-resource boundary."
+        end
     end
     table.sort(items, function(a, b) if a.depth == b.depth then return a.sortName < b.sortName end return a.depth < b.depth end)
+    table.sort(simplePlan, function(a, b)
+        if a.depth ~= b.depth then return a.depth < b.depth end
+        if a.recoveryPriority ~= b.recoveryPriority then return a.recoveryPriority == true end
+        return (a.module ~= "" and a.module or a.ware) < (b.module ~= "" and b.module or b.ware)
+    end)
 
     local storageSeen = {}
     local targetName, targetTransport = wareFacts(nativePlan.ware)
@@ -2297,9 +2407,280 @@ function menu.productionChainChecklist(nativePlan, caseData)
     for _, provision in ipairs(provisions) do
         addItem((provision.target <= 0 or provision.current >= provision.target) and "COMPLETE" or "REQUIRED", "WORKFORCE PROVISION - " .. provision.name, formatNumber(provision.current) .. " stored against the current X4 target of " .. formatNumber(provision.target) .. ". Future consumption cannot be proven until the added workforce exists; refresh after habitation fills.", 92, provision.name)
     end
-    if not converged then addItem("CANNOT PROVE", "CHAIN BOUNDARY", "The aggregate native recipe graph did not stabilize within 24 bounded passes. EOC stopped instead of presenting a guessed module count.", 99, "ZZ") end
-    DebugError("[JKEOC][B293][PRODUCTION_CHAIN_CHECKLIST] station=" .. stationName .. " ware=" .. nativePlan.ware .. " items=" .. tostring(#items) .. " root_needed=" .. tostring(rootNeeded) .. " root_planned=" .. tostring(rootPlanned) .. " root_additional=" .. tostring(rootAdditional) .. " incremental_workforce=" .. tostring(incrementalWorkforce) .. " converged=" .. tostring(converged) .. " background_scan=0")
-    return { items = items, converged = converged, rootNeeded = rootNeeded, rootPlanned = rootPlanned, rootAdditional = rootAdditional, incrementalWorkforce = incrementalWorkforce }
+    if not converged then
+        cascadePassed = false
+        cascadeReason = "The aggregate native recipe graph did not stabilize within 24 bounded passes."
+        addItem("CANNOT PROVE", "CHAIN BOUNDARY", cascadeReason .. " EOC stopped instead of presenting a guessed module count.", 99, "ZZ")
+    end
+    DebugError("[JKEOC][B349][PRODUCTION_CHAIN_CHECKLIST] station=" .. stationName .. " ware=" .. nativePlan.ware .. " items=" .. tostring(#items) .. " simple_items=" .. tostring(#simplePlan) .. " root_needed=" .. tostring(rootNeeded) .. " root_planned=" .. tostring(rootPlanned) .. " root_additional=" .. tostring(rootAdditional) .. " recovery_ware=" .. tostring(recoveryWare) .. " recovery_minimum_h=" .. tostring(recoveryMinimum) .. " incremental_workforce=" .. tostring(incrementalWorkforce) .. " converged=" .. tostring(converged) .. " background_scan=0")
+    return { items = items, simplePlan = simplePlan, converged = converged, cascadePassed = cascadePassed, cascadeReason = cascadeReason, rootNeeded = rootNeeded, rootPlanned = rootPlanned, rootAdditional = rootAdditional, incrementalWorkforce = incrementalWorkforce, recoveryWare = recoveryWare, recoveryMinimum = recoveryMinimum }
+end
+
+-- Build 349 retains the read-only planning calculator. The player may enter intended
+-- module additions; EOC recalculates the generic native dependency cascade and
+-- reports current-evidence warnings without changing the Station Build Plan.
+function menu.evaluateModulePlan(nativePlan, caseData, draftCounts)
+    local stationName = text(v(caseData, 1, "Selected station"))
+    local station64 = nativePlan.station
+    local recipes = nativePlan.recipesByWare or {}
+    local rootRecipe = nativePlan.selected
+    local rootWare = menu.supplyWareId(nativePlan.ware)
+    local queue = {}
+    local profileIndex = 0
+    for _, profile in ipairs(menu.stations or {}) do
+        if text(v(profile, 1, "")) == stationName then profileIndex = tonumber(v(profile, 16, 0)) or 0; break end
+    end
+    local function matchingRecord(record)
+        return text(v(record, 1, "")) == stationName or (profileIndex > 0 and (tonumber(v(record, 2, 0)) or 0) == profileIndex)
+    end
+    if menu.activeConstructionSnapshot and matchingRecord(menu.activeConstructionSnapshot) then queue = v(menu.activeConstructionSnapshot, 8, {}) end
+    if #queue == 0 then
+        for _, record in ipairs(menu.constructionRecords or {}) do if matchingRecord(record) then queue = v(record, 8, {}); break end end
+    end
+    local function plannedModules(recipe)
+        if not recipe then return 0 end
+        local wanted = string.lower(recipe.name or "")
+        local count = 0
+        for _, item in ipairs(queue or {}) do
+            local status = string.upper(text(v(item, 3, "PLANNED")))
+            if string.lower(text(v(item, 1, ""))) == wanted and status ~= "COMPLETE" and status ~= "COMPLETED" then count = count + 1 end
+        end
+        return count
+    end
+    local function intended(ware)
+        local value = tonumber((draftCounts or {})[menu.supplyWareId(ware)]) or 0
+        return math.max(0, math.min(999, math.floor(value + 0.5)))
+    end
+    local function wareFacts(ware)
+        local name, transport = GetWareData(ware, "name", "transport")
+        return tostring(name or ware), string.upper(tostring(transport or "UNKNOWN"))
+    end
+    local rootPlanned = math.max(tonumber(v(caseData, 34, 0)) or 0, plannedModules(rootRecipe))
+    local rootInstalled = math.max(tonumber(v(caseData, 16, 0)) or 0, (tonumber(v(caseData, 15, 0)) or 0) > 0 and 1 or 0)
+    local rootNeeded = rootRecipe.outputPerHour > 0 and math.ceil(nativePlan.deficitPerHour / rootRecipe.outputPerHour) or 0
+    local rootRecommended = math.max(rootNeeded - rootPlanned, 0)
+    local rootPlayer = intended(rootWare)
+    local baseDemand, baseDepth = {}, {}
+    local rootFuture = rootPlanned + math.max(rootPlayer, rootRecommended)
+    for _, resource in ipairs(rootRecipe.resources or {}) do
+        local liveConsumption = menu.supplySafeRate(station64, resource.ware, false, true)
+        baseDemand[resource.ware] = math.max(liveConsumption, resource.amountPerHour * rootInstalled) + resource.amountPerHour * rootFuture
+        baseDepth[resource.ware] = 1
+    end
+
+    local moduleCounts, converged = {}, false
+    for _ = 1, 24 do
+        local nextDemand, nextDepth = {}, {}
+        for ware, amount in pairs(baseDemand) do nextDemand[ware] = amount; nextDepth[ware] = baseDepth[ware] or 1 end
+        for ware, counts in pairs(moduleCounts) do
+            local recipe = recipes[ware] and recipes[ware][1]
+            local futureModules = (counts.planned or 0) + math.max(counts.player or 0, counts.recommended or 0)
+            if recipe and futureModules > 0 then
+                for _, resource in ipairs(recipe.resources or {}) do
+                    nextDemand[resource.ware] = (nextDemand[resource.ware] or 0) + resource.amountPerHour * futureModules
+                    nextDepth[resource.ware] = math.min(nextDepth[resource.ware] or ((counts.depth or 1) + 1), (counts.depth or 1) + 1)
+                end
+            end
+        end
+        local changed, nextCounts = false, {}
+        for ware, demand in pairs(nextDemand) do
+            local recipe = recipes[ware] and recipes[ware][1]
+            local consumption = menu.supplySafeRate(station64, ware, false, true)
+            local production = menu.supplySafeRate(station64, ware, true, true)
+            local totalDemand = (nextDepth[ware] or 1) == 1 and math.max(consumption, demand) or (consumption + demand)
+            local planned = plannedModules(recipe)
+            local uncovered = math.max(totalDemand - production, 0)
+            local needed = recipe and recipe.outputPerHour > 0 and math.ceil(uncovered / recipe.outputPerHour) or 0
+            local recommended = math.max(needed - planned, 0)
+            local player = intended(ware)
+            nextCounts[ware] = { recipe = recipe, demand = totalDemand, production = production, planned = planned, recommended = recommended, player = player, gap = recipe and math.max(totalDemand - production - (planned + player) * recipe.outputPerHour, 0) or uncovered, depth = nextDepth[ware] or 1 }
+            local old = moduleCounts[ware]
+            if not old or old.recommended ~= recommended or old.player ~= player or math.abs((old.demand or 0) - totalDemand) > 0.001 then changed = true end
+        end
+        moduleCounts = nextCounts
+        if not changed then converged = true; break end
+    end
+
+    local rows, warnings, globalWarnings, moduleIssues = {}, {}, {}, 0
+    rows[#rows + 1] = { depth = 0, wareId = rootWare, ware = text(v(caseData, 4, nativePlan.ware)), module = rootRecipe.name, installed = rootInstalled, planned = rootPlanned, recommended = rootRecommended, player = rootPlayer, editable = true, finalOutput = true, production = nativePlan.productionPerHour or 0, outputPerHour = rootRecipe.outputPerHour or 0 }
+    if rootPlayer > rootRecommended then warnings[#warnings + 1] = rootRecipe.name .. ": your plan adds " .. tostring(rootPlayer - rootRecommended) .. " more module(s) than current evidence supports."; moduleIssues = moduleIssues + 1 end
+    if rootPlayer < rootRecommended then warnings[#warnings + 1] = rootRecipe.name .. ": your plan is short by about " .. tostring(rootRecommended - rootPlayer) .. " module(s)."; moduleIssues = moduleIssues + 1 end
+    local cascadePassed = converged
+    local cascadeReason = converged and "The proposed module counts stabilized through the bounded native recipe cascade." or "The proposed dependency graph did not stabilize within 24 bounded passes."
+    for ware, counts in pairs(moduleCounts) do
+        local name, transport = wareFacts(ware)
+        local recipe = counts.recipe
+        rows[#rows + 1] = { depth = counts.depth, wareId = menu.supplyWareId(ware), ware = name, module = recipe and recipe.name or "", planned = counts.planned, recommended = recipe and counts.recommended or nil, player = recipe and counts.player or nil, requiredRate = counts.gap, editable = recipe ~= nil, transport = transport, production = counts.production or 0, outputPerHour = recipe and recipe.outputPerHour or 0 }
+        if recipe then
+            if counts.player > counts.recommended then warnings[#warnings + 1] = recipe.name .. ": your plan adds " .. tostring(counts.player - counts.recommended) .. " more module(s) than the current cascade requires."; moduleIssues = moduleIssues + 1 end
+            if counts.player < counts.recommended then warnings[#warnings + 1] = recipe.name .. ": add about " .. tostring(counts.recommended - counts.player) .. " more module(s) for the current cascade."; moduleIssues = moduleIssues + 1 end
+        elseif transport ~= "SOLID" and transport ~= "LIQUID" and counts.gap > 0 then
+            cascadePassed = false
+            cascadeReason = "No owned readable production recipe or raw-resource boundary was returned for " .. name .. "."
+            local warning = name .. ": no defensible production-module count is available; provide about " .. formatNumber(counts.gap) .. "/h through the advanced source route."
+            warnings[#warnings + 1] = warning
+            globalWarnings[#globalWarnings + 1] = warning
+        end
+    end
+    table.sort(rows, function(a, b)
+        if a.depth ~= b.depth then return a.depth < b.depth end
+        return (a.module ~= "" and a.module or a.ware) < (b.module ~= "" and b.module or b.ware)
+    end)
+
+    local addedWorkforce = rootPlayer * (tonumber(rootRecipe.maxworkforce) or 0)
+    for _, counts in pairs(moduleCounts) do if counts.recipe then addedWorkforce = addedWorkforce + counts.player * (tonumber(counts.recipe.maxworkforce) or 0) end end
+    local people, capacity, optimal = 0, 0, 0
+    for _, record in ipairs(menu.workforceRecords or {}) do
+        if text(v(record, 1, "")) == stationName then
+            people = math.max(people, tonumber(v(record, 3, 0)) or 0)
+            capacity = math.max(capacity, tonumber(v(record, 4, 0)) or 0)
+            optimal = math.max(optimal, tonumber(v(record, 5, 0)) or 0)
+        end
+    end
+    local futureWorkforce = optimal + addedWorkforce
+    if capacity < futureWorkforce then
+        local warning = "WORKFORCE: current habitat capacity is about " .. formatNumber(capacity) .. "; this plan raises the current optimal workforce target to about " .. formatNumber(futureWorkforce) .. ". Add habitation or reduce the module plan."
+        warnings[#warnings + 1] = warning
+        globalWarnings[#globalWarnings + 1] = warning
+    end
+
+    local transports = {}
+    for ware in pairs(moduleCounts) do local _, transport = wareFacts(ware); transports[transport] = true end
+    for transport in pairs(transports) do
+        if transport ~= "SOLID" and transport ~= "LIQUID" and transport ~= "UNKNOWN" then
+            local storageCapacity, storageFree = 0, 0
+            for _, record in ipairs(menu.storageRecords or {}) do
+                if text(v(record, 1, "")) == stationName and string.upper(text(v(record, 2, ""))) == transport then storageCapacity = tonumber(v(record, 4, 0)) or 0; storageFree = tonumber(v(record, 5, 0)) or 0; break end
+            end
+            if storageCapacity <= 0 or storageFree <= 0 then
+                local warning = "STORAGE: the plan needs " .. transport .. " storage, but current evidence does not prove usable free capacity."
+                warnings[#warnings + 1] = warning
+                globalWarnings[#globalWarnings + 1] = warning
+            end
+        end
+    end
+    local summary = #warnings == 0 and "PLAN LOOKS BALANCED FOR CURRENT EVIDENCE - NOT CLEARED TO BUILD" or ("CHECK THIS PLAN: " .. tostring(#warnings) .. " issue(s) need attention before building.")
+    DebugError("[JKEOC][B349][PLAYER_MODULE_CALCULATOR] station=" .. stationName .. " ware=" .. nativePlan.ware .. " rows=" .. tostring(#rows) .. " warnings=" .. tostring(#warnings) .. " cascade=" .. tostring(cascadePassed) .. " added_workforce=" .. tostring(addedWorkforce) .. " construction_authority=0")
+    return { rows = rows, warnings = warnings, globalWarnings = globalWarnings, moduleIssues = moduleIssues, summary = summary, cascadePassed = cascadePassed, cascadeReason = cascadeReason, addedWorkforce = addedWorkforce, people = people, capacity = capacity, futureWorkforce = futureWorkforce }
+end
+
+function menu.makeAgreedBuildPlan(nativePlan, caseData, result, evidenceKey)
+    local stationName = text(v(caseData, 1, "Selected station"))
+    local profileIndex = 0
+    for _, profile in ipairs(menu.stations or {}) do
+        if text(v(profile, 1, "")) == stationName then profileIndex = tonumber(v(profile, 16, 0)) or 0; break end
+    end
+    local rows, payloadRows = {}, {}
+    for _, row in ipairs(result.rows or {}) do
+        local kind = row.editable == false and "SOURCE" or "MODULE"
+        local saved = {
+            kind=kind, wareId=menu.supplyWareId(row.wareId), ware=text(row.ware), module=text(row.module),
+            agreed=kind == "MODULE" and (tonumber(row.player) or 0) or 0,
+            baselinePlanned=tonumber(row.planned) or 0, baselineProduction=tonumber(row.production) or 0,
+            outputPerHour=tonumber(row.outputPerHour) or 0, requiredRate=tonumber(row.requiredRate) or 0,
+            transport=text(row.transport ~= nil and row.transport or "UNKNOWN")
+        }
+        rows[#rows + 1] = saved
+        payloadRows[#payloadRows + 1] = { saved.kind, saved.wareId, saved.ware, saved.module, saved.agreed, saved.baselinePlanned, saved.baselineProduction, saved.outputPerHour, saved.requiredRate, saved.transport }
+    end
+    local conditions = {}
+    for _, warning in ipairs(result.globalWarnings or {}) do conditions[#conditions + 1] = text(warning) end
+    local status = #conditions == 0 and "AGREED COUNTS - CURRENT SAFETY CHECKS PASS" or ("AGREED COUNTS - " .. tostring(#conditions) .. " SAFETY CONDITION(S) REMAIN")
+    local wareId = menu.supplyWareId(nativePlan.ware)
+    local plan = { station=stationName, wareId=wareId, ware=text(v(caseData, 4, nativePlan.ware)), status=status, saved=getElapsedTime(), evidence=text(evidenceKey), rows=rows, warnings=conditions }
+    local payload = { station=stationName, profile=profileIndex, ware=wareId, name=plan.ware, status=status, evidence=text(evidenceKey), rows=payloadRows, warnings=conditions }
+    return plan, payload
+end
+
+function menu.agreedPlanAssessment(plan, currentSimplePlan)
+    local currentByWare = {}
+    for _, row in ipairs(currentSimplePlan or {}) do currentByWare[menu.supplyWareId(row.wareId)] = row end
+    local displayRows, stale = {}, false
+    local evidenceLoaded = #(currentSimplePlan or {}) > 0
+    for _, saved in ipairs(plan.rows or {}) do
+        local current = currentByWare[menu.supplyWareId(saved.wareId)]
+        local row = { kind=saved.kind, wareId=saved.wareId, ware=saved.ware, module=saved.module, agreed=saved.agreed, requiredRate=saved.requiredRate, transport=saved.transport, progress=0, remaining=saved.agreed, progressKnown=evidenceLoaded }
+        if saved.kind == "MODULE" then
+            if current then
+                local currentPlanned = tonumber(current.planned) or 0
+                local baselinePlanned = tonumber(saved.baselinePlanned) or 0
+                local newlyPlanned = math.max(currentPlanned - baselinePlanned, 0)
+                local completed = 0
+                if (tonumber(saved.outputPerHour) or 0) > 0 then
+                    local grossCompleted = math.max(math.floor((((tonumber(current.production) or 0) - (tonumber(saved.baselineProduction) or 0)) / saved.outputPerHour) + 0.01), 0)
+                    completed = math.max(grossCompleted - math.max(baselinePlanned - currentPlanned, 0), 0)
+                end
+                row.progress = math.min(row.agreed, newlyPlanned + completed)
+                row.remaining = math.max(row.agreed - row.progress, 0)
+            end
+            -- An optional zero-count duplicate guard is intentionally broader than
+            -- the short current estimate. Its absence still means zero modules are
+            -- required. If the ware later appears with a nonzero requirement, the
+            -- normal additional-versus-remaining comparison marks the plan stale.
+            if evidenceLoaded and current then
+                if current.additional == nil or (tonumber(current.additional) or 0) ~= row.remaining then stale = true end
+            elseif evidenceLoaded and row.agreed > 0 then
+                stale = true
+            end
+        elseif evidenceLoaded then
+            if not current then stale = true else row.requiredRate = tonumber(current.requiredRate) or row.requiredRate end
+        end
+        displayRows[#displayRows + 1] = row
+    end
+    return displayRows, stale, evidenceLoaded
+end
+
+function menu.renderAgreedBuildList(tableWidget, plan, currentSimplePlan, commandKey, caseData, nativePlan)
+    local rows, stale, evidenceLoaded = menu.agreedPlanAssessment(plan, currentSimplePlan)
+    section(tableWidget, "SAVED AGREED BUILD LIST")
+    local statusRow = tableWidget:addRow(false)
+    local conditionCount = #(plan.warnings or {})
+    local statusText = not evidenceLoaded and "SAVED LIST RESTORED: Current Planner evidence is not loaded yet. The agreed counts remain available; return to the case and run the readiness check to refresh progress." or (stale and "PLAN NEEDS REVIEW: Current evidence no longer matches every saved count. The saved list was not overwritten." or (conditionCount > 0 and ("COUNTS SAVED: EOC and player agree on the production-module counts, but " .. tostring(conditionCount) .. " safety condition(s) still block construction.") or "CURRENT AGREEMENT: EOC and player module counts still match the latest evidence."))
+    statusRow[1]:setColSpan(4):createText(statusText, { wordwrap = true, color = not evidenceLoaded and investigationUnknownColor or ((stale or conditionCount > 0) and investigationFailColor or investigationPassColor), font = Helper.headerFont })
+    local guideRow = tableWidget:addRow(false)
+    guideRow[1]:setColSpan(4):createText("RETURN HERE AS YOU BUILD: EOC keeps this list in the save game. Use the normal X4 Station Build Plan; EOC never places modules. Progress below is a best-current estimate from the live plan and production evidence.", { wordwrap = true, color = navigationStoryColor })
+    local pageSize = 6
+    local pageCount = math.max(1, math.ceil(#rows / pageSize))
+    menu.agreedBuildPage = math.max(1, math.min(tonumber(menu.agreedBuildPage) or 1, pageCount))
+    local first = (menu.agreedBuildPage - 1) * pageSize + 1
+    local last = math.min(#rows, first + pageSize - 1)
+    for index = first, last do
+        local row = rows[index]
+        local display = ""
+        if row.kind == "MODULE" then
+            display = row.progressKnown and ((row.module ~= "" and row.module or row.ware) .. " | AGREED ADD " .. tostring(row.agreed) .. " | EOC SEES ADDED/PLANNED ABOUT " .. tostring(row.progress) .. " | STILL NEED ABOUT " .. tostring(row.remaining)) or ((row.module ~= "" and row.module or row.ware) .. " | AGREED ADD " .. tostring(row.agreed) .. " | CURRENT PROGRESS NOT REFRESHED")
+            if row.agreed == 0 then display = (row.module ~= "" and row.module or row.ware) .. " | AGREED ADD 0 | DO NOT ADD DUPLICATE CAPACITY" end
+        else
+            display = row.ware .. " [" .. row.transport .. "] | NO PRODUCTION MODULE | PROVIDE ABOUT " .. formatNumber(row.requiredRate) .. "/h THROUGH THE RAW-SOURCE ROUTE"
+        end
+        local listRow = tableWidget:addRow(false)
+        listRow[1]:setColSpan(4):createText(display, { wordwrap = true, color = (row.kind == "MODULE" and row.remaining == 0) and investigationPassColor or investigationUnknownColor, font = Helper.headerFont })
+    end
+    if pageCount > 1 then
+        local pager = tableWidget:addRow(true)
+        pager[1]:setColSpan(2); addButton(pager, 1, "PREVIOUS SAVED-LIST PAGE", function() menu.agreedBuildPage = math.max(1, menu.agreedBuildPage - 1); menu.refresh() end, menu.agreedBuildPage > 1)
+        pager[3]:setColSpan(2); addButton(pager, 3, "NEXT SAVED-LIST PAGE", function() menu.agreedBuildPage = math.min(pageCount, menu.agreedBuildPage + 1); menu.refresh() end, menu.agreedBuildPage < pageCount)
+    end
+    if conditionCount > 0 then
+        local conditionRow = tableWidget:addRow(false)
+        conditionRow[1]:setColSpan(4):createText("DO NOT BUILD YET: " .. text(plan.warnings[1]), { wordwrap = true, color = investigationFailColor })
+        if conditionCount > 1 then
+            local moreRow = tableWidget:addRow(false)
+            moreRow[1]:setColSpan(4):createText(tostring(conditionCount - 1) .. " additional saved safety condition(s) remain. Return to the calculator or open Advanced Evidence and Math.", { wordwrap = true, color = investigationUnknownColor })
+        end
+    end
+    local actionRow = tableWidget:addRow(true)
+    local returnLabel = not caseData and "RETURN TO SAVED LISTS" or (stale and "RETURN TO CALCULATOR - REVIEW PLAN" or "RETURN TO MODULE CALCULATOR")
+    actionRow[1]:setColSpan(2); menu.addPrimaryButton(actionRow, 1, returnLabel, function() menu.solutionAgreedKey = nil; menu.solutionAgreedStandaloneKey = nil; menu.refresh() end, true)
+    actionRow[3]:setColSpan(2)
+    local confirmKey = menu.agreedPlanKey(plan.station, plan.wareId)
+    addButton(actionRow, 3, menu.agreedClearConfirm == confirmKey and "CONFIRM CLEAR SAVED LIST" or "CLEAR SAVED LIST", function()
+        if menu.agreedClearConfirm ~= confirmKey then menu.agreedClearConfirm = confirmKey; menu.refresh(); return end
+        local profileIndex = 0
+        for _, profile in ipairs(menu.stations or {}) do if text(v(profile, 1, "")) == plan.station then profileIndex = tonumber(v(profile, 16, 0)) or 0; break end end
+        menu.pendingAgreedClearKey = confirmKey
+        raise("planner.agreed.clear", { station=plan.station, profile=profileIndex, ware=plan.wareId })
+    end, true)
 end
 
 function menu.runExpansionReadiness(caseData)
@@ -2313,6 +2694,7 @@ function menu.runExpansionReadiness(caseData)
     local produces = tonumber(v(caseData, 15, 0)) or 0
     local planned = tonumber(v(caseData, 34, 0)) or 0
     local recoveryExhausted = actionStateText == "RECOVERY EXHAUSTED - PLANNER AVAILABLE"
+        or actionStateText == "INPUT DELIVERY TEST EXHAUSTED - LOCAL PRODUCTION CHECKS REMAIN"
     local plannedProductionReview = planned > 0
     local capacity = tonumber(v(caseData, 13, 0)) or 0
     local free = tonumber(v(caseData, 14, 0)) or 0
@@ -2375,6 +2757,7 @@ function menu.runExpansionReadiness(caseData)
     end
     local summary = notReady > 0 and "NOT READY - CORRECT THE FAILED CONDITION BEFORE PLANNING" or ((unknown > 0 or warnings > 0) and "READY FOR CAUTIOUS PLANNING - NOT CLEARED TO BUILD" or "READY FOR PLANNING")
     menu.plannerChecklistPage = 1
+    menu.plannerSimplePage = 1
     menu.expansionReadiness = { key = checklistCaseKey(caseData), evidenceKey = expansionEvidenceKey(caseData), station = stationName, ware = ware, rows = rows, summary = summary, notReady = notReady, unknown = unknown, warnings = warnings, checkedAt = getElapsedTime(), nativePlan = nativePlan }
     DebugError("[JKEOC][B289][EXPANSION_READINESS] station=" .. stationName .. " ware=" .. ware .. " blueprint=" .. blueprintState .. " module=" .. blueprintModule .. " true_hq=" .. tostring(trueHQ) .. " summary=" .. summary .. " not_ready=" .. tostring(notReady) .. " cannot_prove=" .. tostring(unknown) .. " warnings=" .. tostring(warnings) .. " construction_authority=0")
     return menu.expansionReadiness
@@ -2396,13 +2779,10 @@ local function eocChecklistState(caseData, plan, step)
 
     local function tradeCycle(expectedType, verifyMovement)
         if not action or actionType ~= expectedType then return "EOC WAITING", "EOC has not yet established the required bounded " .. expectedType .. " action.", true end
-        if actionStateText == "RECOVERY EXHAUSTED - PLANNER AVAILABLE" then
+        if actionStateText == "RECOVERY EXHAUSTED - PLANNER AVAILABLE"
+            or actionStateText == "INPUT DELIVERY TEST EXHAUSTED - LOCAL PRODUCTION CHECKS REMAIN" then
             if verifyMovement then return "EOC CHECKED", "Stock did not rise during the full delivery-test window; EOC has proven this recovery path failed and opened expansion readiness review.", true end
             return "EOC VERIFIED", "The bounded offer remained active for the full 30-minute delivery-test window and reached the recovery-exhaustion gate.", true
-        end
-        if actionStateText == "INPUT DELIVERY TEST EXHAUSTED - LOCAL PRODUCTION CHECKS REMAIN" then
-            if verifyMovement then return "EOC CHECKED", "The confirmed production input did not rise during the full delivery-test window. Expansion remains locked while the existing production line and delivery controls still require review.", true end
-            return "EOC CHECKED", "EOC completed the bounded input-delivery test. It did not prove recovery, and it did not clear permanent expansion.", true
         end
         if verifyMovement then
             if movementVerified then return "EOC VERIFIED", "Live stock moved from the action baseline after EOC created the bounded offer.", true end
@@ -3914,11 +4294,41 @@ local function solutionPlannerCenter(tableWidget)
         menu.solutionCase = caseData
     end
     if not caseData then
+        local standalonePlan = menu.solutionAgreedStandaloneKey and menu.agreedBuildPlans and menu.agreedBuildPlans[menu.solutionAgreedStandaloneKey] or nil
+        if standalonePlan then
+            menu.renderAgreedBuildList(tableWidget, standalonePlan, {}, "", nil, nil)
+            return
+        end
         section(tableWidget, "SOLUTION PLANNER — COMMAND FIRST")
         local emptyCommand = tableWidget:addRow(false)
         emptyCommand[1]:setColSpan(4):createText("EOC CONCLUSION: No station case is loaded.", { wordwrap = true, color = investigationUnknownColor, font = Helper.headerFont })
         local emptyNext = tableWidget:addRow(false)
         emptyNext[1]:setColSpan(4):createText("DO THIS NEXT: Open Diagnostics and select the case that needs a permanent-solution review.", { wordwrap = true })
+        local savedPlans = {}
+        for key, plan in pairs(menu.agreedBuildPlans or {}) do savedPlans[#savedPlans + 1] = { key=key, plan=plan } end
+        table.sort(savedPlans, function(a, b) return (a.plan.station .. "|" .. a.plan.ware) < (b.plan.station .. "|" .. b.plan.ware) end)
+        if #savedPlans > 0 then
+            local savedPageCount = math.max(1, math.ceil(#savedPlans / 6))
+            menu.agreedIndexPage = math.max(1, math.min(tonumber(menu.agreedIndexPage) or 1, savedPageCount))
+            section(tableWidget, "SAVED AGREED BUILD LISTS" .. (savedPageCount > 1 and (" - PAGE " .. tostring(menu.agreedIndexPage) .. " OF " .. tostring(savedPageCount)) or ""))
+            local savedFirst = (menu.agreedIndexPage - 1) * 6 + 1
+            local savedLast = math.min(#savedPlans, savedFirst + 5)
+            for index = savedFirst, savedLast do
+                local saved = savedPlans[index]
+                local savedAction = tableWidget:addRow(true)
+                savedAction[1]:setColSpan(4)
+                menu.addPrimaryButton(savedAction, 1, "OPEN SAVED LIST - " .. saved.plan.station .. " -> " .. saved.plan.ware, function()
+                    menu.solutionAgreedStandaloneKey = saved.key
+                    menu.agreedBuildPage = 1
+                    menu.refresh()
+                end, true)
+            end
+            if savedPageCount > 1 then
+                local savedPager = tableWidget:addRow(true)
+                savedPager[1]:setColSpan(2); addButton(savedPager, 1, "PREVIOUS SAVED LISTS", function() menu.agreedIndexPage = math.max(1, menu.agreedIndexPage - 1); menu.refresh() end, menu.agreedIndexPage > 1)
+                savedPager[3]:setColSpan(2); addButton(savedPager, 3, "NEXT SAVED LISTS", function() menu.agreedIndexPage = math.min(savedPageCount, menu.agreedIndexPage + 1); menu.refresh() end, menu.agreedIndexPage < savedPageCount)
+            end
+        end
         local emptyAction = tableWidget:addRow(true)
         emptyAction[1]:setColSpan(4)
         menu.addPrimaryButton(emptyAction, 1, "OPEN DIAGNOSTICS", function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end, true)
@@ -3930,8 +4340,32 @@ local function solutionPlannerCenter(tableWidget)
     local commandReadinessMatches = commandReadiness and commandReadiness.key == checklistCaseKey(caseData) and commandReadiness.evidenceKey == expansionEvidenceKey(caseData)
     local commandNativePlan = commandReadinessMatches and commandReadiness.nativePlan or nil
     local commandProjectDemandUnknown = commandNativePlan and commandNativePlan.projectDemandUnmeasured
+    local commandSimplePlan = commandNativePlan and commandNativePlan.checklist and commandNativePlan.checklist.simplePlan or {}
+    local commandCascadePassed = not commandNativePlan or not commandNativePlan.checklist or commandNativePlan.checklist.cascadePassed ~= false
+    local commandCascadeReason = commandNativePlan and commandNativePlan.checklist and commandNativePlan.checklist.cascadeReason or "No cascade evidence is loaded."
+    local commandSupportRequirement = nil
+    if commandNativePlan and commandNativePlan.checklist and (tonumber(v(caseData, 15, 0)) or 0) > 0 then
+        for _, item in ipairs(commandNativePlan.checklist.items or {}) do
+            if (tonumber(item.depth) or 0) > 0 and (item.state == "REQUIRED" or item.state == "SOURCE REQUIRED") then
+                commandSupportRequirement = item
+                break
+            end
+        end
+    end
     local commandKey = checklistCaseKey(caseData)
+    local calculatorKey = commandKey .. "|" .. expansionEvidenceKey(caseData)
+    menu.plannerModuleDrafts = menu.plannerModuleDrafts or {}
+    menu.plannerModuleDrafts[calculatorKey] = menu.plannerModuleDrafts[calculatorKey] or { counts = {}, result = nil, dirty = false }
+    local calculatorState = menu.plannerModuleDrafts[calculatorKey]
+    for _, item in ipairs(commandSimplePlan) do
+        if item.wareId and calculatorState.counts[menu.supplyWareId(item.wareId)] == nil then calculatorState.counts[menu.supplyWareId(item.wareId)] = "0" end
+    end
     local showingDeepDive = menu.solutionDeepDiveKey == commandKey
+    local agreedWareId = commandNativePlan and commandNativePlan.ware or v(caseData, 40, "")
+    local agreedKey = agreedWareId ~= "" and menu.agreedPlanKey(text(v(caseData, 1, "")), agreedWareId) or ""
+    local savedAgreedPlan = agreedKey ~= "" and menu.agreedBuildPlans and menu.agreedBuildPlans[agreedKey] or nil
+    local showingAgreedPlan = savedAgreedPlan and menu.solutionAgreedKey == commandKey
+    local deepDivePage = math.max(1, math.min(2, tonumber(menu.solutionDeepDivePage) or 1))
     local commandConclusion, commandNext, commandActionLabel, commandAction
     if not commandPlannerReady then
         commandConclusion = "EOC CONCLUSION: Immediate recovery testing is not finished. Permanent construction is locked."
@@ -3958,16 +4392,25 @@ local function solutionPlannerCenter(tableWidget)
         commandNext = "DO THIS NEXT: Review and finish the existing X4 Station Build Plan, then verify the result."
         commandActionLabel = "OPEN EOC CONSTRUCTION STATUS"
         commandAction = function() menu.page = "construction"; menu.activeTab = "construction"; menu.refresh() end
+    elseif commandSupportRequirement then
+        commandConclusion = "EOC CONCLUSION: Existing " .. text(v(caseData, 4, "final-output")) .. " production is installed, but its supporting production chain is incomplete. Do not add duplicate final-output capacity."
+        commandNext = "DO THIS NEXT: Use the simple build list below. It gives the best current estimate of how many production modules to add. Open Deep Dive only when you want the evidence and calculations."
+        commandActionLabel = "ADVANCED - BUILD DETAILS"
+        commandAction = function() menu.solutionDeepDiveKey = checklistCaseKey(caseData); menu.solutionDeepDivePage = 1; menu.refresh() end
     elseif commandNativePlan and commandNativePlan.moduleCount > 0 then
         commandConclusion = "EOC CONCLUSION: Current measured station demand supports a cautious review of " .. tostring(commandNativePlan.moduleCount) .. " additional production module(s)."
         commandNext = "DO THIS NEXT: Review the native recipe and prerequisites in Deep Dive before committing anything in X4."
         commandActionLabel = "DEEP DIVE — EVIDENCE AND ANALYSIS"
-        commandAction = function() menu.solutionDeepDiveKey = checklistCaseKey(caseData); menu.refresh() end
+        commandAction = function() menu.solutionDeepDiveKey = checklistCaseKey(caseData); menu.solutionDeepDivePage = 1; menu.refresh() end
     else
         commandConclusion = "EOC CONCLUSION: Measured station consumption does not currently prove a need for another production module."
         commandNext = "DO THIS NEXT: Do not add capacity from this snapshot. Ask EOC to test the case; EOC will return when later demand evidence supports an answer."
         commandActionLabel = "RETURN TO DIAGNOSTICS — VERIFY LATER"
         commandAction = function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end
+    end
+    if showingAgreedPlan then
+        menu.renderAgreedBuildList(tableWidget, savedAgreedPlan, commandSimplePlan, commandKey, caseData, commandNativePlan)
+        return
     end
     if not showingDeepDive then
         section(tableWidget, "SOLUTION PLANNER — COMMAND FIRST")
@@ -3975,31 +4418,147 @@ local function solutionPlannerCenter(tableWidget)
         conclusionRow[1]:setColSpan(4):createText(commandConclusion, { wordwrap = true, color = commandProjectDemandUnknown and investigationUnknownColor or navigationStoryColor, font = Helper.headerFont })
         local nextRow = tableWidget:addRow(false)
         nextRow[1]:setColSpan(4):createText(commandNext, { wordwrap = true })
+        if savedAgreedPlan then
+            local savedRow = tableWidget:addRow(true)
+            savedRow[1]:setColSpan(4)
+            menu.addPrimaryButton(savedRow, 1, "OPEN SAVED AGREED BUILD LIST", function()
+                menu.solutionAgreedKey = commandKey
+                menu.agreedBuildPage = 1
+                menu.refresh()
+            end, true)
+        end
+        if commandReadinessMatches and #commandSimplePlan > 0 then
+            local displayedPlan = calculatorState.result and calculatorState.result.rows or commandSimplePlan
+            for _, item in ipairs(displayedPlan) do
+                if item.wareId and calculatorState.counts[menu.supplyWareId(item.wareId)] == nil then calculatorState.counts[menu.supplyWareId(item.wareId)] = "0" end
+            end
+            local simplePageSize = 6
+            local simplePageCount = math.max(1, math.ceil(#displayedPlan / simplePageSize))
+            menu.plannerSimplePage = math.max(1, math.min(tonumber(menu.plannerSimplePage) or 1, simplePageCount))
+            section(tableWidget, "WHAT TO ADD - BEST CURRENT ESTIMATE" .. (simplePageCount > 1 and (" - PAGE " .. tostring(menu.plannerSimplePage) .. " OF " .. tostring(simplePageCount)) or ""))
+            local activeCascadePassed = calculatorState.result and calculatorState.result.cascadePassed or commandCascadePassed
+            local activeCascadeReason = calculatorState.result and calculatorState.result.cascadeReason or commandCascadeReason
+            local cascadeRow = tableWidget:addRow(false)
+            cascadeRow[1]:setColSpan(4):createText((activeCascadePassed and "CASCADE CHECK COMPLETE: " or "CASCADE GATE STOPPED - ESTIMATE INCOMPLETE: ") .. activeCascadeReason, { wordwrap = true, color = activeCascadePassed and investigationPassColor or investigationFailColor })
+            local calculatorGuide = tableWidget:addRow(false)
+            calculatorGuide[1]:setColSpan(4):createText(calculatorState.dirty and "YOUR PLAN CHANGED: Press TAB after the number, then select CHECK MY MODULE PLAN again. The prior result is stale." or "TRY YOUR OWN PLAN: Type how many modules you intend to add, press TAB after each number, then select CHECK MY MODULE PLAN. EOC changes no station or build plan.", { wordwrap = true, color = calculatorState.dirty and investigationFailColor or navigationStoryColor })
+            local simpleFirst = (menu.plannerSimplePage - 1) * simplePageSize + 1
+            local simpleLast = math.min(#displayedPlan, simpleFirst + simplePageSize - 1)
+            for simpleIndex = simpleFirst, simpleLast do
+                local item = displayedPlan[simpleIndex]
+                local recommended = item.recommended ~= nil and item.recommended or item.additional
+                local wareId = menu.supplyWareId(item.wareId or "")
+                local playerCount = math.max(0, math.floor((tonumber(calculatorState.counts[wareId]) or 0) + 0.5))
+                local simpleRow = tableWidget:addRow(false)
+                if recommended ~= nil and item.editable ~= false then
+                    local comparison = calculatorState.result and (playerCount > recommended and ("TOO MANY BY ABOUT " .. tostring(playerCount - recommended)) or (playerCount < recommended and ("ADD ABOUT " .. tostring(recommended - playerCount) .. " MORE") or "MATCHES CURRENT ESTIMATE")) or ("EOC ESTIMATE: ADD ABOUT " .. tostring(recommended))
+                    local simpleText = (item.module ~= "" and item.module or item.ware) .. " | " .. comparison
+                    if item.finalOutput then simpleText = simpleText .. " | INSTALLED " .. tostring(item.installed or 0) .. " | ALREADY PLANNED " .. tostring(item.planned or 0) end
+                    simpleRow[1]:setColSpan(2):createText(simpleText, { wordwrap = true, color = calculatorState.result and playerCount ~= recommended and investigationFailColor or investigationPassColor, font = Helper.headerFont })
+                    simpleRow[3]:createText("YOU PLAN TO ADD", { color = navigationStoryColor })
+                    simpleRow[4]:createEditBox({ height = Helper.standardButtonHeight }):setText(tostring(calculatorState.counts[wareId] or "0"))
+                    simpleRow[4].handlers.onEditBoxDeactivated = function(_, entered)
+                        calculatorState.counts[wareId] = tostring(math.max(0, math.min(999, math.floor((tonumber(entered) or 0) + 0.5))))
+                        calculatorState.dirty = true
+                    end
+                else
+                    simpleRow[1]:setColSpan(4):createText(item.ware .. ": NO PRODUCTION-MODULE COUNT AVAILABLE | PROVIDE ABOUT " .. formatNumber(item.requiredRate or 0) .. "/h BY THE SOURCE ROUTE SHOWN IN ADVANCED DETAILS", { wordwrap = true, color = investigationUnknownColor, font = Helper.headerFont })
+                end
+            end
+            if simplePageCount > 1 then
+                local simplePager = tableWidget:addRow(true)
+                simplePager[1]:setColSpan(2)
+                addButton(simplePager, 1, "PREVIOUS BUILD-LIST PAGE", function() menu.plannerSimplePage = math.max(1, menu.plannerSimplePage - 1); menu.refresh() end, menu.plannerSimplePage > 1)
+                simplePager[3]:setColSpan(2)
+                addButton(simplePager, 3, "NEXT BUILD-LIST PAGE", function() menu.plannerSimplePage = math.min(simplePageCount, menu.plannerSimplePage + 1); menu.refresh() end, menu.plannerSimplePage < simplePageCount)
+            end
+            if calculatorState.result then
+                local resultRow = tableWidget:addRow(false)
+                resultRow[1]:setColSpan(4):createText(calculatorState.result.summary, { wordwrap = true, color = #(calculatorState.result.warnings or {}) == 0 and investigationPassColor or investigationFailColor, font = Helper.headerFont })
+                for warningIndex = 1, math.min(3, #(calculatorState.result.globalWarnings or {})) do
+                    local warningRow = tableWidget:addRow(false)
+                    warningRow[1]:setColSpan(4):createText(calculatorState.result.globalWarnings[warningIndex], { wordwrap = true, color = investigationFailColor })
+                end
+                if #(calculatorState.result.globalWarnings or {}) > 3 then
+                    local moreWarnings = tableWidget:addRow(false)
+                    moreWarnings[1]:setColSpan(4):createText(tostring(#calculatorState.result.globalWarnings - 3) .. " more non-module warning(s) remain; open Advanced Evidence and Math.", { wordwrap = true, color = investigationUnknownColor })
+                end
+            end
+            local calculatorRow = tableWidget:addRow(true)
+            calculatorRow[1]:setColSpan(2)
+            menu.addPrimaryButton(calculatorRow, 1, "CHECK MY MODULE PLAN", function()
+                calculatorState.result = menu.evaluateModulePlan(commandNativePlan, caseData, calculatorState.counts)
+                calculatorState.dirty = false
+                menu.plannerSimplePage = 1
+                menu.refresh()
+            end, true)
+            calculatorRow[3]:setColSpan(2)
+            addButton(calculatorRow, 3, "CLEAR MY PLAN", function()
+                calculatorState.counts = {}
+                for _, item in ipairs(commandSimplePlan) do if item.wareId then calculatorState.counts[menu.supplyWareId(item.wareId)] = "0" end end
+                calculatorState.result = nil
+                calculatorState.dirty = false
+                menu.plannerSimplePage = 1
+                menu.refresh()
+            end, true)
+            local canSaveAgreement = calculatorState.result and not calculatorState.dirty and calculatorState.result.cascadePassed and (tonumber(calculatorState.result.moduleIssues) or 0) == 0
+            local saveRow = tableWidget:addRow(true)
+            saveRow[1]:setColSpan(4)
+            menu.addPrimaryButton(saveRow, 1, savedAgreedPlan and "REPLACE SAVED AGREED BUILD LIST" or "SAVE AGREED BUILD LIST", function()
+                local plan, payload = menu.makeAgreedBuildPlan(commandNativePlan, caseData, calculatorState.result, expansionEvidenceKey(caseData))
+                menu.pendingAgreedPlan = { key=agreedKey, plan=plan, commandKey=commandKey }
+                raise("planner.agreed.save", payload)
+            end, canSaveAgreement)
+            if calculatorState.result and not canSaveAgreement then
+                local saveGuide = tableWidget:addRow(false)
+                saveGuide[1]:setColSpan(4):createText(calculatorState.dirty and "SAVE LOCKED: Press TAB after the changed number and check the module plan again." or "SAVE LOCKED: EOC and player module counts must match and the cascade must complete before this becomes the remembered build list.", { wordwrap = true, color = investigationFailColor })
+            end
+        end
         local commandRow = tableWidget:addRow(true)
         commandRow[1]:setColSpan(2)
         menu.addPrimaryButton(commandRow, 1, commandActionLabel, commandAction, true)
         commandRow[3]:setColSpan(2)
-        addButton(commandRow, 3, "DEEP DIVE — EVIDENCE AND ANALYSIS", function()
+        addButton(commandRow, 3, "ADVANCED - EVIDENCE AND MATH", function()
             menu.solutionDeepDiveKey = commandKey
+            menu.solutionDeepDivePage = 1
             menu.refresh()
         end, true)
         return
     end
 
-    section(tableWidget, "STATION SOLUTION PLANNER")
-    local safetyBanner = tableWidget:addRow(false)
-    safetyBanner[1]:setColSpan(4):createText("TEST ESCALATION SAFETY: Do not use permanent construction as a shortcut around an active station problem. EOC unlocks new-capacity recommendations only after immediate recovery evidence is exhausted. When matching production is already planned, EOC permits review of that existing plan and its supporting recipe without authorizing duplicate capacity. HQ, mixed-purpose, and build-everything stations require special caution because added modules can duplicate capacity, compete for inputs, and worsen shared-storage pressure.", { wordwrap = true, color = investigationFailColor })
+    local deepDiveReadiness = menu.expansionReadiness
+    local deepDiveNativePlan = deepDiveReadiness and deepDiveReadiness.nativePlan
+    local deepDiveResourceCount = deepDiveNativePlan and deepDiveNativePlan.selected and #(deepDiveNativePlan.selected.resources or {}) or 0
+    local deepDiveChecklistCount = deepDiveNativePlan and deepDiveNativePlan.checklist and #(deepDiveNativePlan.checklist.items or {}) or 2
+    local deepDiveReadinessCount = deepDiveReadiness and #(deepDiveReadiness.rows or {}) or 0
+    local deepDiveRowPitch = math.max(1, Helper.scaleY(Helper.standardTextHeight) + Helper.borderSize)
+    -- Word-wrapped safety, evidence, and recipe rows commonly consume more than
+    -- one standard row. Budget them before creating the table so X4 never has
+    -- to reject an already-overheight table.
+    local deepDiveRequiredUnits = 30 + (2 * deepDiveReadinessCount) + (2 * deepDiveResourceCount) + (2 * math.min(5, deepDiveChecklistCount))
+    local deepDiveRequiredPixels = deepDiveRequiredUnits * deepDiveRowPitch
+    local deepDiveAvailablePixels = tonumber(menu.listContentHeight) or Helper.scaleY(config.maxHeight)
+    local deepDiveNeedsPaging = deepDiveRequiredPixels > deepDiveAvailablePixels
+    if not deepDiveNeedsPaging then deepDivePage = 1 end
+    menu.solutionDeepDivePage = deepDivePage
+    DebugError("[JKEOC][B349][PLANNER_PIXEL_BUDGET] required=" .. tostring(deepDiveRequiredPixels) .. " available=" .. tostring(deepDiveAvailablePixels) .. " readiness=" .. tostring(deepDiveReadinessCount) .. " resources=" .. tostring(deepDiveResourceCount) .. " checklist=" .. tostring(deepDiveChecklistCount) .. " pages=" .. tostring(deepDiveNeedsPaging and 2 or 1) .. " active=" .. tostring(deepDivePage))
+
+    if deepDivePage == 1 then
+        section(tableWidget, "STATION SOLUTION PLANNER")
+        local safetyBanner = tableWidget:addRow(false)
+        safetyBanner[1]:setColSpan(4):createText("TEST ESCALATION SAFETY: Do not use permanent construction as a shortcut around an active station problem. EOC unlocks new-capacity recommendations only after immediate recovery evidence is exhausted. When matching production is already planned, EOC permits review of that existing plan and its supporting recipe without authorizing duplicate capacity. HQ, mixed-purpose, and build-everything stations require special caution because added modules can duplicate capacity, compete for inputs, and worsen shared-storage pressure.", { wordwrap = true, color = investigationFailColor })
+    end
     if not caseData then
         local row = tableWidget:addRow(false)
         row[1]:setColSpan(4):createText("No case is loaded. Open Diagnostics, exhaust the immediate recovery checks, then select OPEN PLANNER on the permanent-solution step.", { wordwrap = true, color = investigationUnknownColor })
         return
     end
     local plannerReady, plannerReason = menu.plannerAccessForCase(caseData)
-    local warning = tableWidget:addRow(false)
+    local warning = deepDivePage == 1 and tableWidget:addRow(false) or nil
     local plannerWarning = plannerReason == "PLANNED_PRODUCTION_REVIEW"
         and "PLANNED-PRODUCTION REVIEW: X4 already reports matching production in this station's build plan. EOC may show the exact native recipe and supporting requirements so you can review the committed plan. This does not prove the earlier recovery test passed and does not authorize duplicate modules; finish and verify the existing plan first."
         or (plannerReady and "ESCALATION WARNING: EOC has exhausted the immediate recovery evidence it can test: a bounded BUY offer remained active for the full 30-minute delivery-test window, reachable supply and compatible station traders were present, and stock did not rise. This planner is advisory. Review the station's existing build plan before adding anything; complex mixed-purpose stations and HQ-style build-everything stations can be made worse by duplicate modules, input competition, or shared-storage pressure." or "PLANNER LOCKED: EOC has not exhausted immediate recovery testing for this case. Return to Diagnostics and let the bounded BUY action complete its 30-minute delivery-test window. EOC must confirm reachable supply, compatible station traders, a later reconciliation, and no stock increase before permanent construction advice is shown. Do not expand this station yet.")
-    warning[1]:setColSpan(4):createText(plannerWarning, { wordwrap = true, color = plannerReady and investigationUnknownColor or investigationFailColor })
+    if warning then warning[1]:setColSpan(4):createText(plannerWarning, { wordwrap = true, color = plannerReady and investigationUnknownColor or investigationFailColor }) end
     if not plannerReady then
         local lockedRow = tableWidget:addRow(true)
         lockedRow[1]:setColSpan(4)
@@ -4016,13 +4575,15 @@ local function solutionPlannerCenter(tableWidget)
         addButton(checkRow, 1, "RUN EXPANSION READINESS CHECK", function() menu.runExpansionReadiness(caseData); menu.refresh() end, true, currentChoiceBackground)
         return
     end
-    section(tableWidget, "EXPANSION READINESS CHECK - " .. readiness.summary)
-    local readinessSummary = tableWidget:addRow(false)
-    readinessSummary[1]:setColSpan(4):createText("EOC checked the current case evidence before showing a plan: " .. tostring(readiness.notReady or 0) .. " not ready | " .. tostring(readiness.warnings or 0) .. " warning(s) | " .. tostring(readiness.unknown or 0) .. " condition(s) EOC cannot prove. CANNOT PROVE is not a pass; follow the stated vanilla-editor check before building.", { wordwrap = true, color = (readiness.notReady or 0) > 0 and investigationFailColor or investigationUnknownColor })
-    for _, item in ipairs(readiness.rows or {}) do
-        local itemRow = tableWidget:addRow(false)
-        local itemColor = item.state == "PASS" and investigationPassColor or (item.state == "NOT READY" and investigationFailColor or investigationUnknownColor)
-        itemRow[1]:setColSpan(4):createText(item.state .. " - " .. item.label .. ": " .. item.evidence, { wordwrap = true, color = itemColor })
+    if deepDivePage == 1 then
+        section(tableWidget, "EXPANSION READINESS CHECK - " .. readiness.summary)
+        local readinessSummary = tableWidget:addRow(false)
+        readinessSummary[1]:setColSpan(4):createText("EOC checked the current case evidence before showing a plan: " .. tostring(readiness.notReady or 0) .. " not ready | " .. tostring(readiness.warnings or 0) .. " warning(s) | " .. tostring(readiness.unknown or 0) .. " condition(s) EOC cannot prove. CANNOT PROVE is not a pass; follow the stated vanilla-editor check before building.", { wordwrap = true, color = (readiness.notReady or 0) > 0 and investigationFailColor or investigationUnknownColor })
+        for _, item in ipairs(readiness.rows or {}) do
+            local itemRow = tableWidget:addRow(false)
+            local itemColor = item.state == "PASS" and investigationPassColor or (item.state == "NOT READY" and investigationFailColor or investigationUnknownColor)
+            itemRow[1]:setColSpan(4):createText(item.state .. " - " .. item.label .. ": " .. item.evidence, { wordwrap = true, color = itemColor })
+        end
     end
     if (readiness.notReady or 0) > 0 then
         local blocked = tableWidget:addRow(false)
@@ -4031,6 +4592,18 @@ local function solutionPlannerCenter(tableWidget)
         returnRow[1]:setColSpan(4)
         addButton(returnRow, 1, "RETURN TO DIAGNOSTICS", function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end, true)
         return
+    end
+    if deepDiveNeedsPaging and deepDivePage == 1 then
+        local nextPage = tableWidget:addRow(true)
+        nextPage[1]:setColSpan(4)
+        menu.addPrimaryButton(nextPage, 1, "NEXT - MODULE, RECIPE, AND SUPPORT CHAIN", function() menu.solutionDeepDivePage = 2; menu.refresh() end, true)
+        return
+    end
+    if deepDiveNeedsPaging then
+        section(tableWidget, "SOLUTION PLANNER - PAGE 2 OF 2")
+        local previousPage = tableWidget:addRow(true)
+        previousPage[1]:setColSpan(4)
+        addButton(previousPage, 1, "PREVIOUS - READINESS AND SAFETY", function() menu.solutionDeepDivePage = 1; menu.refresh() end, true)
     end
     local stationName = text(v(caseData, 1, "Selected station"))
     local ware = text(v(caseData, 4, "affected ware"))
@@ -4118,7 +4691,7 @@ local function solutionPlannerCenter(tableWidget)
     local boundary = tableWidget:addRow(false)
     boundary[1]:setColSpan(4):createText(nativePlan and nativePlan.state == "OWNED" and "WHAT EOC KNOWS: X4 confirmed that you own this module and returned its recipe, output, workers and capacity. WHAT EOC DOES NOT KNOW: plot position, module connections, builder, build-storage supplies, final cost and future storage space. Check those items in the normal Station Build Plan. EOC will not change the plan." or "WHAT EOC KNOWS: X4 did not return a complete owned module and recipe. WHAT TO DO: Open the normal Station Build Plan and choose the module there. EOC will not guess or change the plan.", { wordwrap = true, color = investigationUnknownColor })
     local row = tableWidget:addRow(true)
-    row[1]:setColSpan(2); addButton(row, 1, "RETURN TO COMMAND SUMMARY", function() menu.solutionDeepDiveKey = nil; menu.refresh() end, true)
+    row[1]:setColSpan(2); addButton(row, 1, "RETURN TO COMMAND SUMMARY", function() menu.solutionDeepDiveKey = nil; menu.solutionDeepDivePage = 1; menu.refresh() end, true)
     row[3]:setColSpan(2); addButton(row, 3, "RETURN TO DIAGNOSTICS", function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end, true)
 end
 
@@ -5940,18 +6513,28 @@ local function diagnosticsCenter(tableWidget)
         local backgroundPending = backgroundTest and (backgroundState == "REQUESTED" or backgroundState == "CHECKING" or backgroundState == "WAITING")
         local backgroundFinished = backgroundTest and not backgroundPending
         local backgroundSuccess = backgroundState == "RESOLVED" or backgroundState == "SUCCESS"
-        local backgroundCanRetest = backgroundFinished and menu.backgroundTestAcknowledged[verificationKey] and not backgroundSuccess
+        local testPlannerReady, testPlannerReason = menu.plannerAccessForCase(diagnosticCase)
+        local testRecoveryExhausted = testPlannerReady and testPlannerReason == "RECOVERY_EXHAUSTED"
+        local backgroundCanRetest = backgroundFinished and menu.backgroundTestAcknowledged[verificationKey] and not backgroundSuccess and not testRecoveryExhausted
         local backgroundFinishedLabel = backgroundSuccess and "RETURN TO GUIDED RECOVERY - TEST COMPLETE"
             or (backgroundState == "IMPROVING" or backgroundState == "PARTIAL") and "RETURN TO NEXT ACTION - WAIT ONE CYCLE"
             or (backgroundState == "UNCHANGED" or backgroundState == "WORSENING" or backgroundState == "FAILED") and "OPEN NEXT ACTION - FIX THE PROBLEM"
             or (backgroundState == "BLOCKED" or backgroundState == "ABORTED" or string.find(backgroundState, "INSUFFICIENT", 1, true)) and "OPEN NEXT ACTION - RUN FRESH ANALYSIS"
             or "OPEN NEXT ACTION - REFRESH THE INFORMATION"
-        local backgroundButtonLabel = workingEvidenceMissing and "OPEN NEXT ACTION - EOC NEEDS MORE INFORMATION"
+        local backgroundButtonLabel = testRecoveryExhausted and "OPEN SOLUTION PLANNER - RECOVERY EXHAUSTED"
+            or (workingEvidenceMissing and "OPEN NEXT ACTION - EOC NEEDS MORE INFORMATION"
             or (backgroundPending and "TEST RUNNING - WAIT FOR EOC"
             or (backgroundCanRetest and "RUN ONE NEW TEST - ONLY AFTER YOU HAVE FINISHED THE STEPS"
             or (backgroundFinished and backgroundFinishedLabel
-            or "ASK EOC TO RUN THIS TEST ONCE")))
+            or "ASK EOC TO RUN THIS TEST ONCE"))))
         addButton(row, 1, backgroundButtonLabel, function()
+            if testRecoveryExhausted then
+                menu.solutionCase = diagnosticCase
+                menu.page = "solution"
+                menu.activeTab = "solution"
+                menu.refresh()
+                return
+            end
             if workingEvidenceMissing then menu.diagnosticView = "recovery"; menu.refresh(); return end
             if backgroundFinished and not backgroundCanRetest then
                 menu.backgroundTestAcknowledged[verificationKey] = true
