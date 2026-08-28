@@ -1,0 +1,28 @@
+EOC 3.9 GA - Build 359
+Evidence Views and Saved Scenario Progress
+
+Promotion status
+
+- Build 359 is the identity-only GA promotion of RazorEQX-accepted Build 358/version 458.
+- The accepted closed-session log contained one Build 358 initialization and startup, zero EOC Lua or MD faults, zero nil/index/call/stack/panic faults, and zero widget, table, minimum-height, property-lookup, unknown-action, or stale-redraw markers.
+- GA identity changes do not alter functional runtime behavior. Installation and publication remain separate governed actions.
+
+Accepted behavior
+
+- Fleet and Logistics resource-card details lead with concise stock, assignment, activity, eligibility, source, and next-action evidence.
+- VIEW ASSIGNED SHIPS pages station-subordinate names eight at a time while retaining the shared-pool and ware-unproven boundary and providing no reassignment control.
+- Saved player scenarios are recognized from the saved plan when reopened, without relying on a currently loaded calculator or readiness flag.
+- Only the exact visible saved build-list screen inherits bounded automatic station refresh and exposes REFRESH PROGRESS NOW for a read-only on-demand refresh.
+- Manual completion redraws that visible saved list even when the station fingerprint is unchanged.
+- Automatic refresh remains disabled on command, calculator, Deep Dive, readiness, checklist, and unsaved-draft Solution Planner screens; leaving the saved-list screen removes monitoring eligibility.
+
+Evidence and authority boundary
+
+- Added/planned progress is derived from native Station Build Plan queue rows plus installed production-rate evidence relative to the saved baseline.
+- Shared station mining or trade pools are not treated as proof that every named ship serves one ware.
+- EOC remains advisory. It does not place modules, change the build plan, assign ships from the evidence view, spend credits, or bypass resources.
+
+Inherited behavior
+
+- Build 357 registered salvage-tug discovery, governed assignment modes, exact native salvage assignment, delayed commander/readback verification, and duplicate prevention remain unchanged.
+- Persistent scenario/list schema, calculator cascade, workforce and habitat handling, construction refresh transport, and existing cadence-bearing managers remain unchanged.

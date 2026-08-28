@@ -1,12 +1,12 @@
 # EOC 3.9 GA Complete Player Manual
 
-**Applies to:** EOC 3.9 GA, Build 350, extension version 4.50
+**Applies to:** EOC 3.9 GA, Build 359, extension version 4.59
 
 **Game:** X4: Foundations 8.x / 9.x
 
 **Purpose:** Teach a player how to operate every EOC menu, understand its conclusions, and control what it is allowed to change.
 
-The screenshots in this manual were captured during EOC 3.9 development. Their filenames preserve the exact capture build. Build 350 retains the illustrated navigation and adds the module-count calculator and persistent agreed build-list workflow shown in the newer Planner screenshot.
+The screenshots in this manual were captured during EOC 3.9 development. Their filenames preserve the exact capture build. Build 359 retains the illustrated navigation and all accepted workflows; wording in this guide describes the current Build 359 controls when an older screenshot predates a later refinement.
 
 ---
 
@@ -45,6 +45,12 @@ Read that guide first when a page is unfamiliar. If it says no action is require
 ### The most important word: UNKNOWN
 
 `UNKNOWN` means EOC does not have the evidence required to support a conclusion. It does **not** mean zero, harmless, completed, or healthy. Use the next instruction shown beside the unknown result to collect the missing evidence.
+
+### Project status and continued support
+
+EOC is complete. Future major development will move to a separately planned mod that RazorEQX will announce when it is complete and ready to share.
+
+EOC is not abandoned. Bug reports and feature requests remain welcome. Compatibility updates, bug fixes, and carefully considered improvements will continue for the foreseeable future.
 
 ---
 
@@ -426,11 +432,18 @@ This view separates:
 
 1. Open a station card.
 2. Select a resource.
-3. Read stock versus target, work/wait/block state, assigned ships, eligible ships, source, and last movement.
-4. If EOC requests fresh rate evidence, run the offered stock/rate collection command.
-5. Follow the exact next action; do not interpret an unknown ship or route value as zero.
+3. Read the concise stock/target, work/wait/block, assignment, activity, eligibility, source, last-movement, and next-action summary.
+4. Select **VIEW ASSIGNED SHIPS** when you need the individual station-subordinate names behind the aggregate assignment count.
+5. If EOC requests fresh rate evidence, run the offered stock/rate collection command.
+6. Follow the exact next action; do not interpret an unknown ship or route value as zero.
 
 Ordinary station traders are a shared pool. Their existence does not prove a particular ware route is being served.
+
+### Assigned ship evidence
+
+The assigned-ship view is read-only and displays at most eight names per page. Use **PREVIOUS** and **NEXT** to inspect the remaining station subordinates.
+
+Every row carries the boundary **SHARED POOL — UNPROVEN**. The ship is proven to belong to the station's pool; EOC is not claiming that it serves the selected ware. This page provides evidence only and cannot reassign a ship.
 
 ### Stations
 
@@ -438,7 +451,9 @@ Use this list to compare fleet/logistics state by station and open the selected 
 
 ### Registered Ships
 
-Registered ships are the pool EOC is allowed to consider for EOC ship assignments. Registration does not itself assign a ship. Review compatibility and idle state before authorizing an assignment.
+Registered ships are the pool EOC is allowed to consider for EOC ship assignments. Supported operational candidates include compatible trade, mining, combat, and salvage-tug ships. Registration does not itself assign a ship. Review compatibility and idle state before authorizing an assignment.
+
+For salvage coverage, EOC recognizes an operational unassigned Manticore or other native tug only through its native salvage purpose and tug type. It does not invent cargo compatibility for a tug. A registered tug remains unassigned until exact station need and the selected authority permit one guarded assignment.
 
 ### Trade Activity
 
@@ -470,6 +485,8 @@ This command appears for an exact active case with no compatible ship available.
 EOC never creates a free ship. The normal player shipyard, resources, queue, and generated loadout are used. Once submitted, the duplicate recommendation is locked so repeated clicks cannot queue the same one-ship response.
 
 Before building, consider the less expensive action: register and assign a suitable idle ship, scan shipping needs, or review an existing EOC order.
+
+For a station requesting salvage coverage, a completed Manticore is not considered covered merely because it exists. EOC must register an eligible unassigned tug, assign one exact tug under the selected authority, and receive native commander plus salvage-assignment readback. Once the station is covered, duplicate prevention keeps a second tug from being assigned for the same need.
 
 ### Fleet Management: reusable build templates
 
@@ -534,7 +551,12 @@ If the fresh evidence finds no matching current problem, EOC may complete the re
 
 ### Close a player-requested case
 
-Use the close command on the exact player-requested investigation. Closing your request does not rewrite unrelated EOC-owned evidence.
+When fresh analysis finds no current problem for an exact player-requested investigation, the terminal result offers two direct choices:
+
+- **CLOSE THIS INVESTIGATION** removes only that exact player request while preserving current EOC observation evidence.
+- **KEEP THIS INVESTIGATION OPEN** returns without changing the request.
+
+Use the normal close command for any other player-requested investigation you no longer want to retain. Closing your request does not rewrite unrelated EOC-owned evidence.
 
 ### Clear all cases
 
@@ -627,6 +649,10 @@ Solution Planner begins with the plain answer most players need: a best-current 
 
 The planner gates permanent construction until immediate recovery options have been exhausted. If matching production is already planned, it helps you review that plan instead of recommending a duplicate. Headquarters and mixed-purpose stations receive additional caution because their ware flows can have several valid purposes.
 
+When EOC cannot measure project demand, it does not invent a required module count. Instead, you may choose a clearly labeled player scenario, enter the final-output count you want to model, press **TAB**, and let EOC calculate the supported generic production chain for that scenario. The chosen count is your scenario, not an EOC claim that the project requires it.
+
+Habitat module counts are kept separate from workforce-supply information. A zero habitat recommendation is omitted from the simple editable list. Provision wares shown for station populations are evidence, not extra module-count fields, and an unknown habitat-to-species mapping remains unknown.
+
 ### How the module estimate works
 
 EOC starts with the supported final ware, subtracts installed and already planned output, and then walks backward through the native X4 recipe chain. It aggregates shared upstream demand before rounding module counts and stops conservatively when X4 exposes no supported recipe or reaches a native raw-resource boundary.
@@ -646,6 +672,10 @@ When the committed module counts match EOC's estimate and the cascade check comp
 ![Build 349 no-case saved agreed build-list index after reload](images/EOC_SOLUTION_PLANNER_SAVED_LIST_INDEX_BUILD349_2026-08-27.png)
 
 Return through **SOLUTION PLANNER > OPEN SAVED AGREED BUILD LIST** while you build. After save/reload, the no-case Planner index still lists the exact station and subject. If current evidence genuinely changes, EOC keeps the saved list and marks it **PLAN NEEDS REVIEW** instead of silently replacing it. Use **REPLACE SAVED AGREED BUILD LIST** only after checking a new plan, or clear the saved list through its confirmation control.
+
+Only the exact visible saved-list screen receives bounded automatic progress refresh. It also provides **REFRESH PROGRESS NOW** for one immediate read-only station refresh. Manual completion redraws the visible list even when the station fingerprint did not otherwise change. Leaving this screen stops its monitoring eligibility; command, calculator, Deep Dive, readiness, checklist, and unsaved-draft Planner screens do not auto-refresh.
+
+If **SAVE AGREED BUILD LIST** reports **SAVE NOT RECORDED**, do not keep clicking it. Press **TAB** after every edited count, select **CHECK MY MODULE PLAN** again, resolve any mismatch, and then save. EOC deliberately refuses stale, dirty, missing, or nonconverged calculator results rather than persisting old counts.
 
 EOC never places the modules. Build them in X4's normal Station Build Plan and return to the saved list whenever you need the remaining counts.
 
@@ -764,6 +794,8 @@ First enable or disable ship assignment, then choose:
 - **APPROVAL REQUIRED** — waits for your confirmation.
 - **AUTO-ASSIGN REGISTERED** — may assign only eligible registered ships.
 
+The same boundary applies to salvage tugs. EOC may use only an eligible registered tug, rechecks exact ownership, operational state, type, registration, commander state, and station need immediately before mutation, and verifies native readback afterward. Disabled mode never assigns; Approval Required waits for the exact confirmation; Auto-Assign Registered can act only within the registered pool.
+
 Other automatic trade or ship-management mods may compete for the same idle ships. If ships are repeatedly reassigned, disable one automation system or keep EOC on Approval Required.
 
 ### Assign undefined station roles
@@ -797,8 +829,11 @@ Other automatic trade or ship-management mods may compete for the same idle ship
 5. Run **EXPANSION READINESS CHECK**.
 6. Resolve every **NOT READY** item.
 7. For **CANNOT PROVE**, verify blueprints, module, method, plot, cost, and layout in vanilla Build Plan.
-8. Create or modify the plan in X4 yourself.
-9. Use **CONSTRUCTION** to review funding, builder, wares, and progress.
+8. If project demand is unknown, use a clearly labeled player scenario only when you want to model your own chosen final-output count.
+9. Save the agreed list only after TAB-committed counts pass **CHECK MY MODULE PLAN**.
+10. Create or modify the plan in X4 yourself.
+11. Return to the exact saved-list screen for bounded progress updates or select **REFRESH PROGRESS NOW**.
+12. Use **CONSTRUCTION** to review funding, builder, wares, and progress.
 
 ### Workflow C: correct logistics coverage
 
@@ -810,8 +845,9 @@ Other automatic trade or ship-management mods may compete for the same idle ship
 6. If none exists, open the exact **NEED A SHIP** recommendation.
 7. Preview and confirm at most one compatible ship build.
 8. Wait for the normal shipyard to build it.
-9. Register/assign it under the selected authority.
-10. Re-run the exact evidence workflow and let EOC verify the outcome.
+9. Register it under the selected authority. For a salvage need, confirm that the completed ship is a native tug such as a Manticore.
+10. Let EOC assign one exact eligible registered ship and wait for commander/assignment readback.
+11. Re-run the exact evidence workflow and let EOC verify the outcome. A covered station must not receive a duplicate tug for the same need.
 
 ### Workflow D: safely automate routine support
 
@@ -861,6 +897,14 @@ Other automatic trade or ship-management mods may compete for the same idle ship
 
 Press **TAB** or leave the field to commit the edit to the form, then preview. Typing alone does not apply a game change.
 
+### An agreed build list will not save
+
+Read the returned result. **SAVE NOT RECORDED** means the live calculator result was missing, stale, dirty, nonconverged, or no longer matched the visible committed counts. Press **TAB** after each edited number, run **CHECK MY MODULE PLAN** again, resolve every mismatch, and then save once.
+
+### Saved scenario progress is not changing
+
+Automatic progress refresh runs only while the exact saved build-list screen is visible. It does not run on the Planner command page, calculator, Deep Dive, readiness, checklist, or an unsaved draft. Open the saved list and select **REFRESH PROGRESS NOW** when you want an immediate read-only update. Progress still depends on native Station Build Plan queue and installed-production evidence; a refresh does not place or complete modules.
+
 ### EOC says UNKNOWN
 
 Read the next instruction. Run the named explicit analysis, evidence collection, shipping scan, construction refresh, or background verification. Do not substitute a guess.
@@ -876,6 +920,10 @@ Read its retained evidence. Recovery can remain in observation until later sampl
 ### Ships keep being reassigned
 
 Another automation system may be competing with EOC. Disable one ship-management automation or switch EOC to **APPROVAL REQUIRED**.
+
+### A completed Manticore is still unassigned
+
+Confirm the ship is operational, unassigned, and visible as a native salvage tug; then run the shipping-needs/registration workflow. Registration and assignment are separate. EOC can assign only an eligible registered tug under the selected authority, and it waits for native commander plus salvage-assignment readback before reporting success. If the station already has tug coverage, EOC deliberately leaves the extra tug unassigned.
 
 ### Managed trade changed something I did not expect
 

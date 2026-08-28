@@ -2,12 +2,12 @@
 <content
   id="ws_3778882957"
   name="EOC - Executive Operations Center"
-  description="EOC 3.9 GA - Build 350. Solution Planner module-count calculator and persistent agreed build lists. EOC estimates the native production cascade, checks player-entered counts and safety gates, and remembers the final checklist without exercising construction authority. Runtime accepted by RazorEQX."
+  description="EOC 3.9 GA - Build 359. Readable logistics evidence and saved-scenario-only progress refresh. Runtime accepted by RazorEQX."
   author="RazorEQX"
-  version="450"
-  date="2026-08-27"
+  version="459"
+  date="2026-08-28"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 GA Build 350" description="Solution Planner module counts, cascade checks, player plan calculator, and persistent agreed build lists." />
+  <text language="44" name="EOC 3.9 GA Build 359" description="Fleet evidence is summarized with paged ship details, and visible saved scenarios receive bounded progress refresh." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

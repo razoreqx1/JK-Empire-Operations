@@ -801,7 +801,7 @@ local function actionLabel(action, readyLabel, runningLabel)
 end
 
 local actionNextSteps = {
-    ["shipping.register"] = "Open Fleet & Logistics > Registered Ships. If eligible ships are listed, run Scan Shipping Needs once. If none are listed, assign or free a compatible player-owned trade/mining ship, reopen EOC, register again once, and then scan. Do not repeat registration without changing ship eligibility.",
+    ["shipping.register"] = "Open Fleet & Logistics > Registered Ships. If eligible ships are listed, run Scan Shipping Needs once. If none are listed, assign or free a compatible player-owned trade/mining ship or salvage tug, reopen EOC, register again once, and then scan. Do not repeat registration without changing ship eligibility.",
     ["shipping.scan"] = "Open Fleet & Logistics > Pending. In Approval Required mode, approve only the displayed exact assignment or do nothing. In Auto-Assign Registered mode, verify the result names the assigned ship and station; if no supported need was found, no repeat is required until station need or registered-ship availability changes.",
     ["shipping.approve"] = "Open Fleet & Logistics > Pending and confirm the exact row is gone, then review Registered Ships for the named ship's assignment. If the row remains or the result is blocked, correct the stated ownership, registration, cargo, commander, or station condition and submit approval once more; otherwise do not repeat.",
     ["trade.review"] = "Open Fleet & Logistics > EOC-Managed Offers. If the result reports verified offers, no repeat is required. If it reports blocked or removed records, correct the exact case, station rule, funds, range, or supplier condition named in the result, then run Review Trade Actions once after that condition changes.",
@@ -1287,7 +1287,7 @@ local function reportSaved()
 end
 
 local function constructionRefreshBegin()
-    menu.constructionRefresh = { record = {}, queue = {}, queueRow = {}, wares = {}, wareRow = {} }
+    menu.constructionRefresh = { record = {}, queue = {}, queueRow = {}, wares = {}, wareRow = {}, workforce = {}, workforceRow = {} }
 end
 local function constructionRefreshState()
     if not menu.constructionRefresh then constructionRefreshBegin() end
@@ -1309,6 +1309,9 @@ local function constructionQueueName(_, value) constructionRefreshState().queueR
 local function constructionQueueType(_, value) constructionRefreshState().queueRow[2] = tostring(value or "MODULE") end
 local function constructionQueueStatus(_, value) constructionRefreshState().queueRow[3] = tostring(value or "PLANNED") end
 local function constructionQueueProgress(_, value) constructionRefreshState().queueRow[4] = tonumber(value) or 0 end
+function menu.constructionQueueEffect(_, value) constructionRefreshState().queueRow[5] = tostring(value or "") end
+function menu.constructionQueueStorageType(_, value) constructionRefreshState().queueRow[6] = tostring(value or "") end
+function menu.constructionQueueCapacity(_, value) constructionRefreshState().queueRow[7] = tonumber(value) or 0 end
 local function constructionQueueIndex(_, value) constructionRefreshState().queueRow[8] = tonumber(value) or 0 end
 local function constructionQueueCommit()
     local refresh = constructionRefreshState(); table.insert(refresh.queue, refresh.queueRow); refresh.queueRow = {}
@@ -1318,6 +1321,20 @@ local function constructionWareCount(_, value) constructionRefreshState().wareRo
 local function constructionWareCommit()
     local refresh = constructionRefreshState(); table.insert(refresh.wares, refresh.wareRow); refresh.wareRow = {}
 end
+function menu.constructionPeople(_, value) constructionField(14, tonumber(value) or 0) end
+function menu.constructionWorkforceCapacity(_, value) constructionField(15, tonumber(value) or 0) end
+function menu.constructionWorkforceOptimal(_, value) constructionField(16, tonumber(value) or 0) end
+function menu.constructionHabitatName(_, value) constructionField(17, tostring(value or "NO COMPATIBLE HABITAT IDENTIFIED")) end
+function menu.constructionHabitatCapacity(_, value) constructionField(18, tonumber(value) or 0) end
+function menu.constructionHabitatProvisions(_, value) constructionField(19, tostring(value or "")) end
+function menu.constructionHabitatStorage(_, value) constructionField(20, tostring(value or "")) end
+function menu.constructionWorkforceSpecies(_, value) constructionRefreshState().workforceRow[1] = tostring(value or "Unknown species") end
+function menu.constructionWorkforceProvision(_, value) constructionRefreshState().workforceRow[2] = tostring(value or "NO PROVISION WARE") end
+function menu.constructionWorkforceCurrent(_, value) constructionRefreshState().workforceRow[3] = tonumber(value) or 0 end
+function menu.constructionWorkforceTarget(_, value) constructionRefreshState().workforceRow[4] = tonumber(value) or 0 end
+function menu.constructionWorkforceCommit()
+    local refresh = constructionRefreshState(); table.insert(refresh.workforce, refresh.workforceRow); refresh.workforceRow = {}
+end
 local function constructionRefreshComplete()
     local refresh = constructionRefreshState()
     local snapshot = refresh.record
@@ -1325,25 +1342,67 @@ local function constructionRefreshComplete()
     snapshot[11] = refresh.wares
     local target = tonumber(v(snapshot, 2, 0)) or 0
     local targetName = text(v(snapshot, 1, ""))
-    local retained = {}
+    local retained, priorSnapshot = {}, nil
     for _, record in ipairs(menu.constructionRecords or {}) do
         local sameIndex = target > 0 and (tonumber(v(record, 2, 0)) or 0) == target
         local sameName = targetName ~= "" and text(v(record, 1, "")) == targetName
-        if not sameIndex and not sameName then table.insert(retained, record) end
+        if sameIndex or sameName then priorSnapshot = record else table.insert(retained, record) end
     end
+    local function plannerFingerprint(record, workforceRows, incoming)
+        if not record then return "" end
+        local parts = {}
+        for _, slot in ipairs({3,4,5,14,15,16,17,18,19,20}) do parts[#parts + 1] = tostring(v(record, slot, "")) end
+        for _, item in ipairs(v(record, 8, {})) do for _, slot in ipairs({1,2,3,4,5,7}) do parts[#parts + 1] = tostring(v(item, slot, "")) end end
+        local workforceParts = {}
+        for _, row in ipairs(workforceRows or {}) do
+            if incoming then
+                workforceParts[#workforceParts + 1] = table.concat({text(v(row,1,"")), text(v(row,2,"")), tostring(v(row,3,0)), tostring(v(row,4,0))}, "|")
+            elseif text(v(row,1,"")) == targetName then
+                workforceParts[#workforceParts + 1] = table.concat({text(v(row,2,"")), text(v(row,8,"")), tostring(v(row,9,0)), tostring(v(row,10,0))}, "|")
+            end
+        end
+        table.sort(workforceParts)
+        for _, part in ipairs(workforceParts) do parts[#parts + 1] = part end
+        return table.concat(parts, "~")
+    end
+    local plannerEvidenceChanged = plannerFingerprint(priorSnapshot, menu.workforceRecords, false) ~= plannerFingerprint(snapshot, refresh.workforce, true)
     table.insert(retained, 1, snapshot)
     menu.constructionRecords = retained
     menu.activeConstructionSnapshot = snapshot
+    local retainedWorkforce = {}
+    for _, record in ipairs(menu.workforceRecords or {}) do
+        if text(v(record, 1, "")) ~= targetName then table.insert(retainedWorkforce, record) end
+    end
+    for _, row in ipairs(refresh.workforce or {}) do
+        table.insert(retainedWorkforce, { targetName, text(v(row, 1, "Unknown species")), tonumber(v(snapshot, 14, 0)) or 0, tonumber(v(snapshot, 15, 0)) or 0, tonumber(v(snapshot, 16, 0)) or 0, "REFRESHED", 0, text(v(row, 2, "NO PROVISION WARE")), tonumber(v(row, 3, 0)) or 0, tonumber(v(row, 4, 0)) or 0, math.max((tonumber(v(row, 4, 0)) or 0) - (tonumber(v(row, 3, 0)) or 0), 0), "REFRESHED" })
+    end
+    menu.workforceRecords = retainedWorkforce
     menu.constructionRefresh = nil
     menu.constructionRefreshing = false
     menu.constructionStatus = "REFRESH COMPLETE: Latest station construction facts loaded. WHAT THIS MEANS: this was a read-only job and no construction setting changed. DO THIS NEXT: read every checklist row below. If all required rows are MET, no repeat is required; if a row is NOT FUNDED, STALLED, or BLOCKED, complete that row's exact action and refresh exactly once afterward."
+    local manualSavedListRefresh = menu.plannerManualRefreshPending == targetName
+    if manualSavedListRefresh then menu.plannerManualRefreshPending = nil end
     -- A construction snapshot may arrive after the player has followed a newer
     -- route. Retain the data, but never let that stale completion redraw or
     -- replace the page the player is now using.
     if menu.frame and menu.page == "construction" then
         menu.refresh()
+    elseif menu.frame and menu.page == "solution" then
+        local caseData = menu.solutionCase or menu.diagnosticCase
+        local standalone = menu.solutionAgreedStandaloneKey and menu.agreedBuildPlans and menu.agreedBuildPlans[menu.solutionAgreedStandaloneKey] or nil
+        local visibleStation = caseData and text(v(caseData, 1, "")) or (standalone and standalone.station or "")
+        if visibleStation == targetName and (plannerEvidenceChanged or manualSavedListRefresh) then
+            if caseData and menu.expansionReadiness and menu.expansionReadiness.station == targetName then menu.runExpansionReadiness(caseData, true) end
+            for _, state in pairs(menu.plannerModuleDrafts or {}) do if not state.dirty then state.result = nil end end
+            menu.plannerRefreshStatus = manualSavedListRefresh and "MANUAL PROGRESS REFRESH COMPLETE: The exact saved-list station was read. Added/planned and remaining counts now use the latest available evidence." or "LIVE SAVED-LIST REFRESH: Construction, workforce, habitat, and provision evidence updated."
+            menu.refresh()
+        elseif visibleStation == targetName then
+            DebugError("[JKEOC][B354][PLANNER_REFRESH_UNCHANGED_NO_REDRAW] station=" .. tostring(targetName))
+        else
+            DebugError("[JKEOC][B351][PLANNER_REFRESH_RETAINED_NO_REDRAW] visible_station=" .. tostring(visibleStation) .. " refreshed_station=" .. tostring(targetName))
+        end
     else
-        DebugError("[JKEOC][B318][CONSTRUCTION_REFRESH_RETAINED_NO_REDRAW] current_page=" .. tostring(menu.page) .. " station=" .. tostring(targetName))
+        DebugError("[JKEOC][B351][CONSTRUCTION_REFRESH_RETAINED_NO_REDRAW] current_page=" .. tostring(menu.page) .. " station=" .. tostring(targetName))
     end
 end
 local function constructionFundingResult(_, value)
@@ -1546,11 +1605,26 @@ local function init()
     RegisterEvent(menu.name .. ".construction.queue.type", constructionQueueType)
     RegisterEvent(menu.name .. ".construction.queue.status", constructionQueueStatus)
     RegisterEvent(menu.name .. ".construction.queue.progress", constructionQueueProgress)
+    RegisterEvent(menu.name .. ".construction.queue.effect", menu.constructionQueueEffect)
+    RegisterEvent(menu.name .. ".construction.queue.storagetype", menu.constructionQueueStorageType)
+    RegisterEvent(menu.name .. ".construction.queue.capacity", menu.constructionQueueCapacity)
     RegisterEvent(menu.name .. ".construction.queue.index", constructionQueueIndex)
     RegisterEvent(menu.name .. ".construction.queue.commit", constructionQueueCommit)
     RegisterEvent(menu.name .. ".construction.ware.name", constructionWareName)
     RegisterEvent(menu.name .. ".construction.ware.count", constructionWareCount)
     RegisterEvent(menu.name .. ".construction.ware.commit", constructionWareCommit)
+    RegisterEvent(menu.name .. ".construction.people", menu.constructionPeople)
+    RegisterEvent(menu.name .. ".construction.workforcecapacity", menu.constructionWorkforceCapacity)
+    RegisterEvent(menu.name .. ".construction.workforceoptimal", menu.constructionWorkforceOptimal)
+    RegisterEvent(menu.name .. ".construction.habitatname", menu.constructionHabitatName)
+    RegisterEvent(menu.name .. ".construction.habitatcapacity", menu.constructionHabitatCapacity)
+    RegisterEvent(menu.name .. ".construction.habitatprovisions", menu.constructionHabitatProvisions)
+    RegisterEvent(menu.name .. ".construction.habitatstorage", menu.constructionHabitatStorage)
+    RegisterEvent(menu.name .. ".construction.workforce.species", menu.constructionWorkforceSpecies)
+    RegisterEvent(menu.name .. ".construction.workforce.provision", menu.constructionWorkforceProvision)
+    RegisterEvent(menu.name .. ".construction.workforce.current", menu.constructionWorkforceCurrent)
+    RegisterEvent(menu.name .. ".construction.workforce.target", menu.constructionWorkforceTarget)
+    RegisterEvent(menu.name .. ".construction.workforce.commit", menu.constructionWorkforceCommit)
     RegisterEvent(menu.name .. ".construction.refresh.complete", constructionRefreshComplete)
     RegisterEvent(menu.name .. ".construction.funding.result", constructionFundingResult)
     RegisterEvent(menu.name .. ".background.result.begin", menu.backgroundTestResultBegin)
@@ -1729,7 +1803,9 @@ function menu.onShowMenu()
                 ware=text(v(savedRow, 3, "Unknown ware")), module=text(v(savedRow, 4, "")),
                 agreed=tonumber(v(savedRow, 5, 0)) or 0, baselinePlanned=tonumber(v(savedRow, 6, 0)) or 0,
                 baselineProduction=tonumber(v(savedRow, 7, 0)) or 0, outputPerHour=tonumber(v(savedRow, 8, 0)) or 0,
-                requiredRate=tonumber(v(savedRow, 9, 0)) or 0, transport=text(v(savedRow, 10, "UNKNOWN"))
+                requiredRate=tonumber(v(savedRow, 9, 0)) or 0, transport=text(v(savedRow, 10, "UNKNOWN")),
+                baselineCapacity=tonumber(v(savedRow, 11, 0)) or 0, capacityPerModule=tonumber(v(savedRow, 12, 0)) or 0,
+                provisions=text(v(savedRow, 13, "")), species=text(v(savedRow, 14, ""))
             }
         end
         local plan = {
@@ -2143,6 +2219,64 @@ function menu.nativePlannerEvidence(caseData)
     return result
 end
 
+function menu.plannerWorkforceFacts(stationName, profileIndex, queue)
+    local facts = { people=0, capacity=0, optimal=0, habitatName="NO COMPATIBLE HABITAT IDENTIFIED", habitatCapacity=0, provisionPlan="", storageCheck="", plannedCapacity=0, plannedCount=0, species="", provisions="", provisionScope="" }
+    local record
+    for _, candidate in ipairs(menu.constructionRecords or {}) do
+        if text(v(candidate, 1, "")) == stationName or (profileIndex > 0 and (tonumber(v(candidate, 2, 0)) or 0) == profileIndex) then record = candidate; break end
+    end
+    if record then
+        facts.people = tonumber(v(record, 14, 0)) or 0
+        facts.capacity = tonumber(v(record, 15, 0)) or 0
+        facts.optimal = tonumber(v(record, 16, 0)) or 0
+        facts.habitatName = text(v(record, 17, facts.habitatName))
+        facts.habitatCapacity = tonumber(v(record, 18, 0)) or 0
+        facts.provisionPlan = text(v(record, 19, ""))
+        facts.storageCheck = text(v(record, 20, ""))
+    end
+    local speciesSeen, species, provisionsBySpecies = {}, {}, {}
+    for _, workforce in ipairs(menu.workforceRecords or {}) do
+        if text(v(workforce, 1, "")) == stationName then
+            facts.people = math.max(facts.people, tonumber(v(workforce, 3, 0)) or 0)
+            facts.capacity = math.max(facts.capacity, tonumber(v(workforce, 4, 0)) or 0)
+            facts.optimal = math.max(facts.optimal, tonumber(v(workforce, 5, 0)) or 0)
+            local race = text(v(workforce, 2, "Unknown species"))
+            local provision = text(v(workforce, 8, "NO PROVISION WARE"))
+            if not speciesSeen[race] then speciesSeen[race] = true; species[#species + 1] = race end
+            provisionsBySpecies[race] = provisionsBySpecies[race] or { seen={}, rows={} }
+            if provision ~= "NO PROVISION WARE" and not provisionsBySpecies[race].seen[provision] then
+                provisionsBySpecies[race].seen[provision] = true
+                provisionsBySpecies[race].rows[#provisionsBySpecies[race].rows + 1] = provision
+            end
+        end
+    end
+    table.sort(species)
+    if #species == 1 then
+        local currentSpeciesProvisions = provisionsBySpecies[species[1]] and provisionsBySpecies[species[1]].rows or {}
+        table.sort(currentSpeciesProvisions)
+        facts.species = species[1]
+        facts.provisions = table.concat(currentSpeciesProvisions, ", ")
+        facts.provisionScope = facts.provisions ~= "" and ("Current " .. species[1] .. " workforce supplies: " .. facts.provisions .. ".") or ("Current workforce population: " .. species[1] .. ". X4 returned no provision ware.")
+    elseif #species > 1 then
+        facts.species = tostring(#species) .. " CURRENT POPULATIONS"
+        facts.provisions = ""
+        facts.provisionScope = "This station has multiple workforce populations. EOC cannot prove which population the selected habitat will add, so no station-wide provision list is assigned to this habitat."
+    else
+        facts.provisionScope = "No current workforce population is available. Exact future provision wares remain unknown until workers arrive."
+    end
+    for _, item in ipairs(queue or {}) do
+        local status = string.upper(text(v(item, 3, "PLANNED")))
+        local moduleType = string.upper(text(v(item, 2, "")))
+        local moduleEffect = string.upper(text(v(item, 5, "")))
+        local moduleName = string.upper(text(v(item, 1, "")))
+        if status ~= "COMPLETE" and status ~= "COMPLETED" and (string.find(moduleType, "HABIT", 1, true) or string.find(moduleEffect, "WORKFORCE", 1, true) or string.find(moduleName, "HABITAT", 1, true)) then
+            facts.plannedCount = facts.plannedCount + 1
+            facts.plannedCapacity = facts.plannedCapacity + math.max(tonumber(v(item, 7, 0)) or 0, 0)
+        end
+    end
+    return facts
+end
+
 -- Build 293 derives a bounded, aggregate production-chain checklist from the
 -- same explicit native blueprint/library scan. It never runs in background.
 -- Shared upstream demand is combined before module counts are rounded, planned
@@ -2393,32 +2527,44 @@ function menu.productionChainChecklist(nativePlan, caseData)
         local recipe = recipes[ware] and recipes[ware][1]
         if recipe then incrementalWorkforce = incrementalWorkforce + (counts.needed or 0) * (tonumber(recipe.maxworkforce) or 0) end
     end
-    local plannedHabitation = 0
-    for _, item in ipairs(queue or {}) do
-        local moduleType = string.upper(text(v(item, 2, "")))
-        local moduleEffect = string.upper(text(v(item, 5, "")))
-        local moduleName = string.upper(text(v(item, 1, "")))
-        if string.find(moduleType, "HABIT", 1, true) or string.find(moduleEffect, "WORKFORCE", 1, true) or string.find(moduleName, "HABITAT", 1, true) then plannedHabitation = plannedHabitation + math.max(tonumber(v(item, 7, 0)) or 0, 0) end
-    end
+    local workforceFacts = menu.plannerWorkforceFacts(stationName, profileIndex, queue)
+    people = math.max(people, workforceFacts.people)
+    capacity = math.max(capacity, workforceFacts.capacity)
+    optimal = math.max(optimal, workforceFacts.optimal)
+    local plannedHabitation = workforceFacts.plannedCapacity
     local futureOptimal = optimal + incrementalWorkforce
     local workforceState = capacity >= futureOptimal and "COMPLETE" or ((capacity + plannedHabitation) >= futureOptimal and "PLANNED" or "REQUIRED")
     addItem(workforceState, "WORKFORCE CAPACITY", "Current " .. formatNumber(people) .. " people | habitat capacity " .. formatNumber(capacity) .. " | current optimal " .. formatNumber(optimal) .. " | added chain demand " .. formatNumber(incrementalWorkforce) .. " | future capacity target " .. formatNumber(futureOptimal) .. (plannedHabitation > 0 and (" | planned habitation capacity " .. formatNumber(plannedHabitation)) or "") .. ".", 91, "WORKFORCE")
+    local habitatGap = math.max(futureOptimal - capacity - plannedHabitation, 0)
+    local habitatCount = workforceFacts.habitatCapacity > 0 and math.ceil(habitatGap / workforceFacts.habitatCapacity) or nil
+    if habitatGap > 0 and habitatCount == nil then
+        cascadePassed = false
+        cascadeReason = "The production cascade requires more workforce, but X4 did not return an owned compatible habitat blueprint."
+        addItem("CANNOT PROVE", "HABITAT MODULE", "Need about " .. formatNumber(habitatGap) .. " more workforce capacity. Acquire a compatible habitation blueprint; EOC stopped instead of guessing a module type.", 91, "WORKFORCE HABITAT")
+        simplePlan[#simplePlan + 1] = { depth=91, kind="HABITAT", wareId="__habitat__", ware="Workforce habitat", module=workforceFacts.habitatName, planned=workforceFacts.plannedCount, additional=nil, editable=false, requiredRate=habitatGap, capacityPerModule=0, baselineCapacity=capacity, species=workforceFacts.species, provisions=workforceFacts.provisions, provisionScope=workforceFacts.provisionScope }
+    elseif (habitatCount or 0) > 0 then
+        addItem("REQUIRED", "HABITAT MODULE - " .. workforceFacts.habitatName, "Add exactly " .. tostring(habitatCount) .. " module(s) at about " .. formatNumber(workforceFacts.habitatCapacity) .. " workforce capacity each after counting " .. tostring(workforceFacts.plannedCount) .. " queued habitat module(s). Workforce supplies are separate evidence, not module choices. " .. workforceFacts.provisionScope, 91, "WORKFORCE HABITAT")
+        simplePlan[#simplePlan + 1] = { depth=91, kind="HABITAT", wareId="__habitat__", ware="Workforce habitat", module=workforceFacts.habitatName, planned=workforceFacts.plannedCount, additional=habitatCount, recommended=habitatCount, editable=true, requiredRate=habitatGap, capacityPerModule=workforceFacts.habitatCapacity, baselineCapacity=capacity, species=workforceFacts.species, provisions=workforceFacts.provisions, provisionScope=workforceFacts.provisionScope }
+    else
+        addItem("COMPLETE", "HABITAT CAPACITY", "No additional habitat is required by the current production-module estimate. No habitat input is shown in the simple calculator.", 91, "WORKFORCE HABITAT")
+    end
     table.sort(provisions, function(a, b) return a.name < b.name end)
     for _, provision in ipairs(provisions) do
-        addItem((provision.target <= 0 or provision.current >= provision.target) and "COMPLETE" or "REQUIRED", "WORKFORCE PROVISION - " .. provision.name, formatNumber(provision.current) .. " stored against the current X4 target of " .. formatNumber(provision.target) .. ". Future consumption cannot be proven until the added workforce exists; refresh after habitation fills.", 92, provision.name)
+        local provisionResult = (provision.target <= 0 or provision.current >= provision.target) and "CURRENT TARGET MET" or "CURRENT TARGET SHORT"
+        addItem("INFORMATION", "STATION WORKFORCE SUPPLY - NOT A MODULE COUNT - " .. provision.name, provisionResult .. ": " .. formatNumber(provision.current) .. " stored against the current X4 target of " .. formatNumber(provision.target) .. ". This is station-wide workforce evidence, not part of the production-module cascade. Future use from added workers remains unknown until they arrive; refresh after habitation fills.", 92, provision.name)
     end
     if not converged then
         cascadePassed = false
         cascadeReason = "The aggregate native recipe graph did not stabilize within 24 bounded passes."
         addItem("CANNOT PROVE", "CHAIN BOUNDARY", cascadeReason .. " EOC stopped instead of presenting a guessed module count.", 99, "ZZ")
     end
-    DebugError("[JKEOC][B349][PRODUCTION_CHAIN_CHECKLIST] station=" .. stationName .. " ware=" .. nativePlan.ware .. " items=" .. tostring(#items) .. " simple_items=" .. tostring(#simplePlan) .. " root_needed=" .. tostring(rootNeeded) .. " root_planned=" .. tostring(rootPlanned) .. " root_additional=" .. tostring(rootAdditional) .. " recovery_ware=" .. tostring(recoveryWare) .. " recovery_minimum_h=" .. tostring(recoveryMinimum) .. " incremental_workforce=" .. tostring(incrementalWorkforce) .. " converged=" .. tostring(converged) .. " background_scan=0")
+    DebugError("[JKEOC][B354][PRODUCTION_CHAIN_CHECKLIST] station=" .. stationName .. " ware=" .. nativePlan.ware .. " items=" .. tostring(#items) .. " simple_items=" .. tostring(#simplePlan) .. " root_needed=" .. tostring(rootNeeded) .. " root_planned=" .. tostring(rootPlanned) .. " root_additional=" .. tostring(rootAdditional) .. " recovery_ware=" .. tostring(recoveryWare) .. " recovery_minimum_h=" .. tostring(recoveryMinimum) .. " incremental_workforce=" .. tostring(incrementalWorkforce) .. " habitat_count=" .. tostring(habitatCount) .. " converged=" .. tostring(converged) .. " background_scan=0")
     return { items = items, simplePlan = simplePlan, converged = converged, cascadePassed = cascadePassed, cascadeReason = cascadeReason, rootNeeded = rootNeeded, rootPlanned = rootPlanned, rootAdditional = rootAdditional, incrementalWorkforce = incrementalWorkforce, recoveryWare = recoveryWare, recoveryMinimum = recoveryMinimum }
 end
 
--- Build 349 retains the read-only planning calculator. The player may enter intended
--- module additions; EOC recalculates the generic native dependency cascade and
--- reports current-evidence warnings without changing the Station Build Plan.
+-- Build 354 also supports player-chosen final-output scenarios when X4 exposes
+-- project demand without a measurable hourly rate. The player still controls
+-- every Station Build Plan change.
 function menu.evaluateModulePlan(nativePlan, caseData, draftCounts)
     local stationName = text(v(caseData, 1, "Selected station"))
     local station64 = nativePlan.station
@@ -2457,11 +2603,12 @@ function menu.evaluateModulePlan(nativePlan, caseData, draftCounts)
     end
     local rootPlanned = math.max(tonumber(v(caseData, 34, 0)) or 0, plannedModules(rootRecipe))
     local rootInstalled = math.max(tonumber(v(caseData, 16, 0)) or 0, (tonumber(v(caseData, 15, 0)) or 0) > 0 and 1 or 0)
-    local rootNeeded = rootRecipe.outputPerHour > 0 and math.ceil(nativePlan.deficitPerHour / rootRecipe.outputPerHour) or 0
-    local rootRecommended = math.max(rootNeeded - rootPlanned, 0)
     local rootPlayer = intended(rootWare)
+    local projectScenario = nativePlan.projectDemandUnmeasured == true
+    local rootNeeded = rootRecipe.outputPerHour > 0 and math.ceil(nativePlan.deficitPerHour / rootRecipe.outputPerHour) or 0
+    local rootRecommended = projectScenario and rootPlayer or math.max(rootNeeded - rootPlanned, 0)
     local baseDemand, baseDepth = {}, {}
-    local rootFuture = rootPlanned + math.max(rootPlayer, rootRecommended)
+    local rootFuture = rootPlanned + (projectScenario and rootPlayer or math.max(rootPlayer, rootRecommended))
     for _, resource in ipairs(rootRecipe.resources or {}) do
         local liveConsumption = menu.supplySafeRate(station64, resource.ware, false, true)
         baseDemand[resource.ware] = math.max(liveConsumption, resource.amountPerHour * rootInstalled) + resource.amountPerHour * rootFuture
@@ -2502,9 +2649,16 @@ function menu.evaluateModulePlan(nativePlan, caseData, draftCounts)
     end
 
     local rows, warnings, globalWarnings, moduleIssues = {}, {}, {}, 0
-    rows[#rows + 1] = { depth = 0, wareId = rootWare, ware = text(v(caseData, 4, nativePlan.ware)), module = rootRecipe.name, installed = rootInstalled, planned = rootPlanned, recommended = rootRecommended, player = rootPlayer, editable = true, finalOutput = true, production = nativePlan.productionPerHour or 0, outputPerHour = rootRecipe.outputPerHour or 0 }
-    if rootPlayer > rootRecommended then warnings[#warnings + 1] = rootRecipe.name .. ": your plan adds " .. tostring(rootPlayer - rootRecommended) .. " more module(s) than current evidence supports."; moduleIssues = moduleIssues + 1 end
-    if rootPlayer < rootRecommended then warnings[#warnings + 1] = rootRecipe.name .. ": your plan is short by about " .. tostring(rootRecommended - rootPlayer) .. " module(s)."; moduleIssues = moduleIssues + 1 end
+    rows[#rows + 1] = { depth = 0, wareId = rootWare, ware = text(v(caseData, 4, nativePlan.ware)), module = rootRecipe.name, installed = rootInstalled, planned = rootPlanned, recommended = rootRecommended, player = rootPlayer, editable = true, finalOutput = true, projectScenario = projectScenario, production = nativePlan.productionPerHour or 0, outputPerHour = rootRecipe.outputPerHour or 0 }
+    if projectScenario and rootPlayer < 1 then
+        local warning = "PLAYER SCENARIO: enter at least 1 " .. rootRecipe.name .. " module, press TAB, and check the plan so EOC can calculate the supporting chain."
+        warnings[#warnings + 1] = warning
+        globalWarnings[#globalWarnings + 1] = warning
+        moduleIssues = moduleIssues + 1
+    elseif not projectScenario then
+        if rootPlayer > rootRecommended then warnings[#warnings + 1] = rootRecipe.name .. ": your plan adds " .. tostring(rootPlayer - rootRecommended) .. " more module(s) than current evidence supports."; moduleIssues = moduleIssues + 1 end
+        if rootPlayer < rootRecommended then warnings[#warnings + 1] = rootRecipe.name .. ": your plan is short by about " .. tostring(rootRecommended - rootPlayer) .. " module(s)."; moduleIssues = moduleIssues + 1 end
+    end
     local cascadePassed = converged
     local cascadeReason = converged and "The proposed module counts stabilized through the bounded native recipe cascade." or "The proposed dependency graph did not stabilize within 24 bounded passes."
     for ware, counts in pairs(moduleCounts) do
@@ -2538,11 +2692,29 @@ function menu.evaluateModulePlan(nativePlan, caseData, draftCounts)
         end
     end
     local futureWorkforce = optimal + addedWorkforce
-    if capacity < futureWorkforce then
-        local warning = "WORKFORCE: current habitat capacity is about " .. formatNumber(capacity) .. "; this plan raises the current optimal workforce target to about " .. formatNumber(futureWorkforce) .. ". Add habitation or reduce the module plan."
+    local workforceFacts = menu.plannerWorkforceFacts(stationName, profileIndex, queue)
+    people = math.max(people, workforceFacts.people)
+    capacity = math.max(capacity, workforceFacts.capacity)
+    optimal = math.max(optimal, workforceFacts.optimal)
+    futureWorkforce = optimal + addedWorkforce
+    local habitatGap = math.max(futureWorkforce - capacity - workforceFacts.plannedCapacity, 0)
+    local habitatRecommended = workforceFacts.habitatCapacity > 0 and math.ceil(habitatGap / workforceFacts.habitatCapacity) or nil
+    local habitatPlayer = intended("__habitat__")
+    if habitatGap > 0 then
+        rows[#rows + 1] = { depth=91, kind="HABITAT", wareId="__habitat__", ware="Workforce habitat", module=workforceFacts.habitatName, planned=workforceFacts.plannedCount, recommended=habitatRecommended, player=habitatPlayer, editable=habitatRecommended ~= nil, requiredRate=habitatGap, capacityPerModule=workforceFacts.habitatCapacity, baselineCapacity=capacity, species=workforceFacts.species, provisions=workforceFacts.provisions, provisionScope=workforceFacts.provisionScope, provisionPlan=workforceFacts.provisionPlan, storageCheck=workforceFacts.storageCheck }
+    end
+    if habitatGap > 0 and habitatRecommended == nil then
+        cascadePassed = false
+        cascadeReason = "The plan requires more workforce, but no owned compatible habitat blueprint was returned."
+        local warning = "HABITAT: need about " .. formatNumber(habitatGap) .. " more workforce capacity, but X4 did not return an owned compatible habitat blueprint. Acquire one; EOC will not guess the module type."
         warnings[#warnings + 1] = warning
         globalWarnings[#globalWarnings + 1] = warning
+    elseif habitatGap > 0 and habitatPlayer ~= (habitatRecommended or 0) then
+        local warning = workforceFacts.habitatName .. ": your plan must add about " .. tostring(habitatRecommended or 0) .. " habitat module(s) after counting " .. tostring(workforceFacts.plannedCount) .. " already queued; you entered " .. tostring(habitatPlayer) .. "."
+        warnings[#warnings + 1] = warning
+        moduleIssues = moduleIssues + 1
     end
+    local workforceNote = habitatGap > 0 and habitatRecommended ~= nil and ("WORKFORCE PATH: " .. workforceFacts.habitatName .. " provides about " .. formatNumber(workforceFacts.habitatCapacity) .. " capacity each. WORKFORCE SUPPLIES - INFORMATION ONLY, NOT MODULE COUNTS: " .. workforceFacts.provisionScope .. " Future hourly use remains unknown until workers arrive; refresh after habitation fills.") or ""
 
     local transports = {}
     for ware in pairs(moduleCounts) do local _, transport = wareFacts(ware); transports[transport] = true end
@@ -2559,12 +2731,13 @@ function menu.evaluateModulePlan(nativePlan, caseData, draftCounts)
             end
         end
     end
-    local summary = #warnings == 0 and "PLAN LOOKS BALANCED FOR CURRENT EVIDENCE - NOT CLEARED TO BUILD" or ("CHECK THIS PLAN: " .. tostring(#warnings) .. " issue(s) need attention before building.")
-    DebugError("[JKEOC][B349][PLAYER_MODULE_CALCULATOR] station=" .. stationName .. " ware=" .. nativePlan.ware .. " rows=" .. tostring(#rows) .. " warnings=" .. tostring(#warnings) .. " cascade=" .. tostring(cascadePassed) .. " added_workforce=" .. tostring(addedWorkforce) .. " construction_authority=0")
-    return { rows = rows, warnings = warnings, globalWarnings = globalWarnings, moduleIssues = moduleIssues, summary = summary, cascadePassed = cascadePassed, cascadeReason = cascadeReason, addedWorkforce = addedWorkforce, people = people, capacity = capacity, futureWorkforce = futureWorkforce }
+    local summary = #warnings == 0 and (projectScenario and "PLAYER SCENARIO IS INTERNALLY BALANCED - PROJECT DEMAND REMAINS UNKNOWN - NOT CLEARED TO BUILD" or "PLAN LOOKS BALANCED FOR CURRENT EVIDENCE - NOT CLEARED TO BUILD") or ("CHECK THIS PLAN: " .. tostring(#warnings) .. " issue(s) need attention before building.")
+    DebugError("[JKEOC][B354][PLAYER_MODULE_CALCULATOR] station=" .. stationName .. " ware=" .. nativePlan.ware .. " project_scenario=" .. tostring(projectScenario) .. " root_player=" .. tostring(rootPlayer) .. " rows=" .. tostring(#rows) .. " warnings=" .. tostring(#warnings) .. " cascade=" .. tostring(cascadePassed) .. " added_workforce=" .. tostring(addedWorkforce) .. " habitat_recommended=" .. tostring(habitatRecommended) .. " construction_authority=0")
+    return { rows = rows, warnings = warnings, globalWarnings = globalWarnings, moduleIssues = moduleIssues, summary = summary, cascadePassed = cascadePassed, cascadeReason = cascadeReason, projectScenario = projectScenario, rootPlayer = rootPlayer, addedWorkforce = addedWorkforce, people = people, capacity = capacity, futureWorkforce = futureWorkforce, habitatRecommended = habitatRecommended, workforceNote = workforceNote }
 end
 
 function menu.makeAgreedBuildPlan(nativePlan, caseData, result, evidenceKey)
+    if type(result) ~= "table" or type(result.rows) ~= "table" then return nil, nil end
     local stationName = text(v(caseData, 1, "Selected station"))
     local profileIndex = 0
     for _, profile in ipairs(menu.stations or {}) do
@@ -2572,20 +2745,21 @@ function menu.makeAgreedBuildPlan(nativePlan, caseData, result, evidenceKey)
     end
     local rows, payloadRows = {}, {}
     for _, row in ipairs(result.rows or {}) do
-        local kind = row.editable == false and "SOURCE" or "MODULE"
+        local kind = row.kind or (row.editable == false and "SOURCE" or "MODULE")
         local saved = {
             kind=kind, wareId=menu.supplyWareId(row.wareId), ware=text(row.ware), module=text(row.module),
-            agreed=kind == "MODULE" and (tonumber(row.player) or 0) or 0,
+            agreed=(kind == "MODULE" or kind == "HABITAT") and (tonumber(row.player) or 0) or 0,
             baselinePlanned=tonumber(row.planned) or 0, baselineProduction=tonumber(row.production) or 0,
             outputPerHour=tonumber(row.outputPerHour) or 0, requiredRate=tonumber(row.requiredRate) or 0,
-            transport=text(row.transport ~= nil and row.transport or "UNKNOWN")
+            transport=text(row.transport ~= nil and row.transport or "UNKNOWN"), baselineCapacity=tonumber(row.baselineCapacity) or 0,
+            capacityPerModule=tonumber(row.capacityPerModule) or 0, provisions=text(row.provisions or ""), species=text(row.species or "")
         }
         rows[#rows + 1] = saved
-        payloadRows[#payloadRows + 1] = { saved.kind, saved.wareId, saved.ware, saved.module, saved.agreed, saved.baselinePlanned, saved.baselineProduction, saved.outputPerHour, saved.requiredRate, saved.transport }
+        payloadRows[#payloadRows + 1] = { saved.kind, saved.wareId, saved.ware, saved.module, saved.agreed, saved.baselinePlanned, saved.baselineProduction, saved.outputPerHour, saved.requiredRate, saved.transport, saved.baselineCapacity, saved.capacityPerModule, saved.provisions, saved.species }
     end
     local conditions = {}
     for _, warning in ipairs(result.globalWarnings or {}) do conditions[#conditions + 1] = text(warning) end
-    local status = #conditions == 0 and "AGREED COUNTS - CURRENT SAFETY CHECKS PASS" or ("AGREED COUNTS - " .. tostring(#conditions) .. " SAFETY CONDITION(S) REMAIN")
+    local status = result.projectScenario and (#conditions == 0 and "PLAYER SCENARIO COUNTS SAVED - PROJECT DEMAND REMAINS UNKNOWN" or ("PLAYER SCENARIO COUNTS SAVED - " .. tostring(#conditions) .. " SAFETY CONDITION(S) REMAIN")) or (#conditions == 0 and "AGREED COUNTS - CURRENT SAFETY CHECKS PASS" or ("AGREED COUNTS - " .. tostring(#conditions) .. " SAFETY CONDITION(S) REMAIN"))
     local wareId = menu.supplyWareId(nativePlan.ware)
     local plan = { station=stationName, wareId=wareId, ware=text(v(caseData, 4, nativePlan.ware)), status=status, saved=getElapsedTime(), evidence=text(evidenceKey), rows=rows, warnings=conditions }
     local payload = { station=stationName, profile=profileIndex, ware=wareId, name=plan.ware, status=status, evidence=text(evidenceKey), rows=payloadRows, warnings=conditions }
@@ -2596,10 +2770,11 @@ function menu.agreedPlanAssessment(plan, currentSimplePlan)
     local currentByWare = {}
     for _, row in ipairs(currentSimplePlan or {}) do currentByWare[menu.supplyWareId(row.wareId)] = row end
     local displayRows, stale = {}, false
+    local projectScenario = string.find(string.upper(text(plan.status)), "PLAYER SCENARIO", 1, true) ~= nil
     local evidenceLoaded = #(currentSimplePlan or {}) > 0
     for _, saved in ipairs(plan.rows or {}) do
         local current = currentByWare[menu.supplyWareId(saved.wareId)]
-        local row = { kind=saved.kind, wareId=saved.wareId, ware=saved.ware, module=saved.module, agreed=saved.agreed, requiredRate=saved.requiredRate, transport=saved.transport, progress=0, remaining=saved.agreed, progressKnown=evidenceLoaded }
+        local row = { kind=saved.kind, wareId=saved.wareId, ware=saved.ware, module=saved.module, agreed=saved.agreed, requiredRate=saved.requiredRate, transport=saved.transport, progress=0, remaining=saved.agreed, progressKnown=evidenceLoaded, provisions=saved.provisions, species=saved.species }
         if saved.kind == "MODULE" then
             if current then
                 local currentPlanned = tonumber(current.planned) or 0
@@ -2617,28 +2792,105 @@ function menu.agreedPlanAssessment(plan, currentSimplePlan)
             -- the short current estimate. Its absence still means zero modules are
             -- required. If the ware later appears with a nonzero requirement, the
             -- normal additional-versus-remaining comparison marks the plan stale.
-            if evidenceLoaded and current then
-                if current.additional == nil or (tonumber(current.additional) or 0) ~= row.remaining then stale = true end
-            elseif evidenceLoaded and row.agreed > 0 then
+            if not projectScenario and evidenceLoaded and current then
+                if not current.liveProgressOnly and (current.additional == nil or (tonumber(current.additional) or 0) ~= row.remaining) then stale = true end
+            elseif not projectScenario and evidenceLoaded and row.agreed > 0 then
+                stale = true
+            end
+        elseif saved.kind == "HABITAT" then
+            if current then
+                local currentPlanned = tonumber(current.planned) or 0
+                local baselinePlanned = tonumber(saved.baselinePlanned) or 0
+                local newlyPlanned = math.max(currentPlanned - baselinePlanned, 0)
+                local completed = 0
+                if (tonumber(saved.capacityPerModule) or 0) > 0 then
+                    local grossCompleted = math.max(math.floor((((tonumber(current.baselineCapacity) or 0) - (tonumber(saved.baselineCapacity) or 0)) / saved.capacityPerModule) + 0.01), 0)
+                    completed = math.max(grossCompleted - math.max(baselinePlanned - currentPlanned, 0), 0)
+                end
+                row.progress = math.min(row.agreed, newlyPlanned + completed)
+                row.remaining = math.max(row.agreed - row.progress, 0)
+                if not projectScenario and not current.liveProgressOnly and (current.additional == nil or (tonumber(current.additional) or 0) ~= row.remaining) then stale = true end
+            elseif not projectScenario and evidenceLoaded and row.agreed > 0 then
                 stale = true
             end
         elseif evidenceLoaded then
-            if not current then stale = true else row.requiredRate = tonumber(current.requiredRate) or row.requiredRate end
+            if not current and not projectScenario then stale = true elseif current then row.requiredRate = tonumber(current.requiredRate) or row.requiredRate end
         end
         displayRows[#displayRows + 1] = row
     end
     return displayRows, stale, evidenceLoaded
 end
 
+function menu.savedPlanLiveRows(plan)
+    local profileIndex, station64 = 0, nil
+    for _, profile in ipairs(menu.stations or {}) do
+        if text(v(profile, 1, "")) == plan.station then profileIndex = tonumber(v(profile, 16, 0)) or 0; station64 = menu.supplyStationId(profile); break end
+    end
+    local queue = {}
+    for _, record in ipairs(menu.constructionRecords or {}) do
+        if text(v(record, 1, "")) == plan.station or (profileIndex > 0 and (tonumber(v(record, 2, 0)) or 0) == profileIndex) then queue = v(record, 8, {}); break end
+    end
+    local workforceFacts = menu.plannerWorkforceFacts(plan.station, profileIndex, queue)
+    local rows = {}
+    for _, saved in ipairs(plan.rows or {}) do
+        if saved.kind == "MODULE" then
+            local planned = 0
+            for _, item in ipairs(queue or {}) do
+                local status = string.upper(text(v(item, 3, "PLANNED")))
+                if string.lower(text(v(item, 1, ""))) == string.lower(saved.module or "") and status ~= "COMPLETE" and status ~= "COMPLETED" then planned = planned + 1 end
+            end
+            rows[#rows + 1] = { kind="MODULE", wareId=saved.wareId, ware=saved.ware, module=saved.module, planned=planned, production=station64 and menu.supplySafeRate(station64, saved.wareId, true, true) or saved.baselineProduction, additional=saved.agreed, liveProgressOnly=true }
+        elseif saved.kind == "HABITAT" then
+            rows[#rows + 1] = { kind="HABITAT", wareId="__habitat__", ware="Workforce habitat", module=saved.module, planned=workforceFacts.plannedCount, baselineCapacity=workforceFacts.capacity, additional=saved.agreed, liveProgressOnly=true, species=workforceFacts.species, provisions=workforceFacts.provisions }
+        else
+            rows[#rows + 1] = { kind="SOURCE", wareId=saved.wareId, ware=saved.ware, requiredRate=saved.requiredRate, liveProgressOnly=true }
+        end
+    end
+    return rows
+end
+
+function menu.savedPlanRefreshTarget(plan)
+    if not plan or text(plan.station) == "" then return nil end
+    local stationName = text(plan.station)
+    for _, record in ipairs(menu.constructionRecords or {}) do
+        if text(v(record, 1, "")) == stationName then return { station=stationName, index=tonumber(v(record, 2, 0)) or 0 } end
+    end
+    for _, profile in ipairs(menu.stations or {}) do
+        if text(v(profile, 1, "")) == stationName then return { station=stationName, index=tonumber(v(profile, 16, 0)) or 0 } end
+    end
+    return nil
+end
+
 function menu.renderAgreedBuildList(tableWidget, plan, currentSimplePlan, commandKey, caseData, nativePlan)
     local rows, stale, evidenceLoaded = menu.agreedPlanAssessment(plan, currentSimplePlan)
-    section(tableWidget, "SAVED AGREED BUILD LIST")
+    local projectScenario = string.find(string.upper(text(plan.status)), "PLAYER SCENARIO", 1, true) ~= nil
+    section(tableWidget, projectScenario and "SAVED PLAYER SCENARIO BUILD LIST" or "SAVED AGREED BUILD LIST")
     local statusRow = tableWidget:addRow(false)
     local conditionCount = #(plan.warnings or {})
-    local statusText = not evidenceLoaded and "SAVED LIST RESTORED: Current Planner evidence is not loaded yet. The agreed counts remain available; return to the case and run the readiness check to refresh progress." or (stale and "PLAN NEEDS REVIEW: Current evidence no longer matches every saved count. The saved list was not overwritten." or (conditionCount > 0 and ("COUNTS SAVED: EOC and player agree on the production-module counts, but " .. tostring(conditionCount) .. " safety condition(s) still block construction.") or "CURRENT AGREEMENT: EOC and player module counts still match the latest evidence."))
+    local statusText = projectScenario and (conditionCount > 0 and ("PLAYER SCENARIO SAVED: Project demand remains unknown and " .. tostring(conditionCount) .. " safety condition(s) still block construction. The chosen final count is not an EOC demand recommendation.") or "PLAYER SCENARIO SAVED: The selected counts are internally balanced, but project demand remains unknown. The chosen final count is not an EOC demand recommendation.") or (not evidenceLoaded and "SAVED LIST RESTORED: Current Planner evidence is not loaded yet. The agreed counts remain available; return to the case and run the readiness check to refresh progress." or (stale and "PLAN NEEDS REVIEW: Current evidence no longer matches every saved count. The saved list was not overwritten." or (conditionCount > 0 and ("COUNTS SAVED: EOC and player agree on the production-module counts, but " .. tostring(conditionCount) .. " safety condition(s) still block construction.") or "CURRENT AGREEMENT: EOC and player module counts still match the latest evidence.")))
     statusRow[1]:setColSpan(4):createText(statusText, { wordwrap = true, color = not evidenceLoaded and investigationUnknownColor or ((stale or conditionCount > 0) and investigationFailColor or investigationPassColor), font = Helper.headerFont })
     local guideRow = tableWidget:addRow(false)
-    guideRow[1]:setColSpan(4):createText("RETURN HERE AS YOU BUILD: EOC keeps this list in the save game. Use the normal X4 Station Build Plan; EOC never places modules. Progress below is a best-current estimate from the live plan and production evidence.", { wordwrap = true, color = navigationStoryColor })
+    guideRow[1]:setColSpan(4):createText("RETURN HERE AS YOU BUILD: EOC keeps this list in the save game. Use the normal X4 Station Build Plan; EOC never places modules. Only while this exact saved-list screen is visible, EOC refreshes the station about once per minute. Every other Solution Planner screen remains in DRAFT MODE with automatic refresh disabled.", { wordwrap = true, color = navigationStoryColor })
+    local refreshRow = tableWidget:addRow(true)
+    refreshRow[1]:setColSpan(4)
+    menu.addPrimaryButton(refreshRow, 1, menu.constructionRefreshing and "REFRESHING SAVED-LIST PROGRESS..." or "REFRESH PROGRESS NOW", function()
+        local target = menu.savedPlanRefreshTarget(plan)
+        if not target or target.index <= 0 then
+            menu.plannerRefreshStatus = "REFRESH BLOCKED: EOC could not resolve this saved list to the exact current station. No progress was changed."
+            menu.refresh()
+            return
+        end
+        menu.constructionRefreshing = true
+        menu.plannerManualRefreshPending = target.station
+        menu.plannerNextRefreshAt = getElapsedTime() + 60
+        menu.plannerRefreshStatus = "REFRESHING SAVED-LIST PROGRESS: Reading the exact station plan, installed production, workforce, and habitat evidence."
+        raise("construction.refresh", { index = target.index, station = target.station })
+        menu.refresh()
+    end, not menu.constructionRefreshing)
+    if menu.plannerRefreshStatus then
+        local refreshStatusRow = tableWidget:addRow(false)
+        refreshStatusRow[1]:setColSpan(4):createText(menu.plannerRefreshStatus, { wordwrap = true, color = navigationStoryColor })
+    end
     local pageSize = 6
     local pageCount = math.max(1, math.ceil(#rows / pageSize))
     menu.agreedBuildPage = math.max(1, math.min(tonumber(menu.agreedBuildPage) or 1, pageCount))
@@ -2650,11 +2902,18 @@ function menu.renderAgreedBuildList(tableWidget, plan, currentSimplePlan, comman
         if row.kind == "MODULE" then
             display = row.progressKnown and ((row.module ~= "" and row.module or row.ware) .. " | AGREED ADD " .. tostring(row.agreed) .. " | EOC SEES ADDED/PLANNED ABOUT " .. tostring(row.progress) .. " | STILL NEED ABOUT " .. tostring(row.remaining)) or ((row.module ~= "" and row.module or row.ware) .. " | AGREED ADD " .. tostring(row.agreed) .. " | CURRENT PROGRESS NOT REFRESHED")
             if row.agreed == 0 then display = (row.module ~= "" and row.module or row.ware) .. " | AGREED ADD 0 | DO NOT ADD DUPLICATE CAPACITY" end
+        elseif row.kind == "HABITAT" then
+            display = row.progressKnown and ((row.module ~= "" and row.module or "Compatible habitat") .. " | AGREED ADD " .. tostring(row.agreed) .. " | EOC SEES ADDED/PLANNED ABOUT " .. tostring(row.progress) .. " | STILL NEED ABOUT " .. tostring(row.remaining)) or ((row.module ~= "" and row.module or "Compatible habitat") .. " | AGREED ADD " .. tostring(row.agreed) .. " | CURRENT PROGRESS NOT REFRESHED")
         else
             display = row.ware .. " [" .. row.transport .. "] | NO PRODUCTION MODULE | PROVIDE ABOUT " .. formatNumber(row.requiredRate) .. "/h THROUGH THE RAW-SOURCE ROUTE"
         end
         local listRow = tableWidget:addRow(false)
-        listRow[1]:setColSpan(4):createText(display, { wordwrap = true, color = (row.kind == "MODULE" and row.remaining == 0) and investigationPassColor or investigationUnknownColor, font = Helper.headerFont })
+        listRow[1]:setColSpan(4):createText(display, { wordwrap = true, color = ((row.kind == "MODULE" or row.kind == "HABITAT") and row.remaining == 0) and investigationPassColor or investigationUnknownColor, font = Helper.headerFont })
+        if row.kind == "HABITAT" then
+            local supplyRow = tableWidget:addRow(false)
+            local supplyEvidence = (row.provisions or "") ~= "" and ("Current " .. ((row.species or "") ~= "" and row.species or "workforce") .. " supplies: " .. row.provisions .. ".") or "Exact provision wares for this habitat are not proven by the current station-wide evidence."
+            supplyRow[1]:setColSpan(4):createText("WORKFORCE SUPPLIES - INFORMATION ONLY, NOT MODULE COUNTS: " .. supplyEvidence, { wordwrap = true, color = navigationStoryColor })
+        end
     end
     if pageCount > 1 then
         local pager = tableWidget:addRow(true)
@@ -2671,7 +2930,7 @@ function menu.renderAgreedBuildList(tableWidget, plan, currentSimplePlan, comman
     end
     local actionRow = tableWidget:addRow(true)
     local returnLabel = not caseData and "RETURN TO SAVED LISTS" or (stale and "RETURN TO CALCULATOR - REVIEW PLAN" or "RETURN TO MODULE CALCULATOR")
-    actionRow[1]:setColSpan(2); menu.addPrimaryButton(actionRow, 1, returnLabel, function() menu.solutionAgreedKey = nil; menu.solutionAgreedStandaloneKey = nil; menu.refresh() end, true)
+    actionRow[1]:setColSpan(2); menu.addPrimaryButton(actionRow, 1, returnLabel, function() menu.solutionAgreedKey = nil; menu.solutionAgreedStandaloneKey = nil; menu.plannerRefreshStatus = nil; menu.refresh() end, true)
     actionRow[3]:setColSpan(2)
     local confirmKey = menu.agreedPlanKey(plan.station, plan.wareId)
     addButton(actionRow, 3, menu.agreedClearConfirm == confirmKey and "CONFIRM CLEAR SAVED LIST" or "CLEAR SAVED LIST", function()
@@ -2683,7 +2942,7 @@ function menu.renderAgreedBuildList(tableWidget, plan, currentSimplePlan, comman
     end, true)
 end
 
-function menu.runExpansionReadiness(caseData)
+function menu.runExpansionReadiness(caseData, preservePlannerPages)
     local rows = {}
     local function add(label, state, evidence) rows[#rows + 1] = { label = label, state = state, evidence = evidence } end
     local action = managedActionForCase(caseData)
@@ -2756,8 +3015,10 @@ function menu.runExpansionReadiness(caseData)
         if item.state == "NOT READY" then notReady = notReady + 1 elseif item.state == "CANNOT PROVE" then unknown = unknown + 1 elseif item.state == "WARNING" then warnings = warnings + 1 end
     end
     local summary = notReady > 0 and "NOT READY - CORRECT THE FAILED CONDITION BEFORE PLANNING" or ((unknown > 0 or warnings > 0) and "READY FOR CAUTIOUS PLANNING - NOT CLEARED TO BUILD" or "READY FOR PLANNING")
-    menu.plannerChecklistPage = 1
-    menu.plannerSimplePage = 1
+    if not preservePlannerPages then
+        menu.plannerChecklistPage = 1
+        menu.plannerSimplePage = 1
+    end
     menu.expansionReadiness = { key = checklistCaseKey(caseData), evidenceKey = expansionEvidenceKey(caseData), station = stationName, ware = ware, rows = rows, summary = summary, notReady = notReady, unknown = unknown, warnings = warnings, checkedAt = getElapsedTime(), nativePlan = nativePlan }
     DebugError("[JKEOC][B289][EXPANSION_READINESS] station=" .. stationName .. " ware=" .. ware .. " blueprint=" .. blueprintState .. " module=" .. blueprintModule .. " true_hq=" .. tostring(trueHQ) .. " summary=" .. summary .. " not_ready=" .. tostring(notReady) .. " cannot_prove=" .. tostring(unknown) .. " warnings=" .. tostring(warnings) .. " construction_authority=0")
     return menu.expansionReadiness
@@ -4296,7 +4557,7 @@ local function solutionPlannerCenter(tableWidget)
     if not caseData then
         local standalonePlan = menu.solutionAgreedStandaloneKey and menu.agreedBuildPlans and menu.agreedBuildPlans[menu.solutionAgreedStandaloneKey] or nil
         if standalonePlan then
-            menu.renderAgreedBuildList(tableWidget, standalonePlan, {}, "", nil, nil)
+            menu.renderAgreedBuildList(tableWidget, standalonePlan, menu.savedPlanLiveRows(standalonePlan), "", nil, nil)
             return
         end
         section(tableWidget, "SOLUTION PLANNER — COMMAND FIRST")
@@ -4340,6 +4601,7 @@ local function solutionPlannerCenter(tableWidget)
     local commandReadinessMatches = commandReadiness and commandReadiness.key == checklistCaseKey(caseData) and commandReadiness.evidenceKey == expansionEvidenceKey(caseData)
     local commandNativePlan = commandReadinessMatches and commandReadiness.nativePlan or nil
     local commandProjectDemandUnknown = commandNativePlan and commandNativePlan.projectDemandUnmeasured
+    local commandScenarioMode = commandProjectDemandUnknown == true
     local commandSimplePlan = commandNativePlan and commandNativePlan.checklist and commandNativePlan.checklist.simplePlan or {}
     local commandCascadePassed = not commandNativePlan or not commandNativePlan.checklist or commandNativePlan.checklist.cascadePassed ~= false
     local commandCascadeReason = commandNativePlan and commandNativePlan.checklist and commandNativePlan.checklist.cascadeReason or "No cascade evidence is loaded."
@@ -4384,8 +4646,8 @@ local function solutionPlannerCenter(tableWidget)
         commandAction = function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end
     elseif commandProjectDemandUnknown then
         commandConclusion = "EOC CONCLUSION: Project demand exists, but EOC cannot convert it into a safe hourly production requirement. A calculated zero is not a zero-module recommendation."
-        commandNext = "DO THIS NEXT: Confirm whether the active project still requires " .. text(v(caseData, 4, "this ware")) .. ". Do not build from the current count."
-        commandActionLabel = "RETURN TO DIAGNOSTICS — CONFIRM PROJECT DEMAND"
+        commandNext = "DO THIS NEXT: X4 has not supplied a measurable demand rate, so EOC cannot recommend a count. Use the PLAYER SCENARIO calculator below to choose a final-output module count and check its complete support chain, or return to Diagnostics to review the active project."
+        commandActionLabel = "RETURN TO DIAGNOSTICS — REVIEW ACTIVE PROJECT"
         commandAction = function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end
     elseif commandPlannerReason == "PLANNED_PRODUCTION_REVIEW" or (tonumber(v(caseData, 34, 0)) or 0) > 0 then
         commandConclusion = "EOC CONCLUSION: Matching production is already planned. Do not add duplicate capacity."
@@ -4409,11 +4671,17 @@ local function solutionPlannerCenter(tableWidget)
         commandAction = function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end
     end
     if showingAgreedPlan then
-        menu.renderAgreedBuildList(tableWidget, savedAgreedPlan, commandSimplePlan, commandKey, caseData, commandNativePlan)
+        local savedScenarioMode = string.find(string.upper(text(savedAgreedPlan.status)), "PLAYER SCENARIO", 1, true) ~= nil
+        local savedCurrentPlan = savedScenarioMode and menu.savedPlanLiveRows(savedAgreedPlan) or commandSimplePlan
+        menu.renderAgreedBuildList(tableWidget, savedAgreedPlan, savedCurrentPlan, commandKey, caseData, commandNativePlan)
         return
     end
     if not showingDeepDive then
         section(tableWidget, "SOLUTION PLANNER — COMMAND FIRST")
+        if commandReadinessMatches then
+            local refreshRow = tableWidget:addRow(false)
+            refreshRow[1]:setColSpan(4):createText("DRAFT MODE: Automatic evidence refresh is paused while you calculate or review details. Save and open the build list when you want EOC to watch construction and workforce progress.", { wordwrap = true, color = navigationStoryColor })
+        end
         local conclusionRow = tableWidget:addRow(false)
         conclusionRow[1]:setColSpan(4):createText(commandConclusion, { wordwrap = true, color = commandProjectDemandUnknown and investigationUnknownColor or navigationStoryColor, font = Helper.headerFont })
         local nextRow = tableWidget:addRow(false)
@@ -4435,13 +4703,14 @@ local function solutionPlannerCenter(tableWidget)
             local simplePageSize = 6
             local simplePageCount = math.max(1, math.ceil(#displayedPlan / simplePageSize))
             menu.plannerSimplePage = math.max(1, math.min(tonumber(menu.plannerSimplePage) or 1, simplePageCount))
-            section(tableWidget, "WHAT TO ADD - BEST CURRENT ESTIMATE" .. (simplePageCount > 1 and (" - PAGE " .. tostring(menu.plannerSimplePage) .. " OF " .. tostring(simplePageCount)) or ""))
+            section(tableWidget, (commandScenarioMode and "PLAYER SCENARIO - CHOOSE FINAL MODULE COUNT" or "WHAT TO ADD - BEST CURRENT ESTIMATE") .. (simplePageCount > 1 and (" - PAGE " .. tostring(menu.plannerSimplePage) .. " OF " .. tostring(simplePageCount)) or ""))
             local activeCascadePassed = calculatorState.result and calculatorState.result.cascadePassed or commandCascadePassed
             local activeCascadeReason = calculatorState.result and calculatorState.result.cascadeReason or commandCascadeReason
             local cascadeRow = tableWidget:addRow(false)
-            cascadeRow[1]:setColSpan(4):createText((activeCascadePassed and "CASCADE CHECK COMPLETE: " or "CASCADE GATE STOPPED - ESTIMATE INCOMPLETE: ") .. activeCascadeReason, { wordwrap = true, color = activeCascadePassed and investigationPassColor or investigationFailColor })
+            local cascadeText = commandScenarioMode and not calculatorState.result and "PLAYER SCENARIO READY: Choose at least one final-output module and check the plan. EOC will calculate the bounded native support cascade without claiming that X4 demand proves your chosen count." or ((activeCascadePassed and "CASCADE CHECK COMPLETE: " or "CASCADE GATE STOPPED - ESTIMATE INCOMPLETE: ") .. activeCascadeReason)
+            cascadeRow[1]:setColSpan(4):createText(cascadeText, { wordwrap = true, color = activeCascadePassed and investigationPassColor or investigationFailColor })
             local calculatorGuide = tableWidget:addRow(false)
-            calculatorGuide[1]:setColSpan(4):createText(calculatorState.dirty and "YOUR PLAN CHANGED: Press TAB after the number, then select CHECK MY MODULE PLAN again. The prior result is stale." or "TRY YOUR OWN PLAN: Type how many modules you intend to add, press TAB after each number, then select CHECK MY MODULE PLAN. EOC changes no station or build plan.", { wordwrap = true, color = calculatorState.dirty and investigationFailColor or navigationStoryColor })
+            calculatorGuide[1]:setColSpan(4):createText(calculatorState.dirty and "YOUR PLAN CHANGED: Press TAB after the number, then select CHECK MY MODULE PLAN again. The prior result is stale." or (commandScenarioMode and "PROJECT DEMAND IS UNKNOWN: Enter how many final-output modules you are considering, press TAB, then select CHECK MY MODULE PLAN. EOC will calculate the supporting modules and safety gates; it does not claim your chosen final count is required." or "TRY YOUR OWN PLAN: Type how many modules you intend to add, press TAB after each number, then select CHECK MY MODULE PLAN. EOC changes no station or build plan."), { wordwrap = true, color = calculatorState.dirty and investigationFailColor or navigationStoryColor })
             local simpleFirst = (menu.plannerSimplePage - 1) * simplePageSize + 1
             local simpleLast = math.min(#displayedPlan, simpleFirst + simplePageSize - 1)
             for simpleIndex = simpleFirst, simpleLast do
@@ -4451,15 +4720,21 @@ local function solutionPlannerCenter(tableWidget)
                 local playerCount = math.max(0, math.floor((tonumber(calculatorState.counts[wareId]) or 0) + 0.5))
                 local simpleRow = tableWidget:addRow(false)
                 if recommended ~= nil and item.editable ~= false then
-                    local comparison = calculatorState.result and (playerCount > recommended and ("TOO MANY BY ABOUT " .. tostring(playerCount - recommended)) or (playerCount < recommended and ("ADD ABOUT " .. tostring(recommended - playerCount) .. " MORE") or "MATCHES CURRENT ESTIMATE")) or ("EOC ESTIMATE: ADD ABOUT " .. tostring(recommended))
+                    local comparison = commandScenarioMode and item.finalOutput and (calculatorState.result and ("PLAYER SCENARIO COUNT " .. tostring(playerCount) .. " - NOT AN EOC DEMAND ESTIMATE") or "CHOOSE YOUR COUNT - EOC DEMAND ESTIMATE UNKNOWN") or (calculatorState.result and (playerCount > recommended and ("TOO MANY BY ABOUT " .. tostring(playerCount - recommended)) or (playerCount < recommended and ("ADD ABOUT " .. tostring(recommended - playerCount) .. " MORE") or "MATCHES CURRENT ESTIMATE")) or ("EOC ESTIMATE: ADD ABOUT " .. tostring(recommended)))
                     local simpleText = (item.module ~= "" and item.module or item.ware) .. " | " .. comparison
                     if item.finalOutput then simpleText = simpleText .. " | INSTALLED " .. tostring(item.installed or 0) .. " | ALREADY PLANNED " .. tostring(item.planned or 0) end
+                    if item.kind == "HABITAT" then simpleText = simpleText .. " | " .. formatNumber(item.capacityPerModule or 0) .. " WORKFORCE EACH | ALREADY PLANNED " .. tostring(item.planned or 0) end
                     simpleRow[1]:setColSpan(2):createText(simpleText, { wordwrap = true, color = calculatorState.result and playerCount ~= recommended and investigationFailColor or investigationPassColor, font = Helper.headerFont })
                     simpleRow[3]:createText("YOU PLAN TO ADD", { color = navigationStoryColor })
                     simpleRow[4]:createEditBox({ height = Helper.standardButtonHeight }):setText(tostring(calculatorState.counts[wareId] or "0"))
                     simpleRow[4].handlers.onEditBoxDeactivated = function(_, entered)
                         calculatorState.counts[wareId] = tostring(math.max(0, math.min(999, math.floor((tonumber(entered) or 0) + 0.5))))
                         calculatorState.dirty = true
+                        menu.plannerSaveStatus = nil
+                    end
+                    if item.kind == "HABITAT" then
+                        local supplyRow = tableWidget:addRow(false)
+                        supplyRow[1]:setColSpan(4):createText("WORKFORCE SUPPLIES - INFORMATION ONLY, NOT MODULE COUNTS: " .. (item.provisionScope and item.provisionScope ~= "" and item.provisionScope or "Exact future provision wares remain unknown until workers arrive."), { wordwrap = true, color = navigationStoryColor })
                     end
                 else
                     simpleRow[1]:setColSpan(4):createText(item.ware .. ": NO PRODUCTION-MODULE COUNT AVAILABLE | PROVIDE ABOUT " .. formatNumber(item.requiredRate or 0) .. "/h BY THE SOURCE ROUTE SHOWN IN ADVANCED DETAILS", { wordwrap = true, color = investigationUnknownColor, font = Helper.headerFont })
@@ -4483,12 +4758,17 @@ local function solutionPlannerCenter(tableWidget)
                     local moreWarnings = tableWidget:addRow(false)
                     moreWarnings[1]:setColSpan(4):createText(tostring(#calculatorState.result.globalWarnings - 3) .. " more non-module warning(s) remain; open Advanced Evidence and Math.", { wordwrap = true, color = investigationUnknownColor })
                 end
+                if calculatorState.result.workforceNote and calculatorState.result.workforceNote ~= "" then
+                    local workforceNoteRow = tableWidget:addRow(false)
+                    workforceNoteRow[1]:setColSpan(4):createText(calculatorState.result.workforceNote, { wordwrap = true, color = navigationStoryColor })
+                end
             end
             local calculatorRow = tableWidget:addRow(true)
             calculatorRow[1]:setColSpan(2)
             menu.addPrimaryButton(calculatorRow, 1, "CHECK MY MODULE PLAN", function()
                 calculatorState.result = menu.evaluateModulePlan(commandNativePlan, caseData, calculatorState.counts)
                 calculatorState.dirty = false
+                menu.plannerSaveStatus = nil
                 menu.plannerSimplePage = 1
                 menu.refresh()
             end, true)
@@ -4498,20 +4778,40 @@ local function solutionPlannerCenter(tableWidget)
                 for _, item in ipairs(commandSimplePlan) do if item.wareId then calculatorState.counts[menu.supplyWareId(item.wareId)] = "0" end end
                 calculatorState.result = nil
                 calculatorState.dirty = false
+                menu.plannerSaveStatus = nil
                 menu.plannerSimplePage = 1
                 menu.refresh()
             end, true)
             local canSaveAgreement = calculatorState.result and not calculatorState.dirty and calculatorState.result.cascadePassed and (tonumber(calculatorState.result.moduleIssues) or 0) == 0
             local saveRow = tableWidget:addRow(true)
             saveRow[1]:setColSpan(4)
-            menu.addPrimaryButton(saveRow, 1, savedAgreedPlan and "REPLACE SAVED AGREED BUILD LIST" or "SAVE AGREED BUILD LIST", function()
-                local plan, payload = menu.makeAgreedBuildPlan(commandNativePlan, caseData, calculatorState.result, expansionEvidenceKey(caseData))
+            local saveLabel = commandScenarioMode and (savedAgreedPlan and "REPLACE SAVED PLAYER SCENARIO" or "SAVE PLAYER SCENARIO BUILD LIST") or (savedAgreedPlan and "REPLACE SAVED AGREED BUILD LIST" or "SAVE AGREED BUILD LIST")
+            menu.addPrimaryButton(saveRow, 1, saveLabel, function()
+                local saveResult = calculatorState.result
+                if calculatorState.dirty or type(saveResult) ~= "table" or type(saveResult.rows) ~= "table" or not saveResult.cascadePassed or (tonumber(saveResult.moduleIssues) or 0) ~= 0 then
+                    menu.plannerSaveStatus = "SAVE NOT RECORDED: Press TAB after every changed number, then select CHECK MY MODULE PLAN again before saving. Your previous checked counts were not saved."
+                    DebugError("[JKEOC][B356][AGREED_SAVE_BLOCKED_STALE_RESULT] station=" .. text(v(caseData, 1, "Selected station")) .. " dirty=" .. tostring(calculatorState.dirty) .. " result=" .. tostring(type(saveResult)) .. " construction_authority=0")
+                    menu.refresh()
+                    return
+                end
+                local plan, payload = menu.makeAgreedBuildPlan(commandNativePlan, caseData, saveResult, expansionEvidenceKey(caseData))
+                if not plan or not payload then
+                    menu.plannerSaveStatus = "SAVE NOT RECORDED: The checked plan is no longer available. Select CHECK MY MODULE PLAN again; EOC did not save old counts."
+                    DebugError("[JKEOC][B356][AGREED_SAVE_BLOCKED_MISSING_RESULT] station=" .. text(v(caseData, 1, "Selected station")) .. " construction_authority=0")
+                    menu.refresh()
+                    return
+                end
+                menu.plannerSaveStatus = nil
                 menu.pendingAgreedPlan = { key=agreedKey, plan=plan, commandKey=commandKey }
                 raise("planner.agreed.save", payload)
             end, canSaveAgreement)
+            if menu.plannerSaveStatus then
+                local saveStatusRow = tableWidget:addRow(false)
+                saveStatusRow[1]:setColSpan(4):createText(menu.plannerSaveStatus, { wordwrap = true, color = investigationFailColor, font = Helper.headerFont })
+            end
             if calculatorState.result and not canSaveAgreement then
                 local saveGuide = tableWidget:addRow(false)
-                saveGuide[1]:setColSpan(4):createText(calculatorState.dirty and "SAVE LOCKED: Press TAB after the changed number and check the module plan again." or "SAVE LOCKED: EOC and player module counts must match and the cascade must complete before this becomes the remembered build list.", { wordwrap = true, color = investigationFailColor })
+                saveGuide[1]:setColSpan(4):createText(calculatorState.dirty and "SAVE LOCKED: Press TAB after the changed number and check the module plan again." or (commandScenarioMode and "SAVE LOCKED: Choose at least one final-output module, match every calculated support count, and complete the cascade before saving this player scenario." or "SAVE LOCKED: EOC and player module counts must match and the cascade must complete before this becomes the remembered build list."), { wordwrap = true, color = investigationFailColor })
             end
         end
         local commandRow = tableWidget:addRow(true)
@@ -4653,10 +4953,10 @@ local function solutionPlannerCenter(tableWidget)
     menu.plannerChecklistPage = math.max(1, math.min(tonumber(menu.plannerChecklistPage) or 1, pageCount))
     local firstItem = (menu.plannerChecklistPage - 1) * pageSize + 1
     local lastItem = math.min(#checklistItems, firstItem + pageSize - 1)
-    local statePrefix = { COMPLETE = "[X]", PLANNED = "[/]", ASSIGNED = "[/]", ASSIGNING = "[/]", ["APPROVAL REQUIRED"] = "[ ]", REQUIRED = "[ ]", ["SURPLUS PLAN"] = "[!]", ["SOURCE REQUIRED"] = "[!]", ["CANNOT PROVE"] = "[?]" }
+    local statePrefix = { COMPLETE = "[X]", INFORMATION = "[i]", PLANNED = "[/]", ASSIGNED = "[/]", ASSIGNING = "[/]", ["APPROVAL REQUIRED"] = "[ ]", REQUIRED = "[ ]", ["SURPLUS PLAN"] = "[!]", ["SOURCE REQUIRED"] = "[!]", ["CANNOT PROVE"] = "[?]" }
     for itemIndex = firstItem, lastItem do
         local item = checklistItems[itemIndex]
-        local itemColor = item.state == "COMPLETE" and investigationPassColor or ((item.state == "REQUIRED" or item.state == "SURPLUS PLAN" or item.state == "SOURCE REQUIRED") and investigationFailColor or investigationUnknownColor)
+        local itemColor = item.state == "COMPLETE" and investigationPassColor or ((item.state == "REQUIRED" or item.state == "SURPLUS PLAN" or item.state == "SOURCE REQUIRED") and investigationFailColor or (item.state == "INFORMATION" and navigationStoryColor or investigationUnknownColor))
         local checklistRow = tableWidget:addRow(false)
         checklistRow[1]:setColSpan(4):createText((statePrefix[item.state] or "[?]") .. " " .. item.state .. " - " .. item.label .. ": " .. item.evidence, { wordwrap = true, color = itemColor })
     end
@@ -4685,7 +4985,7 @@ local function solutionPlannerCenter(tableWidget)
         end, not bound.disabled and not acknowledgementActive, currentChoiceBackground)
         if acknowledgementActive then menu.rawSourceAcknowledgements[rawKey] = confirmationRefreshes - 1 end
     else
-        addButton(checklistNav, 3, "REFRESH CHECKLIST", function() menu.runExpansionReadiness(caseData); menu.refresh() end, true, currentChoiceBackground)
+        addButton(checklistNav, 3, "REFRESH CHECKLIST", function() menu.runExpansionReadiness(caseData, true); menu.refresh() end, true, currentChoiceBackground)
     end
     addButton(checklistNav, 4, "NEXT", function() menu.plannerChecklistPage = math.min(pageCount, menu.plannerChecklistPage + 1); menu.refresh() end, menu.plannerChecklistPage < pageCount)
     local boundary = tableWidget:addRow(false)
@@ -4840,6 +5140,35 @@ local function observationHasPlayerCase(stationName, subject)
         if text(v(case, 1, "")) == stationName and v(case, 11, "") == "PLAYER" and text(v(case, 4, "")) == subject then return true end
     end
     return false
+end
+
+-- Close one exact player-requested investigation through the established
+-- case.close transaction. EOC-confirmed cases and retained evidence are not
+-- removed by this presentation-side update.
+function menu.closePlayerRequestedCase(caseData, returnToCases)
+    if not caseData or v(caseData, 11, "") ~= "PLAYER" then return false end
+    menu.focusCaseStation(caseData)
+    local stationName = text(v(caseData, 1, ""))
+    local subject = text(v(caseData, 4, ""))
+    for index = #menu.cases, 1, -1 do
+        if text(v(menu.cases[index], 1, "")) == stationName and text(v(menu.cases[index], 4, "")) == subject and v(menu.cases[index], 11, "") == "PLAYER" then
+            table.remove(menu.cases, index)
+        end
+    end
+    if menu.diagnosticCase and text(v(menu.diagnosticCase, 1, "")) == stationName and text(v(menu.diagnosticCase, 4, "")) == subject and v(menu.diagnosticCase, 11, "") == "PLAYER" then
+        menu.diagnosticCase = nil
+    end
+    menu.selectedCase = 1
+    menu.casePage = 1
+    if returnToCases then
+        menu.caseScope = "station"
+        menu.caseSeverity = "all"
+        menu.page = "cases"
+        menu.activeTab = "cases"
+    end
+    raise("case.close", { index = v(selectedStation(), 16, menu.selected), subject = subject })
+    menu.refresh()
+    return true
 end
 
 local function casesCenter(tableWidget)
@@ -5167,15 +5496,7 @@ local function casesCenter(tableWidget)
         row[1]:setColSpan(4)
         addButton(row, 1, actionLabel("case.close", "CLOSE PLAYER-REQUESTED CASE", "CLOSING PLAYER CASE"), function()
             if startAction("case.close") then
-                menu.focusCaseStation(selected)
-                local stationName = text(v(selected, 1, ""))
-                for index = #menu.cases, 1, -1 do
-                    if text(v(menu.cases[index], 1, "")) == stationName and text(v(menu.cases[index], 4, "")) == text(v(selected, 4, "")) and v(menu.cases[index], 11, "") == "PLAYER" then table.remove(menu.cases, index) end
-                end
-                menu.selectedCase = 1
-                menu.casePage = 1
-                raise("case.close", { index = v(selectedStation(), 16, menu.selected), subject = text(v(selected, 4, "")) })
-                menu.refresh()
+                menu.closePlayerRequestedCase(selected, false)
             end
         end, not actionState("case.close").running)
         actionResult(tableWidget, "case.close", "Closes only the player-requested investigation; EOC-confirmed cases and evidence remain intact.")
@@ -5324,6 +5645,7 @@ local function fleetCenter(tableWidget)
     local function selectFleetView(view)
         menu.fleetView = view
         menu.fleetPage = 1
+        menu.coverageShipListKey = nil
         menu.refresh()
     end
 
@@ -5416,6 +5738,8 @@ local function fleetCenter(tableWidget)
     addButton(row, 1, "CLEAR FILTERS", function()
         menu.fleetScope = "global"
         menu.coverageReturnContext = nil
+        menu.coverageSelected = nil
+        menu.coverageShipListKey = nil
         menu.fleetPage = 1
         menu.refresh()
     end, menu.fleetScope ~= "global")
@@ -5559,7 +5883,7 @@ local function fleetCenter(tableWidget)
                         addButton(cardRow, column, label, function()
                             menu.coverageReturnContext = { scope = "global", filter = menu.coverageFilter or "action", page = menu.fleetPage or 1 }
                             for profileIndex, profile in ipairs(menu.stations or {}) do if text(v(profile, 1, "")) == summary.name then menu.selected = profileIndex break end end
-                            menu.fleetScope = "station"; menu.coverageSelected = nil; menu.coverageFilter = "action"; menu.fleetPage = 1; menu.refresh()
+                            menu.fleetScope = "station"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.coverageFilter = "action"; menu.fleetPage = 1; menu.refresh()
                         end, true, inactiveModeBackground, menu.supplyCardHeight(), summary.action > 0 and investigationUnknownColor or investigationPassColor, true, true)
                     end
                 end
@@ -5576,6 +5900,7 @@ local function fleetCenter(tableWidget)
                 menu.coverageFilter = origin.filter or "action"
                 menu.fleetPage = origin.page or 1
                 menu.coverageSelected = nil
+                menu.coverageShipListKey = nil
                 menu.coverageReturnContext = nil
                 menu.refresh()
             end, true)
@@ -5583,10 +5908,10 @@ local function fleetCenter(tableWidget)
 
         local filterRow = tableWidget:addRow(true)
         menu.coverageFilter = menu.coverageFilter or "action"
-        addModeButton(filterRow, 1, (menu.coverageFilter == "action" and "ACTIVE: " or "") .. "ACTIONABLE", menu.coverageFilter == "action", true, function() menu.coverageFilter = "action"; menu.coverageSelected = nil; menu.fleetPage = 1; menu.refresh() end)
-        addModeButton(filterRow, 2, (menu.coverageFilter == "waiting" and "ACTIVE: " or "") .. "WAITING", menu.coverageFilter == "waiting", true, function() menu.coverageFilter = "waiting"; menu.coverageSelected = nil; menu.fleetPage = 1; menu.refresh() end)
-        addModeButton(filterRow, 3, (menu.coverageFilter == "covered" and "ACTIVE: " or "") .. "COVERED", menu.coverageFilter == "covered", true, function() menu.coverageFilter = "covered"; menu.coverageSelected = nil; menu.fleetPage = 1; menu.refresh() end)
-        addModeButton(filterRow, 4, (menu.coverageFilter == "all" and "ACTIVE: " or "") .. "ALL EVIDENCE", menu.coverageFilter == "all", true, function() menu.coverageFilter = "all"; menu.coverageSelected = nil; menu.fleetPage = 1; menu.refresh() end)
+        addModeButton(filterRow, 1, (menu.coverageFilter == "action" and "ACTIVE: " or "") .. "ACTIONABLE", menu.coverageFilter == "action", true, function() menu.coverageFilter = "action"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
+        addModeButton(filterRow, 2, (menu.coverageFilter == "waiting" and "ACTIVE: " or "") .. "WAITING", menu.coverageFilter == "waiting", true, function() menu.coverageFilter = "waiting"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
+        addModeButton(filterRow, 3, (menu.coverageFilter == "covered" and "ACTIVE: " or "") .. "COVERED", menu.coverageFilter == "covered", true, function() menu.coverageFilter = "covered"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
+        addModeButton(filterRow, 4, (menu.coverageFilter == "all" and "ACTIVE: " or "") .. "ALL EVIDENCE", menu.coverageFilter == "all", true, function() menu.coverageFilter = "all"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
 
         local selectedName = text(v(selectedStation(), 1, ""))
         local records = {}
@@ -5601,14 +5926,73 @@ local function fleetCenter(tableWidget)
         local selected
         if menu.coverageSelected then for _, item in ipairs(records) do if coverageKey(item.raw) == menu.coverageSelected then selected = item break end end end
         if selected then
-            local back = tableWidget:addRow(true); back[1]:setColSpan(4); addButton(back, 1, "BACK TO " .. string.upper(menu.coverageFilter) .. " CARDS", function() menu.coverageSelected = nil; menu.refresh() end, true)
             local record = selected.raw
+            local selectedKey = coverageKey(record)
+            if menu.coverageShipListKey == selectedKey then
+                local backToEvidence = tableWidget:addRow(true)
+                backToEvidence[1]:setColSpan(4)
+                addButton(backToEvidence, 1, "BACK TO " .. string.upper(text(v(record, 3, "WARE"))) .. " EVIDENCE", function() menu.coverageShipListKey = nil; menu.refresh() end, true)
+                section(tableWidget, selectedName .. " — SHARED ASSIGNMENT POOL")
+                local boundary = tableWidget:addRow(false)
+                boundary[1]:setColSpan(4):createText("EVIDENCE BOUNDARY: These are station subordinates reported in the shared assignment pool. This list does not prove that each ship serves " .. text(v(record, 3, "this ware")) .. ".", { wordwrap = true, color = navigationStoryColor })
+                local shipNames = {}
+                for name in string.gmatch(text(v(record, 11, "")), "([^,]+)") do
+                    local clean = string.gsub(name, "^%s+", "")
+                    clean = string.gsub(clean, "%s+$", "")
+                    if clean ~= "" then shipNames[#shipNames + 1] = clean end
+                end
+                local header = tableWidget:addRow(false)
+                header[1]:createText("SHIP", { color = navigationStoryColor, font = Helper.headerFont })
+                header[2]:createText("PURPOSE", { color = navigationStoryColor, font = Helper.headerFont })
+                header[3]:createText("STATION", { color = navigationStoryColor, font = Helper.headerFont })
+                header[4]:createText("WARE PROOF", { color = navigationStoryColor, font = Helper.headerFont })
+                local firstShip, lastShip = menu.adaptiveListNavigation(tableWidget, "fleet.coverage.ships." .. selectedKey, #shipNames, { fixedRows = 24, rowUnits = 1, maximum = 8 })
+                for shipIndex = firstShip, lastShip do
+                    local shipRow = tableWidget:addRow(false)
+                    shipRow[1]:createText(shipNames[shipIndex], { wordwrap = true })
+                    shipRow[2]:createText(string.find(string.upper(text(v(record, 4, "LOGISTICS"))), "RAW RESOURCE", 1, true) and "MINING" or "LOGISTICS")
+                    shipRow[3]:createText(selectedName, { wordwrap = true })
+                    shipRow[4]:createText("SHARED POOL — UNPROVEN", { wordwrap = true, color = investigationUnknownColor })
+                end
+                if #shipNames == 0 then
+                    local noShips = tableWidget:addRow(false)
+                    noShips[1]:setColSpan(4):createText("No individual ship names were transported for this shared-pool record.", { wordwrap = true, color = investigationUnknownColor })
+                end
+                local readOnly = tableWidget:addRow(false)
+                readOnly[1]:setColSpan(4):createText("READ-ONLY SUPPORTING EVIDENCE: Do not change assignments from this view.", { wordwrap = true, color = navigationStoryColor })
+                return
+            end
+            local back = tableWidget:addRow(true); back[1]:setColSpan(4); addButton(back, 1, "BACK TO " .. string.upper(menu.coverageFilter) .. " CARDS", function() menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.refresh() end, true)
             section(tableWidget, selectedName .. " — " .. text(v(record, 3, "Unknown ware")))
             pair(tableWidget, "ROLE", text(v(record, 4, "LOGISTICS")), "STATUS", selected.state)
-            pair(tableWidget, "STOCK / TARGET", formatNumber(v(record, 5, 0)) .. " / " .. formatNumber(v(record, 6, 0)), "WORK / WAIT / BLOCK", tostring(v(record, 8, 0)) .. " / " .. tostring(v(record, 9, 0)) .. " / " .. tostring(v(record, 10, 0)))
-            pair(tableWidget, "SHIPS ASSIGNED", v(record, 7, 0), "ELIGIBLE AVAILABLE", v(record, 16, 0))
-            local detail = tableWidget:addRow(false); detail[1]:setColSpan(4):createText("SHIPS: " .. text(v(record, 11, "NONE")) .. " | " .. text(v(record, 15, "SHARED POOL")), { wordwrap = true })
-            local evidence = tableWidget:addRow(false); evidence[1]:setColSpan(4):createText("SOURCE: " .. text(v(record, 12, "UNKNOWN")) .. " | LAST MOVEMENT: " .. ((tonumber(v(record, 13, 0)) or 0) > 0 and menu.supplyElapsedLabel(v(record, 13, 0)) or "NOT YET OBSERVED"), { wordwrap = true })
+            pair(tableWidget, "STOCK / TARGET", formatNumber(v(record, 5, 0)) .. " / " .. formatNumber(v(record, 6, 0)), "SHARED ASSIGNMENT POOL", tostring(v(record, 7, 0)) .. " SHIP(S)")
+            pair(tableWidget, "WORK / WAIT / BLOCK", tostring(v(record, 8, 0)) .. " / " .. tostring(v(record, 9, 0)) .. " / " .. tostring(v(record, 10, 0)), "ELIGIBLE AVAILABLE", v(record, 16, 0))
+            local assignmentEvidence = tableWidget:addRow(false)
+            assignmentEvidence[1]:setColSpan(4):createText("ASSIGNMENT EVIDENCE: " .. tostring(v(record, 7, 0)) .. " station subordinate(s) | " .. text(v(record, 15, "SHARED POOL")) .. ". Assignment count alone does not prove ware-specific delivery.", { wordwrap = true })
+            local sourceEvidence = tableWidget:addRow(false)
+            sourceEvidence[1]:setColSpan(4):createText("SOURCE EVIDENCE: " .. text(v(record, 12, "UNKNOWN")) .. " | LAST CONFIRMED MOVEMENT: " .. ((tonumber(v(record, 13, 0)) or 0) > 0 and menu.supplyElapsedLabel(v(record, 13, 0)) or "NOT YET OBSERVED"), { wordwrap = true, color = text(v(record, 12, "UNKNOWN")) == "SOURCE TEMPORARILY UNAVAILABLE" and investigationFailColor or navigationStoryColor })
+            if text(v(record, 11, "")) ~= "" then
+                local shipList = tableWidget:addRow(true)
+                shipList[1]:setColSpan(4)
+                addButton(shipList, 1, "VIEW " .. tostring(v(record, 7, 0)) .. " ASSIGNED SHIPS", function()
+                    menu.coverageShipListKey = selectedKey
+                    menu.listPages = menu.listPages or {}
+                    menu.listPages["fleet.coverage.ships." .. selectedKey] = 1
+                    menu.refresh()
+                end, true)
+            end
+            local nextText
+            if text(v(record, 12, "UNKNOWN")) == "SOURCE TEMPORARILY UNAVAILABLE" then
+                nextText = "DO THIS NEXT: Do not assign another ship yet. Confirm a reachable source or wait for new stock-movement evidence, then refresh this card."
+            elseif selected.state == "NO ELIGIBLE SHIP" or selected.state == "ADD 1 SHIP" then
+                nextText = "DO THIS NEXT: Open Registered Ships and verify one compatible unassigned ship before changing assignment authority."
+            elseif selected.severity == 3 then
+                nextText = "DO THIS NEXT: No assignment change is required."
+            else
+                nextText = "DO THIS NEXT: Keep the current assignment unchanged until EOC records delivery or stronger source evidence."
+            end
+            local nextRow = tableWidget:addRow(false)
+            nextRow[1]:setColSpan(4):createText(nextText, { wordwrap = true, color = navigationStoryColor })
             return
         end
 
@@ -5623,7 +6007,7 @@ local function fleetCenter(tableWidget)
                 if item then
                     local record, column = item.raw, slot == 0 and 1 or 3; cardRow[column]:setColSpan(2)
                     local label = text(v(record, 3, "Unknown ware")) .. " — " .. item.state .. "\n" .. formatNumber(v(record, 5, 0)) .. " / " .. formatNumber(v(record, 6, 0)) .. " STOCK | " .. tostring(v(record, 8, 0)) .. "/" .. tostring(v(record, 9, 0)) .. "/" .. tostring(v(record, 10, 0)) .. " WORK/WAIT/BLOCK"
-                    addButton(cardRow, column, label, function() menu.coverageSelected = coverageKey(record); menu.refresh() end, true, inactiveModeBackground, menu.supplyCardHeight(), item.severity == 1 and investigationFailColor or item.severity == 2 and investigationUnknownColor or investigationPassColor, true, true)
+                    addButton(cardRow, column, label, function() menu.coverageShipListKey = nil; menu.coverageSelected = coverageKey(record); menu.refresh() end, true, inactiveModeBackground, menu.supplyCardHeight(), item.severity == 1 and investigationFailColor or item.severity == 2 and investigationUnknownColor or investigationPassColor, true, true)
                 end
             end
         end
@@ -5890,7 +6274,7 @@ local function fleetCenter(tableWidget)
     if #entries == 0 then
         local emptyMessages = {
             stations = "No station logistics records match the selected scope.",
-            ships = "No eligible ships are registered. Use Register Suitable Unassigned Ships below. EOC accepts operational M/L/XL trade or mining ships with supported cargo, no commander, and no subordinates.",
+            ships = "No eligible ships are registered. Use Register Suitable Unassigned Ships below. EOC accepts operational M/L/XL trade or mining ships with supported cargo, plus tug-class salvage ships, with no commander or subordinates.",
             offers = menu.tradeActivityView == "eoc" and "No EOC-created or EOC-tracked offers match this scope." or "UNKNOWN — no dynamic capacity snapshot is available for this scope. EOC will populate it through the established sampler without player babysitting.",
             pending = menu.shipmode == "APPROVAL REQUIRED" and
                 "No assignments await approval. Entries appear when EOC finds a supported need and a compatible registered ship." or
@@ -6087,7 +6471,7 @@ local function fleetCenter(tableWidget)
             raise("shipping.register", {})
         end
     end, not actionState("shipping.register").running)
-    actionResult(tableWidget, "shipping.register", "Registers eligible unassigned trade and mining ships. Open EOC from the Docked-menu access button.")
+    actionResult(tableWidget, "shipping.register", "Registers eligible unassigned trade and mining ships plus tug-class salvage ships. Open EOC from the Docked-menu access button.")
 
     row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
@@ -6166,7 +6550,7 @@ local function diagnosticsCenter(tableWidget)
     end
 
     local row = tableWidget:addRow(true)
-    addModeButton(row, 1, (menu.diagnosticView == "recovery" and "ACTIVE: " or "") .. "NEXT ACTION", menu.diagnosticView == "recovery", true, function()
+    addModeButton(row, 1, (menu.diagnosticView == "recovery" and "ACTIVE: " or "") .. (noMatchComplete and "RESULT" or "NEXT ACTION"), menu.diagnosticView == "recovery", not noMatchComplete, function()
         menu.diagnosticView = "recovery"
         menu.refresh()
     end)
@@ -6247,10 +6631,26 @@ local function diagnosticsCenter(tableWidget)
             row = tableWidget:addRow(false)
             row[1]:setColSpan(4):createText("Do not transfer funds, change storage, alter trade settings, add production, or reassign ships for this investigation. There is no diagnosed action and therefore nothing to verify.", { wordwrap = true })
             section(tableWidget, "WHERE TO GO NEXT")
-            row = tableWidget:addRow(true); row[1]:setColSpan(4)
-            addButton(row, 1, "RETURN TO CASES - CLOSE OR KEEP THIS INVESTIGATION", function()
-                menu.caseScope = "station"; menu.caseSeverity = "all"; menu.selectedCase = 1; menu.casePage = 1; menu.page = "cases"; menu.activeTab = "cases"; menu.refresh()
-            end, true)
+            row = tableWidget:addRow(true)
+            if v(diagnosticCase, 11, "") == "PLAYER" then
+                row[1]:setColSpan(2)
+                addButton(row, 1, actionLabel("case.close", "CLOSE THIS INVESTIGATION - NO CURRENT PROBLEM", "CLOSING THIS INVESTIGATION"), function()
+                    if startAction("case.close") then
+                        DebugError("[JKEOC][B352][TERMINAL_NO_MATCH_CLOSE] station=" .. stationName .. " subject=" .. diagnosticSubject .. " player_case=1")
+                        menu.closePlayerRequestedCase(diagnosticCase, true)
+                    end
+                end, not actionState("case.close").running)
+                row[3]:setColSpan(2)
+                addButton(row, 3, "KEEP THIS INVESTIGATION OPEN - RETURN TO CASES", function()
+                    DebugError("[JKEOC][B352][TERMINAL_NO_MATCH_KEEP] station=" .. stationName .. " subject=" .. diagnosticSubject .. " player_case=1")
+                    menu.caseScope = "station"; menu.caseSeverity = "all"; menu.selectedCase = 1; menu.casePage = 1; menu.diagnosticCase = nil; menu.page = "cases"; menu.activeTab = "cases"; menu.refresh()
+                end, true)
+            else
+                row[1]:setColSpan(4)
+                addButton(row, 1, "RETURN TO CASES - REVIEW THIS RESULT", function()
+                    menu.caseScope = "station"; menu.caseSeverity = "all"; menu.selectedCase = 1; menu.casePage = 1; menu.diagnosticCase = nil; menu.page = "cases"; menu.activeTab = "cases"; menu.refresh()
+                end, true)
+            end
             return
         elseif not diagnosticReady then
             section(tableWidget, "INVESTIGATION REQUEST RECEIVED")
@@ -8476,6 +8876,22 @@ function menu.onCloseElement(reason, layer)
     menu.closeInProgress = false
 end
 
+function menu.solutionRefreshSelection()
+    local caseData = menu.solutionCase or menu.diagnosticCase
+    local standalone = menu.solutionAgreedStandaloneKey and menu.agreedBuildPlans and menu.agreedBuildPlans[menu.solutionAgreedStandaloneKey] or nil
+    local monitoredPlan = standalone
+    if not monitoredPlan and caseData then
+        local commandKey = checklistCaseKey(caseData)
+        if menu.solutionAgreedKey ~= commandKey then return nil end
+        local readiness = menu.expansionReadiness
+        local nativePlan = readiness and readiness.key == commandKey and readiness.nativePlan or nil
+        local wareId = nativePlan and nativePlan.ware or v(caseData, 40, "")
+        local agreedKey = wareId ~= "" and menu.agreedPlanKey(text(v(caseData, 1, "")), wareId) or ""
+        monitoredPlan = agreedKey ~= "" and menu.agreedBuildPlans and menu.agreedBuildPlans[agreedKey] or nil
+    end
+    return menu.savedPlanRefreshTarget(monitoredPlan)
+end
+
 function menu.onUpdate()
     local now = getElapsedTime()
 
@@ -8491,6 +8907,16 @@ function menu.onUpdate()
         menu.constructionRefreshing = true
         menu.constructionNextRefreshAt = now + KPI_REFRESH_SECONDS
         raise("construction.refresh", { index = index, station = stationName })
+    elseif menu.page == "solution" and not menu.constructionRefreshing and now >= (tonumber(menu.plannerNextRefreshAt) or 0) then
+        local target = menu.solutionRefreshSelection()
+        if target and target.index > 0 then
+            menu.constructionRefreshing = true
+            menu.plannerNextRefreshAt = now + 60
+            menu.plannerRefreshStatus = "WATCHING SAVED PLAN: EOC refreshes this visible saved build list about once per minute."
+            raise("construction.refresh", { index = target.index, station = target.station })
+        else
+            menu.plannerNextRefreshAt = now + 60
+        end
     end
 
     if menu.page == "boot" and (tonumber(menu.osBootStage) or 1) < #(menu.osBootStages or {}) and menu.osBootNextAt and now >= menu.osBootNextAt then

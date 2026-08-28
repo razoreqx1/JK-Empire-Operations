@@ -1,53 +1,58 @@
-# EOC 3.9 GA - Build 350
+# EOC 3.9 GA — Build 359
 
-## Plain module-count planning
+Build 359 is the identity-only GA promotion of the RazorEQX runtime-accepted Build 358 behavior. It preserves the complete EOC 3.9 foundation introduced through Build 350 and adds the accepted guided-planning, case-disposition, save-safety, salvage-tug, logistics-evidence, and saved-scenario refresh work completed in Builds 351–358.
 
-- Solution Planner now leads with a best-current estimate of how many production modules to add for every supported native ware chain.
-- The estimate uses a bounded generic recipe cascade; it is not hardcoded to Food Rations, Wheat, or any other single resource.
-- Final-output duplicate guards, installed and planned production, shared upstream demand, and terminal raw-source boundaries remain visible.
-- Advanced readiness, evidence, native recipe, and production math remain available on paged Deep Dive views.
+## Guided planning and honest project scenarios
 
-## Player plan calculator and safety gates
+- Workforce, habitat-module counts, and workforce-provision information are separated so station-wide provision wares cannot masquerade as one habitat requirement.
+- Zero-count habitat inputs are omitted from the simple calculator.
+- Unknown habitat-to-species mapping remains unknown instead of being guessed.
+- When project demand cannot be measured, EOC does not invent a required final-output count. The player may instead open a clearly labeled scenario for a chosen final-output count and review the generic support chain.
+- EOC continues to lead with plain best-current module counts, use a bounded native-recipe cascade, and retain paged advanced readiness, evidence, recipe, and production math.
 
-- Players can enter the number of each module they intend to add and press **TAB after each number** to commit the field.
-- **CHECK MY MODULE PLAN** compares the entered plan with EOC's current estimate.
-- Checks cover underbuild, overbuild, workforce capacity, storage pressure, missing recipes, and raw-resource requirements.
-- Estimates remain advisory and approximate. EOC does not place modules, change the vanilla Station Build Plan, or spend construction resources.
+## Safe agreed build lists
 
-## Persistent agreed build lists
+- The Save callback rechecks the live calculator state and refuses stale, dirty, missing, nonconverged, or mismatched results instead of saving old counts.
+- Rejected saves provide explicit TAB-and-recheck guidance.
+- Zero-warning plans persist an explicit empty safety-condition list, and legacy plans missing that property remain readable.
+- Saved player scenarios are recognized from the persisted plan after reopen without depending on a currently loaded calculator or readiness flag.
+- The exact visible saved-list screen receives bounded automatic progress refresh and an explicit **REFRESH PROGRESS NOW** control.
+- Manual completion redraws the saved list even when the station fingerprint is unchanged.
+- Command, calculator, Deep Dive, readiness, checklist, and unsaved-draft Solution Planner screens remain refresh-disabled. Leaving the saved-list screen immediately removes monitoring eligibility.
+- Agreed counts, zero-count duplicate guards, raw-source requirements, safety conditions, approximate added/planned progress, remaining counts, explicit replacement, confirmed clear, and no-case/save-reload access remain preserved.
 
-- A checked matching plan can be saved as the agreed build list for the exact station and production subject.
-- The list remembers module counts, explicit zero-count duplicate guards, raw-source requirements, and current safety conditions.
-- Saved lists remain available after closing EOC and after save/reload, including from a no-case Solution Planner index.
-- The saved view shows agreed counts, approximate added/planned progress, and how many modules are still needed.
-- Real evidence changes mark the plan for review without silently overwriting it.
-- Players can explicitly replace the list with a newly checked agreement or clear it through confirmation.
-- Build 350 includes the accepted correction for the immediate false **PLAN NEEDS REVIEW** warning caused by an absent optional zero-count guard.
+## Player-requested case disposition
 
-## Player-first menus introduced in Build 344
+- When fresh analysis finds no current problem for an exact player-requested investigation, the terminal result offers **CLOSE THIS INVESTIGATION** and **KEEP THIS INVESTIGATION OPEN**.
+- Close removes only that exact player request while preserving current EOC observation evidence.
+- Keep returns without mutation.
+- A terminal no-match result no longer presents a misleading advancing action.
 
-- Every main EOC page now begins with a **START HERE** guide.
-- Each guide explains what the page does, gives short ordered steps, and says when the player is finished.
-- Player-facing wording is written for a capable 15-year-old reader without removing honest evidence limits.
-- Technical evidence remains available behind exact-case Deep Dive controls.
+## Registered Manticore salvage-tug coverage
 
-## Jobs and background verification
+- EOC recognizes operational unassigned player salvage tugs through X4's native salvage purpose and tug ship type.
+- Station need uses native processing-module and salvage-subordinate evidence.
+- Disabled, Approval Required, and Auto-Assign Registered authority modes remain distinct.
+- Assignment revalidates exact ownership, operational state, tug type, registration, commander state, and station need at mutation time.
+- EOC assigns only one exact registered tug, prevents duplicate station tug assignment, and waits for native commander plus salvage-assignment readback before reporting success.
+- EOC never creates a free tug, repurposes an ineligible ship, bypasses resources, or claims that registration alone proves assignment.
 
-- Player-started jobs retain a result that says what happened, what it means, and exactly what to do next.
-- Waiting states tell the player to continue normal play, avoid Station Build mode when required, and not start the same job again.
-- Completed background-test states tell the player to stop, wait, fix a named condition, refresh missing information, or run one new test only after the required change.
-- Completed-test buttons follow the displayed next action instead of immediately repeating the same test.
-- Results continue to return through EOC, notification, and Logbook routes supported by each workflow.
+## Readable logistics evidence
 
-## Display and compatibility
+- Fleet & Logistics resource cards now lead with concise stock, target, work/wait/block, assignment, activity, eligibility, source, last-movement, and next-action evidence.
+- A read-only **VIEW ASSIGNED SHIPS** route pages transported station-subordinate names eight at a time.
+- Every ship row retains the **SHARED POOL — UNPROVEN** boundary. Membership in a station pool is not proof that one ship serves the selected ware.
+- The evidence view provides no reassignment control.
 
-- Unsupported separators are converted to plain display text at shared UI boundaries.
-- Saved state, evidence keys, comparison strings, and gameplay logic remain unchanged by display cleanup.
-- Adaptive row budgeting reserves space for the new page guides while respecting X4's shared table limits.
+## Authority, compatibility, and performance
 
-## Authority and performance
+- EOC remains advisory in Solution Planner. It does not place modules, modify the vanilla Station Build Plan, spend credits, or bypass construction resources.
+- No new independent scheduler, hidden scan, watcher, polling loop, countdown, per-frame hook, free ship, resource bypass, unauthorized construction, cargo movement, or credit movement was added.
+- Existing persistent schemas, transport indices, generic cascade, fleet templates, managed trade ownership, native mining pins, construction boundaries, and player-selected authorities remain intact.
+- Compatible with X4 8.x and 9.x.
 
-- Unknown information remains unknown; EOC does not claim success without evidence.
-- No watcher, countdown, polling loop, scheduler, per-frame hook, free ship, resource bypass, unauthorized construction, cargo movement, credit movement, or expanded gameplay authority was added.
+## Project status
 
-Build 350 is the identity-only GA promotion of the RazorEQX runtime-accepted Build 349 behavior. Compatible with X4 8.x and 9.x.
+EOC is complete. Future major development will move to a separately planned mod that RazorEQX will announce when it is complete and ready to share.
+
+EOC remains maintained. Bug reports and feature requests are welcome, and compatibility updates, bug fixes, and carefully considered improvements will continue for the foreseeable future.

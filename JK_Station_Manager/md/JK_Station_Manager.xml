@@ -310,7 +310,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
               <set_value name="$habitatmodulename" exact="$stationoperationalmodule.macro.ware.name" />
             </do_if>
           </do_for_each>
-          <do_if value="$workforceshortfall gt 0 and not $habitatmodulemacro?">
+          <do_if value="not $habitatmodulemacro?">
             <get_module_definition macro="$habitatmodulecandidates" faction="$station.owner" tags="[tag.habitation, tag.module]" set="'factory'" multiple="true" />
             <do_for_each name="$habitatmodulecandidate" in="$habitatmodulecandidates">
               <do_if value="player.blueprints.{$habitatmodulecandidate.ware}.any.exists and $habitatmodulecandidate.workforce.capacity gt $habitatmodulecapacity">

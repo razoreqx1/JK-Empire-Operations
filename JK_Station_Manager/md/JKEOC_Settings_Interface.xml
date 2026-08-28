@@ -122,7 +122,8 @@
           <do_if value="global.$JKEOC_B76EligibleShips?"><do_for_each name="$registeredship" in="global.$JKEOC_B76EligibleShips"><do_if value="$registeredship == $ship"><set_value name="$known" exact="true" /></do_if></do_for_each></do_if>
           <set_value name="$cargo" exact="$ship.waretransport.indexof.{waretransport.container} or $ship.waretransport.indexof.{waretransport.solid} or $ship.waretransport.indexof.{waretransport.liquid} or $ship.waretransport.indexof.{waretransport.condensate}" />
           <set_value name="$logisticspurpose" exact="$ship.primarypurpose == purpose.trade or $ship.primarypurpose == purpose.mine" />
-          <do_if value="not $known and $ship != player.ship and $ship.isclass.ship and $ship.isoperational and not $ship.isunit and not $ship.isclass.ship_xs and not $ship.commander and not $ship.subordinates.count and (($logisticspurpose and $cargo) or $ship.primarypurpose == purpose.fight)">
+          <set_value name="$salvagetug" exact="$ship.primarypurpose == purpose.salvage and $ship.type == shiptype.tug" />
+          <do_if value="not $known and $ship != player.ship and $ship.isclass.ship and $ship.isoperational and not $ship.isunit and not $ship.isclass.ship_xs and not $ship.commander and not $ship.subordinates.count and (($logisticspurpose and $cargo) or $ship.primarypurpose == purpose.fight or $salvagetug)">
             <append_to_list name="$availableships" exact="[$ship.name, $ship.primarypurpose, $ship.macro.class, $ship.isoperational, 'AVAILABLE', 'UNASSIGNED', 'AVAILABLE - NOT REGISTERED']" />
           </do_if>
         </do_for_each>
@@ -138,8 +139,11 @@
         <do_if value="global.$JKEOC_B74PendingShip? and global.$JKEOC_B74PendingShip.exists">
           <append_to_list name="$pending" exact="[global.$JKEOC_B74PendingShip.name, if global.$JKEOC_B74PendingRemediation? and global.$JKEOC_B74PendingRemediation.$stationname? then global.$JKEOC_B74PendingRemediation.$stationname else 'Unknown station', if global.$JKEOC_B74PendingRemediation? and global.$JKEOC_B74PendingRemediation.$category? then global.$JKEOC_B74PendingRemediation.$category else 'LOGISTICS ASSIGNMENT', 'AWAITING APPROVAL']" />
         </do_if>
-        <do_elseif value="global.$JKEOC_B76BuildStorageShip? and global.$JKEOC_B76BuildStorageShip.exists">
+        <do_elseif value="global.$JKEOC_B76BuildStorageShip? and global.$JKEOC_B76BuildStorageShip.exists and not global.$JKEOC_B76BuildStorageShip.commander">
           <append_to_list name="$pending" exact="[global.$JKEOC_B76BuildStorageShip.name, if global.$JKEOC_B76BuildStorageNeed? and global.$JKEOC_B76BuildStorageNeed.$stationname? then global.$JKEOC_B76BuildStorageNeed.$stationname else 'Build storage', 'BUILD STORAGE ASSIGNMENT', 'AWAITING APPROVAL']" />
+        </do_elseif>
+        <do_elseif value="global.$JKEOC_B357SalvageShip? and global.$JKEOC_B357SalvageShip.exists and not global.$JKEOC_B357SalvageShip.commander">
+          <append_to_list name="$pending" exact="[global.$JKEOC_B357SalvageShip.name, if global.$JKEOC_B357SalvageNeed? and global.$JKEOC_B357SalvageNeed.$stationname? then global.$JKEOC_B357SalvageNeed.$stationname else 'Processing station', 'SALVAGE TUG ASSIGNMENT', 'AWAITING APPROVAL']" />
         </do_elseif>
         <set_value name="$constructionrecords" exact="[]" />
         <do_for_each name="$directory" in="global.$JKEOC_StationDirectory" counter="$constructionindex">
@@ -148,7 +152,7 @@
             <do_for_each name="$item" in="$directory.$constructionitems" counter="$queueindex">
               <append_to_list name="$constructionqueue" exact="[if $item.$name? then $item.$name else 'Unknown module', if $item.$type? then $item.$type else 'MODULE', if $item.$status? then $item.$status else 'PLANNED', if $item.$progress? then $item.$progress else 0, if $item.$effect? then $item.$effect else '', if $item.$storagetype? then $item.$storagetype else '', if $item.$capacity? then $item.$capacity else 0, $queueindex]" />
             </do_for_each>
-            <set_value name="$buildstorage" exact="$directory.$station.buildstorage" /><set_value name="$missingwares" exact="[]" /><do_if value="$buildstorage? and $buildstorage.buildprocessor?"><do_for_each name="$ware" in="$buildstorage.buildprocessor.neededsequenceresources.list"><append_to_list name="$missingwares" exact="[$ware.name, $buildstorage.buildprocessor.neededsequenceresources.{$ware}.count]" /></do_for_each></do_if><append_to_list name="$constructionrecords" exact="[$directory.$stationname, $constructionindex, $directory.$constructioncount, $directory.$constructionplanned, $directory.$constructionbuilding, if $buildstorage? and $buildstorage.buildmodule? and $buildstorage.buildmodule.constructionvessel? and $buildstorage.buildmodule.constructionvessel.exists then 1 else 0, $directory.$station.subordinates.{assignment.tradeforbuildstorage}.count, $constructionqueue, if $buildstorage? then ($buildstorage.money / 1Cr)i else 0, if $buildstorage? then ($buildstorage.wantedmoney / 1Cr)i else 0, $missingwares, if global.$JKEOC_ConstructionFundingLedger.{$directory.$station}? and global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$amount? then (global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$amount / 1Cr)i else 0, if global.$JKEOC_ConstructionFundingLedger.{$directory.$station}? and global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$time? then global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$time else 0]" />
+            <set_value name="$buildstorage" exact="$directory.$station.buildstorage" /><set_value name="$missingwares" exact="[]" /><do_if value="$buildstorage? and $buildstorage.buildprocessor?"><do_for_each name="$ware" in="$buildstorage.buildprocessor.neededsequenceresources.list"><append_to_list name="$missingwares" exact="[$ware.name, $buildstorage.buildprocessor.neededsequenceresources.{$ware}.count]" /></do_for_each></do_if><append_to_list name="$constructionrecords" exact="[$directory.$stationname, $constructionindex, $directory.$constructioncount, $directory.$constructionplanned, $directory.$constructionbuilding, if $buildstorage? and $buildstorage.buildmodule? and $buildstorage.buildmodule.constructionvessel? and $buildstorage.buildmodule.constructionvessel.exists then 1 else 0, $directory.$station.subordinates.{assignment.tradeforbuildstorage}.count, $constructionqueue, if $buildstorage? then ($buildstorage.money / 1Cr)i else 0, if $buildstorage? then ($buildstorage.wantedmoney / 1Cr)i else 0, $missingwares, if global.$JKEOC_ConstructionFundingLedger.{$directory.$station}? and global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$amount? then (global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$amount / 1Cr)i else 0, if global.$JKEOC_ConstructionFundingLedger.{$directory.$station}? and global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$time? then global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$time else 0, $directory.$people, $directory.$workforcecapacity, $directory.$workforceoptimal, $directory.$habitatmodulename, $directory.$habitatmodulecapacity, $directory.$habitatprovisionplan, $directory.$habitatstoragecheck]" />
           </do_if>
         </do_for_each>
         <set_value name="$workforcerecords" exact="[]" />
@@ -256,8 +260,8 @@
         <do_for_each name="$plan" in="global.$JKEOC_B348AgreedBuildPlans">
           <do_if value="$plan.$station? and $plan.$station.exists and $plan.$station.owner == faction.player">
             <set_value name="$agreedrows" exact="[]" />
-            <do_for_each name="$agreedrow" in="$plan.$rows"><append_to_list name="$agreedrows" exact="[$agreedrow.$kind, $agreedrow.$wareid, $agreedrow.$warename, $agreedrow.$module, $agreedrow.$agreed, $agreedrow.$baselineplanned, $agreedrow.$baselineproduction, $agreedrow.$outputperhour, $agreedrow.$requiredrate, $agreedrow.$transport]" /></do_for_each>
-            <append_to_list name="$agreedplans" exact="[$plan.$stationname, $plan.$wareid, $plan.$warename, $plan.$status, $plan.$saved, $plan.$evidencekey, $agreedrows, $plan.$warnings]" />
+            <do_for_each name="$agreedrow" in="$plan.$rows"><append_to_list name="$agreedrows" exact="[$agreedrow.$kind, $agreedrow.$wareid, $agreedrow.$warename, $agreedrow.$module, $agreedrow.$agreed, $agreedrow.$baselineplanned, $agreedrow.$baselineproduction, $agreedrow.$outputperhour, $agreedrow.$requiredrate, $agreedrow.$transport, if $agreedrow.$baselinecapacity? then $agreedrow.$baselinecapacity else 0, if $agreedrow.$capacitypermodule? then $agreedrow.$capacitypermodule else 0, if $agreedrow.$provisions? then $agreedrow.$provisions else '', if $agreedrow.$species? then $agreedrow.$species else '']" /></do_for_each>
+            <append_to_list name="$agreedplans" exact="[$plan.$stationname, $plan.$wareid, $plan.$warename, $plan.$status, $plan.$saved, $plan.$evidencekey, $agreedrows, if $plan.$warnings? then $plan.$warnings else []]" />
           </do_if>
         </do_for_each>
         <set_value name="$params" exact="[0, 0, global.$JKEOC_B73TradeMode, global.$JKEOC_B73Offers.count, global.$JKEOC_B76AssignmentMode, $summary, $stations, $inbox, global.$JKEOC_B76PreviousAssignmentMode, global.$JKEOC_LuaReports, $cases, $registeredships, $tradeoffers, $pending, if global.$JKEOC_B64DefaultGoal? then global.$JKEOC_B64DefaultGoal else 'OBSERVE AND ADVISE ONLY', if global.$JKEOC_B64Findings? then global.$JKEOC_B64Findings.count else 0, [if global.$JKEOC_B64Mailbox? and global.$JKEOC_B64Mailbox.$status? then global.$JKEOC_B64Mailbox.$status else 'READY', if global.$JKEOC_B64Mailbox? and global.$JKEOC_B64Mailbox.$result? then global.$JKEOC_B64Mailbox.$result else 'No engineering probe has been submitted.'], if global.$JKEOC_B71ProofStatus? then global.$JKEOC_B71ProofStatus else 'READY', $blueprintrecords, $wharfrecords, global.$JKEOC_ShipOrders, $observations, [if global.$JKEOC_TerraformingMissionStation? then global.$JKEOC_TerraformingMissionStation else '', if global.$JKEOC_TerraformingMissionWare? then global.$JKEOC_TerraformingMissionWare else '', if global.$JKEOC_TerraformingMissionContext? then global.$JKEOC_TerraformingMissionContext else ''], $constructionrecords, global.$JKEOC_ConstructionAuthority, if global.$JKEOC_StartupSequenceEnabled then 1 else 0, $workforcerecords, $storagerecords, global.$JKEOC_MinMining, global.$JKEOC_MinTrade, global.$JKEOC_MinBuildStorage, global.$JKEOC_MinDefence, global.$JKEOC_MinEscort, $availableships, $checklistprogress, $rawsourcerecords, $coveragerecords, $minimumrecords, $rebalancerecord, $capacityrecords, $backgroundtests, $agreedplans]" />
@@ -337,13 +341,17 @@
         <do_if value="$station.exists and $station.owner == faction.player and $profile.$stationname == event.param3.$station and $ware?">
           <do_for_each name="$oldplan" in="global.$JKEOC_B348AgreedBuildPlans"><do_if value="$oldplan.$station == $station and $oldplan.$wareid == event.param3.$ware"><remove_from_list name="global.$JKEOC_B348AgreedBuildPlans" exact="$oldplan" /></do_if></do_for_each>
           <set_value name="$savedrows" exact="[]" />
+          <set_value name="$savedwarnings" exact="[]" />
           <do_for_each name="$row" in="event.param3.$rows">
-            <append_to_list name="$savedrows" exact="table[$kind=$row.{1}, $wareid=$row.{2}, $warename=$row.{3}, $module=$row.{4}, $agreed=$row.{5}, $baselineplanned=$row.{6}, $baselineproduction=$row.{7}, $outputperhour=$row.{8}, $requiredrate=$row.{9}, $transport=$row.{10}]" />
+            <append_to_list name="$savedrows" exact="table[$kind=$row.{1}, $wareid=$row.{2}, $warename=$row.{3}, $module=$row.{4}, $agreed=$row.{5}, $baselineplanned=$row.{6}, $baselineproduction=$row.{7}, $outputperhour=$row.{8}, $requiredrate=$row.{9}, $transport=$row.{10}, $baselinecapacity=if $row.{11}? then $row.{11} else 0, $capacitypermodule=if $row.{12}? then $row.{12} else 0, $provisions=if $row.{13}? then $row.{13} else '', $species=if $row.{14}? then $row.{14} else '']" />
           </do_for_each>
-          <set_value name="$savedplan" exact="table[$station=$station, $stationname=$station.name, $wareid=event.param3.$ware, $warename=event.param3.$name, $status=event.param3.$status, $saved=player.age, $evidencekey=event.param3.$evidence, $rows=$savedrows, $warnings=event.param3.$warnings]" />
+          <do_if value="event.param3.$warnings?">
+            <do_for_each name="$warning" in="event.param3.$warnings"><append_to_list name="$savedwarnings" exact="$warning" /></do_for_each>
+          </do_if>
+          <set_value name="$savedplan" exact="table[$station=$station, $stationname=$station.name, $wareid=event.param3.$ware, $warename=event.param3.$name, $status=event.param3.$status, $saved=player.age, $evidencekey=event.param3.$evidence, $rows=$savedrows, $warnings=$savedwarnings]" />
           <append_to_list name="global.$JKEOC_B348AgreedBuildPlans" exact="$savedplan" />
           <raise_lua_event name="'JKEOC_SettingsMenu.agreed.status'" param="'SAVED'" />
-          <debug_text text="'[JKEOC][B348][AGREED_BUILD_LIST_SAVED] station=%1 ware=%2 rows=%3 conditions=%4 persistent=1 construction_authority=0'.[$savedplan.$stationname, $savedplan.$wareid, $savedplan.$rows.count, $savedplan.$warnings.count]" filter="general" />
+          <debug_text text="'[JKEOC][B356][AGREED_BUILD_LIST_SAVED] station=%1 ware=%2 rows=%3 conditions=%4 persistent=1 zero_warning_guard=1 construction_authority=0'.[$savedplan.$stationname, $savedplan.$wareid, $savedplan.$rows.count, if $savedplan.$warnings? then $savedplan.$warnings.count else 0]" filter="general" />
         </do_if>
         <do_else><raise_lua_event name="'JKEOC_SettingsMenu.agreed.status'" param="'BLOCKED: The exact station or native ware could not be validated. Nothing was saved.'" /></do_else>
       </do_elseif>
@@ -523,7 +531,10 @@
         <do_elseif value="event.param2 == 'shipping.scan'">
           <remove_value name="global.$JKEOC_B76BuildStorageNeed" />
           <remove_value name="global.$JKEOC_B76BuildStorageShip" />
+          <remove_value name="global.$JKEOC_B357SalvageNeed" />
+          <remove_value name="global.$JKEOC_B357SalvageShip" />
           <signal_cue_instantly cue="md.JKEOC_Shipping_Control.JKEOC_B76_ScanBuildStorage" />
+          <signal_cue_instantly cue="md.JKEOC_Shipping_Control.JKEOC_B357_ScanSalvage" />
           <signal_cue_instantly cue="md.JKEOC_Shipping_Control.JKEOC_B78_MatchRegistered" />
           <signal_cue_instantly cue="JKEOC_Settings_ShippingScanComplete" />
         </do_elseif>
@@ -540,6 +551,13 @@
             <set_value name="global.$JKEOC_LuaAuthorizedStationName" exact="if global.$JKEOC_B76BuildStorageNeed.$stationname? then global.$JKEOC_B76BuildStorageNeed.$stationname else 'build storage'" />
             <set_value name="global.$JKEOC_LuaPendingAssignmentKind" exact="'BUILD STORAGE'" />
             <signal_cue_instantly cue="md.JKEOC_Shipping_Control.JKEOC_B76_AssignBuildStorage" />
+            <signal_cue_instantly cue="JKEOC_Settings_AssignmentApprovalComplete" />
+          </do_elseif>
+          <do_elseif value="global.$JKEOC_B357SalvageNeed? and global.$JKEOC_B357SalvageShip? and global.$JKEOC_B357SalvageShip.exists">
+            <set_value name="global.$JKEOC_LuaAuthorizedShipName" exact="global.$JKEOC_B357SalvageShip.name" />
+            <set_value name="global.$JKEOC_LuaAuthorizedStationName" exact="if global.$JKEOC_B357SalvageNeed.$stationname? then global.$JKEOC_B357SalvageNeed.$stationname else 'processing station'" />
+            <set_value name="global.$JKEOC_LuaPendingAssignmentKind" exact="'SALVAGE'" />
+            <signal_cue_instantly cue="md.JKEOC_Shipping_Control.JKEOC_B357_AssignSalvage" />
             <signal_cue_instantly cue="JKEOC_Settings_AssignmentApprovalComplete" />
           </do_elseif>
           <do_else>
@@ -842,7 +860,7 @@
           <do_for_each name="$ship" in="global.$JKEOC_B76EligibleShips">
             <do_if value="$ship.exists and $ship.owner == faction.player and $ship.isclass.ship and not $ship.isunit and not $ship.isclass.ship_xs and not $ship.commander and not $ship.subordinates.count">
               <raise_lua_event name="'JKEOC_SettingsMenu.shipping.registered.name'" param="$ship.name" />
-              <raise_lua_event name="'JKEOC_SettingsMenu.shipping.registered.purpose'" param="if $ship.primarypurpose == purpose.trade then 'trade' else if $ship.primarypurpose == purpose.mine then 'mine' else 'other'" />
+              <raise_lua_event name="'JKEOC_SettingsMenu.shipping.registered.purpose'" param="if $ship.primarypurpose == purpose.trade then 'trade' else if $ship.primarypurpose == purpose.mine then 'mine' else if $ship.primarypurpose == purpose.salvage and $ship.type == shiptype.tug then 'salvage tug' else 'other'" />
               <raise_lua_event name="'JKEOC_SettingsMenu.shipping.registered.class'" param="$ship.macro.class" />
               <raise_lua_event name="'JKEOC_SettingsMenu.shipping.registered.operational'" param="$ship.isoperational" />
               <raise_lua_event name="'JKEOC_SettingsMenu.shipping.registered.status'" param="'AVAILABLE'" />
@@ -865,6 +883,14 @@
           <raise_lua_event name="'JKEOC_SettingsMenu.shipping.pending.ship'" param="global.$JKEOC_B76BuildStorageShip.name" />
           <raise_lua_event name="'JKEOC_SettingsMenu.shipping.pending.station'" param="if global.$JKEOC_B76BuildStorageNeed? and global.$JKEOC_B76BuildStorageNeed.$stationname? then global.$JKEOC_B76BuildStorageNeed.$stationname else 'Build storage'" />
           <raise_lua_event name="'JKEOC_SettingsMenu.shipping.pending.category'" param="'BUILD STORAGE ASSIGNMENT'" />
+          <raise_lua_event name="'JKEOC_SettingsMenu.shipping.pending.status'" param="'AWAITING APPROVAL'" />
+          <raise_lua_event name="'JKEOC_SettingsMenu.shipping.pending.commit'" />
+          <set_value name="$pendingcount" exact="1" />
+        </do_elseif>
+        <do_elseif value="global.$JKEOC_B357SalvageShip? and global.$JKEOC_B357SalvageShip.exists and not global.$JKEOC_B357SalvageShip.commander">
+          <raise_lua_event name="'JKEOC_SettingsMenu.shipping.pending.ship'" param="global.$JKEOC_B357SalvageShip.name" />
+          <raise_lua_event name="'JKEOC_SettingsMenu.shipping.pending.station'" param="if global.$JKEOC_B357SalvageNeed? and global.$JKEOC_B357SalvageNeed.$stationname? then global.$JKEOC_B357SalvageNeed.$stationname else 'Processing station'" />
+          <raise_lua_event name="'JKEOC_SettingsMenu.shipping.pending.category'" param="'SALVAGE TUG ASSIGNMENT'" />
           <raise_lua_event name="'JKEOC_SettingsMenu.shipping.pending.status'" param="'AWAITING APPROVAL'" />
           <raise_lua_event name="'JKEOC_SettingsMenu.shipping.pending.commit'" />
           <set_value name="$pendingcount" exact="1" />
@@ -1116,7 +1142,15 @@
 <raise_lua_event name="'JKEOC_SettingsMenu.construction.wanted'" param="if $buildstorage? then ($buildstorage.wantedmoney / 1Cr)i else 0" />
 <raise_lua_event name="'JKEOC_SettingsMenu.construction.lastfunding'" param="if global.$JKEOC_ConstructionFundingLedger.{$directory.$station}? and global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$amount? then (global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$amount / 1Cr)i else 0" />
 <raise_lua_event name="'JKEOC_SettingsMenu.construction.lastfundingtime'" param="if global.$JKEOC_ConstructionFundingLedger.{$directory.$station}? and global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$time? then global.$JKEOC_ConstructionFundingLedger.{$directory.$station}.$time else 0" />
-<do_for_each name="$row" in="$queue"><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.name'" param="$row.{1}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.type'" param="$row.{2}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.status'" param="$row.{3}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.progress'" param="$row.{4}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.index'" param="$row.{8}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.commit'" /></do_for_each>
+<raise_lua_event name="'JKEOC_SettingsMenu.construction.people'" param="$directory.$people" />
+<raise_lua_event name="'JKEOC_SettingsMenu.construction.workforcecapacity'" param="$directory.$workforcecapacity" />
+<raise_lua_event name="'JKEOC_SettingsMenu.construction.workforceoptimal'" param="$directory.$workforceoptimal" />
+<raise_lua_event name="'JKEOC_SettingsMenu.construction.habitatname'" param="$directory.$habitatmodulename" />
+<raise_lua_event name="'JKEOC_SettingsMenu.construction.habitatcapacity'" param="$directory.$habitatmodulecapacity" />
+<raise_lua_event name="'JKEOC_SettingsMenu.construction.habitatprovisions'" param="$directory.$habitatprovisionplan" />
+<raise_lua_event name="'JKEOC_SettingsMenu.construction.habitatstorage'" param="$directory.$habitatstoragecheck" />
+<do_for_each name="$row" in="$queue"><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.name'" param="$row.{1}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.type'" param="$row.{2}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.status'" param="$row.{3}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.progress'" param="$row.{4}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.effect'" param="$row.{5}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.storagetype'" param="$row.{6}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.capacity'" param="$row.{7}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.index'" param="$row.{8}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.queue.commit'" /></do_for_each>
+<do_for_each name="$race" in="$directory.$station.workforce.races"><set_value name="$racewares" exact="$race.workforce.resources.list" /><do_if value="$racewares.count == 0"><raise_lua_event name="'JKEOC_SettingsMenu.construction.workforce.species'" param="$race.name" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.workforce.provision'" param="'NO PROVISION WARE'" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.workforce.current'" param="0" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.workforce.target'" param="0" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.workforce.commit'" /></do_if><do_for_each name="$provision" in="$racewares"><raise_lua_event name="'JKEOC_SettingsMenu.construction.workforce.species'" param="$race.name" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.workforce.provision'" param="$provision.name" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.workforce.current'" param="$directory.$station.cargo.{$provision}.count" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.workforce.target'" param="$directory.$station.cargo.{$provision}.target" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.workforce.commit'" /></do_for_each></do_for_each>
 <do_for_each name="$ware" in="$missingwares"><raise_lua_event name="'JKEOC_SettingsMenu.construction.ware.name'" param="$ware.{1}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.ware.count'" param="$ware.{2}" /><raise_lua_event name="'JKEOC_SettingsMenu.construction.ware.commit'" /></do_for_each>
 <raise_lua_event name="'JKEOC_SettingsMenu.construction.refresh.complete'" />
 <debug_text text="'[JKEOC][B224][CONSTRUCTION_REFRESH_SCALAR] station=%1 queue=%2 building=%3 protocol=SCALAR_ROWS'.[$directory.$stationname, $queue.count, $directory.$constructionbuilding]" filter="general" />
@@ -1139,7 +1173,7 @@
       <conditions><event_cue_signalled /></conditions>
       <delay exact="4s" />
       <actions>
-        <set_value name="$result" exact="if global.$JKEOC_B76AssignmentMode == 'DISABLED' then 'Scan complete. Ship assignment is disabled; no ship was assigned.' else if global.$JKEOC_B76BuildStorageNeed? and global.$JKEOC_B76BuildStorageShip? then if global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' then 'Scan complete. A compatible registered ship was assigned or submitted for verification.' else 'Scan complete. A compatible build-storage ship is awaiting approval.' else if global.$JKEOC_B74PendingShip? and global.$JKEOC_B74PendingShip.exists then if global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' then 'Scan complete. A compatible registered ship was matched for automatic assignment.' else 'Scan complete. A compatible registered ship is awaiting approval.' else 'Scan complete. No supported shipping need with an eligible registered ship was found.'" />
+        <set_value name="$result" exact="if global.$JKEOC_B76AssignmentMode == 'DISABLED' then 'Scan complete. Ship assignment is disabled; no ship was assigned.' else if global.$JKEOC_B357SalvageNeed? and global.$JKEOC_B357SalvageShip? then if global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' then 'Scan complete. A registered salvage tug was assigned or submitted for verification.' else 'Scan complete. A registered salvage tug is awaiting approval.' else if global.$JKEOC_B76BuildStorageNeed? and global.$JKEOC_B76BuildStorageShip? then if global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' then 'Scan complete. A compatible registered ship was assigned or submitted for verification.' else 'Scan complete. A compatible build-storage ship is awaiting approval.' else if global.$JKEOC_B74PendingShip? and global.$JKEOC_B74PendingShip.exists then if global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' then 'Scan complete. A compatible registered ship was matched for automatic assignment.' else 'Scan complete. A compatible registered ship is awaiting approval.' else 'Scan complete. No supported shipping need with an eligible registered ship was found.'" />
         <raise_lua_event name="'JKEOC_SettingsMenu.action.name'" param="'shipping.scan'" /><raise_lua_event name="'JKEOC_SettingsMenu.action.result'" param="$result" /><raise_lua_event name="'JKEOC_SettingsMenu.action.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
         <debug_text text="'[JKEOC][B224][LUA_ACTION] action=SHIPPING_SCAN mode=%1 buildneed=%2 buildship=%3 pending=%4'.[global.$JKEOC_B76AssignmentMode, global.$JKEOC_B76BuildStorageNeed?, global.$JKEOC_B76BuildStorageShip?, global.$JKEOC_B74PendingShip?]" filter="general" />
       </actions>
@@ -1150,7 +1184,7 @@
       <delay exact="4s" />
       <actions>
         <set_value name="$kind" exact="if global.$JKEOC_LuaPendingAssignmentKind? then global.$JKEOC_LuaPendingAssignmentKind else 'SHIP'" />
-        <set_value name="$completed" exact="($kind == 'REMEDIATION' and (not global.$JKEOC_B74PendingShip? or not global.$JKEOC_B74PendingShip.exists or global.$JKEOC_B74PendingShip.commander)) or ($kind == 'BUILD STORAGE' and global.$JKEOC_B76BuildStorageShip? and global.$JKEOC_B76BuildStorageNeed? and global.$JKEOC_B76BuildStorageShip.commander == global.$JKEOC_B76BuildStorageNeed.$station)" />
+        <set_value name="$completed" exact="($kind == 'REMEDIATION' and (not global.$JKEOC_B74PendingShip? or not global.$JKEOC_B74PendingShip.exists or global.$JKEOC_B74PendingShip.commander)) or ($kind == 'BUILD STORAGE' and global.$JKEOC_B76BuildStorageShip? and global.$JKEOC_B76BuildStorageNeed? and global.$JKEOC_B76BuildStorageShip.commander == global.$JKEOC_B76BuildStorageNeed.$station) or ($kind == 'SALVAGE' and global.$JKEOC_B357SalvageShip? and global.$JKEOC_B357SalvageNeed? and global.$JKEOC_B357SalvageShip.commander == global.$JKEOC_B357SalvageNeed.$station and global.$JKEOC_B357SalvageShip.assignment == assignment.salvage)" />
         <signal_cue_instantly cue="JKEOC_Settings_PushShippingState" />
         <set_value name="$result" exact="if $completed then 'Assignment complete: %1 assigned to %2. The Pending list was refreshed.'.[if global.$JKEOC_LuaAuthorizedShipName? then global.$JKEOC_LuaAuthorizedShipName else 'Ship', if global.$JKEOC_LuaAuthorizedStationName? then global.$JKEOC_LuaAuthorizedStationName else 'selected station'] else 'Assignment was not completed. The candidate may no longer be eligible; run Scan Shipping Needs again.'" />
         <raise_lua_event name="'JKEOC_SettingsMenu.action.name'" param="'shipping.approve'" />

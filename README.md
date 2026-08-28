@@ -5,27 +5,33 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current GA release
 
 - Version: 3.9 GA
-- Engineering build: 350
-- Extension version: 4.50
+- Engineering build: 359
+- Extension version: 4.59
 - Status: **GENERAL AVAILABILITY** — runtime accepted and published to Steam Workshop and GitHub
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 350 is the identity-only GA promotion of the human-accepted Build 349 runtime.
+Build 359 is the identity-only GA promotion of the human-accepted Build 358 runtime.
 
-## What is new in EOC 3.9 GA Build 350
+## What is new in EOC 3.9 GA Build 359
 
-- Leads Solution Planner with plain **ADD ABOUT N** module counts instead of making the player interpret production equations.
-- Calculates supported native production chains through a bounded generic cascade rather than hardcoding one ware or recipe.
-- Includes a read-only player plan calculator: enter intended module counts, press **TAB after each number**, and ask EOC to check the plan.
-- Checks for underbuild, overbuild, workforce limits, storage pressure, missing recipes, and terminal raw-resource requirements.
-- Keeps advanced readiness, native recipe, evidence, and production math available on paged Deep Dive views.
-- Saves an agreed build list after the player-entered counts match EOC's current estimate.
-- Keeps agreed module counts, raw-source requirements, and safety gates available after closing EOC and after save/reload—even when no case is currently loaded.
-- Tracks approximate added/planned progress and shows how many modules are still needed.
-- Preserves a saved plan and marks it for review when real evidence changes; it never silently overwrites the player's agreement.
-- Corrects the immediate false **PLAN NEEDS REVIEW** warning caused by an absent optional zero-count duplicate guard.
-- Does not place modules, alter the vanilla Station Build Plan, or exercise construction authority.
+- Completes the guided production-planning workflow with clearer workforce, habitat, provision, storage, recipe, and raw-source boundaries.
+- Keeps unknown project demand honest while offering a clearly labeled player scenario for a chosen final-output count.
+- Protects agreed-list saves from stale, dirty, missing, nonconverged, or mismatched calculator results.
+- Recognizes operational unassigned Manticore salvage tugs and can assign one exact registered tug when the selected authority permits it and a player station needs salvage coverage.
+- Prevents duplicate tug assignment and verifies native commander and salvage-assignment readback before reporting success.
+- Replaces giant shared-pool ship-name paragraphs with concise logistics evidence and a read-only eight-row assigned-ship view.
+- Labels shared station pools as unproven for any one ware instead of overstating assignment evidence.
+- Recognizes saved player scenarios after reopen and refreshes their construction progress only while the exact saved-list screen is visible.
+- Adds **REFRESH PROGRESS NOW** for an immediate read-only saved-list update; every other Solution Planner screen remains refresh-disabled.
+- Adds explicit close or keep-open choices when a player-requested investigation finds no current problem.
+- Retains the Build 350 module-count calculator, bounded generic cascade, persistent agreed lists, no-case access, progress estimates, and honest advisory authority boundary.
+
+## Project status
+
+EOC is complete. Future major development will move to a separately planned mod that RazorEQX will announce when it is complete and ready to share.
+
+EOC is not abandoned. Bug reports and feature requests remain welcome, and EOC will continue to receive compatibility updates, bug fixes, and carefully considered improvements for the foreseeable future.
 
 ## Player-first foundation introduced in Build 344
 
