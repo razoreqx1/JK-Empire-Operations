@@ -281,6 +281,13 @@ local function managedActionForCase(caseData)
     return nil
 end
 
+function menu.backgroundResultForCase(caseData)
+    if not caseData then return nil, "" end
+    local key = text(v(caseData, 1, "")) .. "|" .. text(v(caseData, 4, ""))
+    local result = menu.backgroundTests and menu.backgroundTests[key] or nil
+    return result, string.upper(text(result and result.status, ""))
+end
+
 function menu.plannerAccessForCase(caseData)
     if not caseData then return false, "NO_CASE" end
     local action = managedActionForCase(caseData)
@@ -293,10 +300,14 @@ function menu.plannerAccessForCase(caseData)
     if readiness
         and text(readiness.station) == text(v(caseData, 1, ""))
         and text(readiness.ware) == text(v(caseData, 4, "")) then
-        return true, "RETAINED_READINESS"
+        return true, text(readiness.accessReason, "RETAINED_READINESS")
     end
     if (tonumber(v(caseData, 34, 0)) or 0) > 0 then
         return true, "PLANNED_PRODUCTION_REVIEW"
+    end
+    local _, backgroundState = menu.backgroundResultForCase(caseData)
+    if backgroundState == "UNCHANGED" or backgroundState == "WORSENING" or backgroundState == "FAILED" then
+        return true, "PLAYER_SCENARIO"
     end
     return false, "RECOVERY_NOT_EXHAUSTED"
 end
@@ -1378,8 +1389,17 @@ local function constructionRefreshComplete()
     end
     menu.workforceRecords = retainedWorkforce
     menu.constructionRefresh = nil
+    if menu.constructionEmpireRefreshQueue and #menu.constructionEmpireRefreshQueue > 0 then
+        local nextStation = table.remove(menu.constructionEmpireRefreshQueue, 1)
+        menu.constructionRefreshing = true
+        menu.constructionStatus = "REFRESHING EMPIRE CONSTRUCTION: " .. tostring(#menu.constructionEmpireRefreshQueue + 1) .. " station(s) remain after " .. targetName .. "."
+        raise("construction.refresh", { index = nextStation.index, station = nextStation.station })
+        return
+    end
+    local completedEmpireRefresh = menu.constructionEmpireRefreshQueue ~= nil
+    menu.constructionEmpireRefreshQueue = nil
     menu.constructionRefreshing = false
-    menu.constructionStatus = "REFRESH COMPLETE: Latest station construction facts loaded. WHAT THIS MEANS: this was a read-only job and no construction setting changed. DO THIS NEXT: read every checklist row below. If all required rows are MET, no repeat is required; if a row is NOT FUNDED, STALLED, or BLOCKED, complete that row's exact action and refresh exactly once afterward."
+    menu.constructionStatus = completedEmpireRefresh and "EMPIRE REFRESH COMPLETE: Every player station was checked. The overview now lists all stations with planned or active construction; idle stations remain available through SHOW IDLE STATIONS." or "REFRESH COMPLETE: Latest station construction facts loaded. WHAT THIS MEANS: this was a read-only job and no construction setting changed. DO THIS NEXT: read every checklist row below. If all required rows are MET, no repeat is required; if a row is NOT FUNDED, STALLED, or BLOCKED, complete that row's exact action and refresh exactly once afterward."
     local manualSavedListRefresh = menu.plannerManualRefreshPending == targetName
     if manualSavedListRefresh then menu.plannerManualRefreshPending = nil end
     -- A construction snapshot may arrive after the player has followed a newer
@@ -1712,13 +1732,16 @@ function menu.resetTabToRoot(page)
     elseif page == "solution" then
         menu.solutionCase = nil
         menu.plannerChecklistPage = 1
+    elseif page == "construction" then
+        menu.constructionView = "empire"
+        menu.constructionShowIdle = false
     elseif page == "reports" then
         menu.selectedReport = 1
     end
 end
 
 function menu.resetAllTabsToRoot()
-    for _, page in ipairs({ "kpi", "supply", "fleet", "cases", "diagnostics", "solution", "reports" }) do
+    for _, page in ipairs({ "kpi", "supply", "fleet", "cases", "diagnostics", "solution", "construction", "reports" }) do
         menu.resetTabToRoot(page)
     end
 end
@@ -2962,7 +2985,14 @@ function menu.runExpansionReadiness(caseData, preservePlannerPages)
     local compatible = tonumber(v(caseData, 24, 0)) or 0
     local missingInputs = tonumber(v(caseData, 27, 0)) or 0
     local missingNames = text(v(caseData, 28, "No input name returned"))
+    local _, plannerAccessReason = menu.plannerAccessForCase(caseData)
+    local playerScenarioReview = plannerAccessReason == "PLAYER_SCENARIO"
     local nativePlan = menu.nativePlannerEvidence(caseData)
+    if playerScenarioReview and nativePlan.state == "OWNED" then
+        nativePlan.projectDemandUnmeasured = true
+        nativePlan.moduleCount = 0
+        nativePlan.checklist = menu.productionChainChecklist(nativePlan, caseData)
+    end
     local blueprintState = nativePlan.state
     local blueprintModule = nativePlan.selected and nativePlan.selected.name or ""
     local trueHQ = v(caseData, 39, false) == true
@@ -2977,6 +3007,8 @@ function menu.runExpansionReadiness(caseData, preservePlannerPages)
         add("IMMEDIATE RECOVERY TEST", "PASS", "The bounded BUY offer completed the full 30-minute test with reachable supply and compatible traders, but stock did not rise.")
     elseif plannedProductionReview then
         add("IMMEDIATE RECOVERY TEST", "WARNING", "Matching production is already committed in the X4 Station Build Plan. Planner access is limited to reviewing that existing plan and its supporting recipe; this does not prove the earlier recovery test passed or justify duplicate capacity.")
+    elseif playerScenarioReview then
+        add("IMMEDIATE RECOVERY TEST", "WARNING", "A completed background test returned no improvement, but the full 30-minute recovery-exhaustion gate has not passed. This is a player-initiated scenario only; EOC is not recommending permanent construction.")
     else
         add("IMMEDIATE RECOVERY TEST", "NOT READY", "Immediate recovery has not reached the evidence-supported exhaustion state.")
     end
@@ -3019,7 +3051,7 @@ function menu.runExpansionReadiness(caseData, preservePlannerPages)
         menu.plannerChecklistPage = 1
         menu.plannerSimplePage = 1
     end
-    menu.expansionReadiness = { key = checklistCaseKey(caseData), evidenceKey = expansionEvidenceKey(caseData), station = stationName, ware = ware, rows = rows, summary = summary, notReady = notReady, unknown = unknown, warnings = warnings, checkedAt = getElapsedTime(), nativePlan = nativePlan }
+    menu.expansionReadiness = { key = checklistCaseKey(caseData), evidenceKey = expansionEvidenceKey(caseData), station = stationName, ware = ware, rows = rows, summary = summary, notReady = notReady, unknown = unknown, warnings = warnings, checkedAt = getElapsedTime(), nativePlan = nativePlan, accessReason = plannerAccessReason }
     DebugError("[JKEOC][B289][EXPANSION_READINESS] station=" .. stationName .. " ware=" .. ware .. " blueprint=" .. blueprintState .. " module=" .. blueprintModule .. " true_hq=" .. tostring(trueHQ) .. " summary=" .. summary .. " not_ready=" .. tostring(notReady) .. " cannot_prove=" .. tostring(unknown) .. " warnings=" .. tostring(warnings) .. " construction_authority=0")
     return menu.expansionReadiness
 end
@@ -3669,10 +3701,12 @@ function menu.supplyCollect(view)
         for _, record in ipairs(station.wares) do
             local aggregate = wareMap[record.ware]
             if not aggregate then
+                local _, nativeTransport = GetWareData(record.ware, "name", "transport")
                 aggregate = {
                     ware = record.ware, name = record.name, installed = 0, effective = 0,
                     demand = 0, currentDemand = 0, supported = 0, producers = 0,
                     consumers = 0, producerStations = {}, consumerStations = {},
+                    transport = string.upper(tostring(nativeTransport or "UNKNOWN")),
                 }
                 wareMap[record.ware] = aggregate
             end
@@ -3774,13 +3808,23 @@ function menu.supplyOpenExistingCase(caseData)
 end
 
 function menu.supplyCaseBridge(tableWidget, detailRecord, prior)
+    local transport = string.upper(text(detailRecord and detailRecord.transport, "UNKNOWN"))
+    if transport == "SOLID" or transport == "LIQUID" then
+        section(tableWidget, "RAW RESOURCE ROUTE — NOT A PRODUCTION CASE")
+        local raw = tableWidget:addRow(false)
+        raw[1]:setColSpan(4):createText("This is a mined raw resource. Zero station-module production is expected and does not by itself justify a production case. Review assigned miners, station stock, confirmed movement, and reachable trade supply in Fleet & Logistics.", { wordwrap = true, color = navigationStoryColor })
+        local route = tableWidget:addRow(true)
+        route[1]:setColSpan(4)
+        addButton(route, 1, "OPEN FLEET & LOGISTICS — RAW RESOURCE COVERAGE", function() menu.page = "fleet"; menu.activeTab = "fleet"; menu.fleetView = "coverage"; menu.fleetScope = "global"; menu.refresh() end, true)
+        return
+    end
     if (tonumber(detailRecord.coverage) or 100) >= 50 then return end
-    section(tableWidget, "CASE SYSTEM BRIDGE")
+    section(tableWidget, "CASE STATUS — EXISTING CASE OR PROPOSED INVESTIGATION")
     local persistentSevere = prior and (tonumber(prior.coverage) or 100) < 50
     local bridge = tableWidget:addRow(false)
     bridge[1]:setColSpan(4):createText(persistentSevere and
-        "PERSISTENCE PROVEN: This ware remained severe across two player-requested snapshots. Open an existing station/ware case or request one new case below. EOC checks the exact station and ware before creating anything." or
-        "CASE CREATION LOCKED — CORROBORATION REQUIRED. Existing matching cases can still be opened now; EOC must independently retain later severe evidence before creating a new case.",
+        "PERSISTENCE PROVEN: This ware remained severe across two player-requested snapshots. Rows marked EXISTING OPEN CASE already exist. Rows marked CREATE INVESTIGATION are proposals and create one case only if you select them." or
+        "NO NEW CASE YET: corroboration is still required. An EXISTING OPEN CASE may still be viewed now; locked rows are evidence only and create nothing.",
         { wordwrap = true, color = persistentSevere and investigationUnknownColor or investigationNeutralColor })
     local consumers = detailRecord.consumerStations or {}
     local firstConsumer, lastConsumer = menu.adaptiveListNavigation(tableWidget, "supply.casebridge." .. tostring(detailRecord.ware), #consumers, { fixedRows = 24, rowUnits = 1, maximum = 5 })
@@ -3792,19 +3836,19 @@ function menu.supplyCaseBridge(tableWidget, detailRecord, prior)
         caseRow[1]:setColSpan(4)
         if existingCase then
             local boundCase = existingCase
-            addButton(caseRow, 1, "CASE ACTIVE — OPEN " .. boundConsumer.name .. " / " .. boundWare, function() menu.supplyOpenExistingCase(boundCase) end, true, inactiveModeBackground)
+            addButton(caseRow, 1, "VIEW EXISTING OPEN CASE — " .. boundConsumer.name .. " / " .. boundWare, function() menu.supplyOpenExistingCase(boundCase) end, true, inactiveModeBackground)
         elseif persistentSevere and (tonumber(boundConsumer.profileIndex) or 0) > 0 then
-            addButton(caseRow, 1, "ADD CASE — " .. boundConsumer.name .. " / " .. boundWare, function()
+            addButton(caseRow, 1, "CREATE INVESTIGATION — NOT A CASE YET — " .. boundConsumer.name .. " / " .. boundWare, function()
                 if startAction("case.create") then
                     raise("case.create", { index = boundConsumer.profileIndex, subject = boundWare, issues = 1, rootcause = "Persistent severe Supply Model deficit across two explicit snapshots; station-specific cause is not yet proven.", corrective = "Open Diagnostics and run the smallest supported station/ware verification before changing logistics, prices, storage, or construction." })
                 end
                 menu.refresh()
             end, not actionState("case.create").running, availableModeBackground)
         else
-            addButton(caseRow, 1, "NEW CASE LOCKED — " .. boundConsumer.name .. " / " .. boundWare, function() end, false, inactiveModeBackground)
+            addButton(caseRow, 1, "NO CASE YET — CORROBORATION LOCKED — " .. boundConsumer.name .. " / " .. boundWare, function() end, false, inactiveModeBackground)
         end
     end
-    actionResult(tableWidget, "case.create", "Creates at most one station/ware case after persistence is proven. Existing matching cases are opened instead of duplicated.")
+    actionResult(tableWidget, "case.create", "CREATE INVESTIGATION creates at most one station/ware case after persistence is proven. VIEW EXISTING OPEN CASE only opens an existing record and never creates a duplicate.")
 end
 
 function menu.supplySelectedStationRecord(snapshot)
@@ -3863,7 +3907,9 @@ end
 function menu.supplyCoverageState(record)
     local demand = tonumber(record and record.demand) or 0
     local coverage = tonumber(record and record.coverage) or 0
+    local transport = string.upper(text(record and record.transport, "UNKNOWN"))
     if demand <= 0 then return "NO DEMAND", investigationNeutralColor end
+    if transport == "SOLID" or transport == "LIQUID" then return "MINING / TRADE SOURCE", investigationUnknownColor end
     if coverage < 50 then return "SEVERE", investigationFailColor end
     if coverage < 100 then return "SHORTAGE", investigationUnknownColor end
     if coverage <= 125 then return "BALANCED", investigationPassColor end
@@ -3899,8 +3945,12 @@ function menu.supplyPlainLanguage(tableWidget, record)
     local demand = tonumber(record and record.demand) or 0
     local gap = supply - demand
     local coverage = tonumber(record and record.coverage) or 0
+    local transport = string.upper(text(record and record.transport, "UNKNOWN"))
+    local rawSource = transport == "SOLID" or transport == "LIQUID"
     local verdict
-    if demand <= 0 then
+    if rawSource and demand > 0 then
+        verdict = "RAW RESOURCE: Your stations consume " .. formatNumber(demand) .. " units each game hour. Station production modules are not applicable; this ware must arrive through miners or trade. Zero installed station production is expected and is not proof that delivery has failed."
+    elseif demand <= 0 then
         verdict = "NO INTERNAL NEED MEASURED: Your stations did not report using this ware in this snapshot. EOC cannot judge whether outside customers will buy it."
     elseif supply <= 0 then
         verdict = "NOT MAKING ENOUGH: Your stations use " .. formatNumber(demand) .. " units each game hour, but EOC found no installed player-owned production."
@@ -3912,9 +3962,9 @@ function menu.supplyPlainLanguage(tableWidget, record)
         verdict = "MAKING MORE THAN YOUR STATIONS USE: Your stations can make " .. formatNumber(supply) .. " units each game hour but use " .. formatNumber(demand) .. ". The measured surplus is " .. formatNumber(gap) .. " units each game hour."
     end
     local row = tableWidget:addRow(false)
-    row[1]:setColSpan(4):createText("PLAIN-LANGUAGE RESULT: " .. verdict, { wordwrap = true, color = gap < 0 and investigationFailColor or (coverage > 125 and navigationStoryColor or investigationPassColor), font = Helper.headerFont })
+    row[1]:setColSpan(4):createText("PLAIN-LANGUAGE RESULT: " .. verdict, { wordwrap = true, color = rawSource and investigationUnknownColor or (gap < 0 and investigationFailColor or (coverage > 125 and navigationStoryColor or investigationPassColor)), font = Helper.headerFont })
     row = tableWidget:addRow(false)
-    row[1]:setColSpan(4):createText("WHAT THE NUMBERS MEAN: '/h' means units per game hour; it is a production or use rate, not stored inventory. Coverage compares installed player-owned production with measured use by your own stations. 100% means equal rates; " .. string.format("%.1f%%", coverage) .. " means production is " .. string.format("%.1f", demand > 0 and supply / demand or 0) .. " times measured internal use.", { wordwrap = true, color = navigationStoryColor })
+    row[1]:setColSpan(4):createText(rawSource and "WHAT THE NUMBERS MEAN: '/h' is the owned-station consumption rate, not inventory. For mined resources, the production-coverage percentage is not an operational delivery score. Use station stock, assigned miners, confirmed movement, and reachable offers instead." or ("WHAT THE NUMBERS MEAN: '/h' means units per game hour; it is a production or use rate, not stored inventory. Coverage compares installed player-owned production with measured use by your own stations. 100% means equal rates; " .. string.format("%.1f%%", coverage) .. " means production is " .. string.format("%.1f", demand > 0 and supply / demand or 0) .. " times measured internal use."), { wordwrap = true, color = navigationStoryColor })
     row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText("WHAT THIS SNAPSHOT DOES NOT PROVE: It does not track individual ships currently in flight, guarantee an NPC buyer, or prove that price, trade rules, travel time, cargo space, or station-manager range can move the ware. Use Fleet & Logistics for ship coverage and the station's trade settings for buyers and permissions.", { wordwrap = true, color = investigationNeutralColor })
 end
@@ -3935,7 +3985,9 @@ function menu.supplyGrid(tableWidget, view, records, previous, detailHandler)
                 local prior = menu.supplyPreviousRow(previous, record.ware)
                 local label
                 local gap = (tonumber(record.installed) or 0) - (tonumber(record.demand) or 0)
-                local gapText = gap < 0 and ("SHORT " .. formatNumber(math.abs(gap)) .. " UNITS PER GAME HOUR") or ("EXTRA " .. formatNumber(gap) .. " UNITS PER GAME HOUR")
+                local transport = string.upper(text(record.transport, "UNKNOWN"))
+                local rawSource = transport == "SOLID" or transport == "LIQUID"
+                local gapText = rawSource and ("STATION USE " .. formatNumber(tonumber(record.demand) or 0) .. "/h — CHECK MINERS / TRADE") or (gap < 0 and ("SHORT " .. formatNumber(math.abs(gap)) .. " UNITS PER GAME HOUR") or ("EXTRA " .. formatNumber(gap) .. " UNITS PER GAME HOUR"))
                 local trend = prior and ("CHANGE " .. menu.supplyDelta(record.coverage, prior.coverage) .. " POINTS") or "FIRST SNAPSHOT"
                 label = record.name .. "\n" .. state .. " | COVERAGE " .. string.format("%.0f%%", tonumber(record.coverage) or 0) .. "\n" .. gapText .. " | " .. trend
                 row[column]:setColSpan(2)
@@ -3946,25 +3998,25 @@ function menu.supplyGrid(tableWidget, view, records, previous, detailHandler)
 end
 
 function menu.supplyNavigation(tableWidget)
-    section(tableWidget, "ON-DEMAND SUPPLY MODEL")
+    section(tableWidget, "SUPPLY MODEL — CHOOSE THE QUESTION YOU WANT ANSWERED")
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addButton(row, 1, "EMPIRE SUPPLY BALANCE", function() menu.supplyView = "balance"; menu.supplyPages.balance = menu.supplyPages.balance or 1; menu.refresh() end, true)
+    addButton(row, 1, "START HERE — WHAT IS MY EMPIRE SHORT OF?\nEmpire-wide production versus owned-station use", function() menu.supplyView = "balance"; menu.supplyPages.balance = menu.supplyPages.balance or 1; menu.refresh() end, true, availableModeBackground, Helper.standardButtonHeight * 2, nil, true, true)
     row[3]:setColSpan(2)
-    addButton(row, 3, "INSTALLED / SUPPORTED / EFFECTIVE", function() menu.supplyView = "capacity"; menu.supplyPages.capacity = menu.supplyPages.capacity or 1; menu.refresh() end, true)
+    addButton(row, 3, "START HERE — WHAT SHOULD I FIX FIRST?\nRank the largest supported bottlenecks", function() menu.supplyView = "bottlenecks"; menu.supplyPages.bottlenecks = menu.supplyPages.bottlenecks or 1; menu.refresh() end, true, availableModeBackground, Helper.standardButtonHeight * 2, nil, true, true)
     row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addButton(row, 1, "TOP SUPPLY BOTTLENECKS", function() menu.supplyView = "bottlenecks"; menu.supplyPages.bottlenecks = menu.supplyPages.bottlenecks or 1; menu.refresh() end, true)
+    addButton(row, 1, "SELECTED STATION — WHAT DOES IT MAKE AND USE?\nStation supply profile", function() menu.supplyView = "station"; menu.supplyPages.station = menu.supplyPages.station or 1; menu.refresh() end, true, nil, Helper.standardButtonHeight * 2, nil, true, true)
     row[3]:setColSpan(2)
-    addButton(row, 3, "WARES BY PRODUCING STATION", function() menu.supplyView = "producers"; menu.supplyPages.producers = menu.supplyPages.producers or 1; menu.refresh() end, true)
+    addButton(row, 3, "SELECTED STATION — PRICES AND STORAGE\nReview proposals without changing them", function() menu.supplyView = "settings"; menu.refresh() end, true, nil, Helper.standardButtonHeight * 2, nil, true, true)
     row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addButton(row, 1, "SELECTED STATION SUPPLY PROFILE", function() menu.supplyView = "station"; menu.supplyPages.station = menu.supplyPages.station or 1; menu.refresh() end, true)
+    addButton(row, 1, "PLANNING — SHOULD I ADD PRODUCTION?\nAdvisory expansion review", function() menu.supplyView = "expansion"; menu.refresh() end, true, nil, Helper.standardButtonHeight * 2, nil, true, true)
     row[3]:setColSpan(2)
-    addButton(row, 3, "STATION PRICE & STORAGE PLAN", function() menu.supplyView = "settings"; menu.refresh() end, true)
+    addButton(row, 3, "ADVANCED — CAPACITY REASONING\nInstalled, supported, and effective rates", function() menu.supplyView = "capacity"; menu.supplyPages.capacity = menu.supplyPages.capacity or 1; menu.refresh() end, true, nil, Helper.standardButtonHeight * 2, nil, true, true)
     row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
-    addButton(row, 1, "ADVISORY EXPANSION PLANNER", function() menu.supplyView = "expansion"; menu.refresh() end, true)
+    addButton(row, 1, "ADVANCED — WHERE IS A WARE PRODUCED?", function() menu.supplyView = "producers"; menu.supplyPages.producers = menu.supplyPages.producers or 1; menu.refresh() end, true)
     local explanation = tableWidget:addRow(false)
     explanation[1]:setColSpan(4):createText("This tab performs no analysis while idle. Enter a view and explicitly run it. Each view retains only its previous and current snapshots so EOC can show the change since that view's last refresh.", { wordwrap = true })
 end
@@ -3990,7 +4042,12 @@ function menu.supplyExpansionView(tableWidget, current, previous)
     for index, record in ipairs(current.rows or {}) do
         if wareSet[record.ware] and (tonumber(record.demand) or 0) > 0 then
             local state, priority, reason
-            if record.deficit > 0 and record.installed <= 0 then
+            local transport = string.upper(text(record.transport, "UNKNOWN"))
+            local rawSource = transport == "SOLID" or transport == "LIQUID"
+            if rawSource then
+                state, priority = "RAW SOURCE — MINERS / TRADE", 1
+                reason = "This is a mined " .. transport .. " resource. Station production modules are not applicable; review miner coverage, stock movement, reachable offers, and trade permissions."
+            elseif record.deficit > 0 and record.installed <= 0 then
                 state, priority = "NEW OWNED CAPACITY CANDIDATE", 1
                 reason = "Empire demand exceeds installed owned production and this snapshot measured no owned production capacity."
             elseif record.deficit > 0 and record.installed > 0 and record.supported < record.installed * 0.9 then
@@ -4036,6 +4093,8 @@ function menu.supplyExpansionView(tableWidget, current, previous)
     end
     local candidate = candidates[selected]
     local record = candidate.record
+    local transport = string.upper(text(record.transport, "UNKNOWN"))
+    local rawSource = transport == "SOLID" or transport == "LIQUID"
     local prior = menu.supplyPreviousRow(previous, record.ware)
     section(tableWidget, station.name .. " | " .. record.name)
     local maximum = math.max(1, record.installed, record.supported, record.effective, record.demand)
@@ -4048,7 +4107,7 @@ function menu.supplyExpansionView(tableWidget, current, previous)
     local evidence = tableWidget:addRow(false)
     evidence[1]:setColSpan(4):createText("DEFICIT " .. formatNumber(record.deficit) .. "/h | " .. (record.demand > 0 and ("COVERAGE " .. string.format("%.1f%%", record.coverage)) or "NO MEASURED INTERNAL DEMAND") .. " | " .. record.producers .. " producing station(s) | " .. record.consumers .. " consuming station(s) | deficit delta " .. menu.supplyDelta(record.deficit, prior and prior.deficit or nil), { wordwrap = true })
     local boundary = tableWidget:addRow(false)
-    boundary[1]:setColSpan(4):createText("ADVISORY BOUNDARY: EOC has not proven an exact module macro, module count, plot location, construction cost, or complete upstream recipe for this recommendation. Review the named ware in the vanilla Station Build Plan before committing construction. EOC will not place or build anything.", { wordwrap = true, color = investigationNeutralColor })
+    boundary[1]:setColSpan(4):createText(rawSource and "RAW-SOURCE BOUNDARY: Do not look for a station production module for this ware. Use Fleet & Logistics to review mining coverage, exact assignment evidence, stock movement, and reachable trade supply. EOC will not assign or build anything from this advisory screen." or "ADVISORY BOUNDARY: EOC has not proven an exact module macro, module count, plot location, construction cost, or complete upstream recipe for this recommendation. Review the named ware in the vanilla Station Build Plan before committing construction. EOC will not place or build anything.", { wordwrap = true, color = investigationNeutralColor })
 end
 
 function menu.supplyOverviewView(tableWidget, view, current, previous)
@@ -4645,15 +4704,15 @@ local function solutionPlannerCenter(tableWidget)
         commandActionLabel = "RETURN TO DIAGNOSTICS — CORRECT FAILED CONDITION"
         commandAction = function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end
     elseif commandProjectDemandUnknown then
-        commandConclusion = "EOC CONCLUSION: Project demand exists, but EOC cannot convert it into a safe hourly production requirement. A calculated zero is not a zero-module recommendation."
-        commandNext = "DO THIS NEXT: X4 has not supplied a measurable demand rate, so EOC cannot recommend a count. Use the PLAYER SCENARIO calculator below to choose a final-output module count and check its complete support chain, or return to Diagnostics to review the active project."
+        commandConclusion = commandPlannerReason == "PLAYER_SCENARIO" and "PLAYER-INITIATED SCENARIO: The background test returned no improvement, but EOC's full recovery-exhaustion gate has not passed. EOC is not recommending expansion." or "EOC CONCLUSION: Project demand exists, but EOC cannot convert it into a safe hourly production requirement. A calculated zero is not a zero-module recommendation."
+        commandNext = commandPlannerReason == "PLAYER_SCENARIO" and "DO THIS NEXT: Choose the final-output count you want to evaluate. EOC will calculate the bounded native support chain and preserve every construction warning without treating your choice as proven demand." or "DO THIS NEXT: X4 has not supplied a measurable demand rate, so EOC cannot recommend a count. Use the PLAYER SCENARIO calculator below to choose a final-output module count and check its complete support chain, or return to Diagnostics to review the active project."
         commandActionLabel = "RETURN TO DIAGNOSTICS — REVIEW ACTIVE PROJECT"
         commandAction = function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end
     elseif commandPlannerReason == "PLANNED_PRODUCTION_REVIEW" or (tonumber(v(caseData, 34, 0)) or 0) > 0 then
         commandConclusion = "EOC CONCLUSION: Matching production is already planned. Do not add duplicate capacity."
         commandNext = "DO THIS NEXT: Review and finish the existing X4 Station Build Plan, then verify the result."
         commandActionLabel = "OPEN EOC CONSTRUCTION STATUS"
-        commandAction = function() menu.page = "construction"; menu.activeTab = "construction"; menu.refresh() end
+        commandAction = function() menu.constructionView = "detail"; menu.page = "construction"; menu.activeTab = "construction"; menu.refresh() end
     elseif commandSupportRequirement then
         commandConclusion = "EOC CONCLUSION: Existing " .. text(v(caseData, 4, "final-output")) .. " production is installed, but its supporting production chain is incomplete. Do not add duplicate final-output capacity."
         commandNext = "DO THIS NEXT: Use the simple build list below. It gives the best current estimate of how many production modules to add. Open Deep Dive only when you want the evidence and calculations."
@@ -4857,7 +4916,9 @@ local function solutionPlannerCenter(tableWidget)
     local warning = deepDivePage == 1 and tableWidget:addRow(false) or nil
     local plannerWarning = plannerReason == "PLANNED_PRODUCTION_REVIEW"
         and "PLANNED-PRODUCTION REVIEW: X4 already reports matching production in this station's build plan. EOC may show the exact native recipe and supporting requirements so you can review the committed plan. This does not prove the earlier recovery test passed and does not authorize duplicate modules; finish and verify the existing plan first."
+        or (plannerReason == "PLAYER_SCENARIO" and "PLAYER-INITIATED SCENARIO: The completed background test returned no improvement, but EOC has not completed its full recovery-exhaustion gate. You may model a permanent solution now. Your chosen count is not an EOC demand recommendation, and EOC will not place modules or exercise construction authority."
         or (plannerReady and "ESCALATION WARNING: EOC has exhausted the immediate recovery evidence it can test: a bounded BUY offer remained active for the full 30-minute delivery-test window, reachable supply and compatible station traders were present, and stock did not rise. This planner is advisory. Review the station's existing build plan before adding anything; complex mixed-purpose stations and HQ-style build-everything stations can be made worse by duplicate modules, input competition, or shared-storage pressure." or "PLANNER LOCKED: EOC has not exhausted immediate recovery testing for this case. Return to Diagnostics and let the bounded BUY action complete its 30-minute delivery-test window. EOC must confirm reachable supply, compatible station traders, a later reconciliation, and no stock increase before permanent construction advice is shown. Do not expand this station yet.")
+        )
     if warning then warning[1]:setColSpan(4):createText(plannerWarning, { wordwrap = true, color = plannerReady and investigationUnknownColor or investigationFailColor }) end
     if not plannerReady then
         local lockedRow = tableWidget:addRow(true)
@@ -5012,6 +5073,105 @@ local function constructionRecordForSelected()
 end
 
 local function constructionCenter(tableWidget)
+    menu.constructionView = menu.constructionView or "empire"
+    if menu.constructionView == "empire" then
+        section(tableWidget, "EMPIRE CONSTRUCTION CONTROL")
+        local intro = tableWidget:addRow(false)
+        intro[1]:setColSpan(4):createText("This is the empire-wide construction overview. It lists every station with modules planned or building, puts blocked stations first, and keeps idle stations hidden unless you ask to see them. Select a station to open its full readiness checklist.", { wordwrap = true, color = navigationStoryColor })
+
+        local controls = tableWidget:addRow(true)
+        controls[1]:setColSpan(2)
+        addButton(controls, 1, menu.constructionRefreshing and "REFRESHING ALL STATIONS..." or "REFRESH EMPIRE CONSTRUCTION", function()
+            if menu.constructionRefreshing then return end
+            local refreshQueue = {}
+            for stationIndex, station in ipairs(menu.stations or {}) do
+                table.insert(refreshQueue, { index = tonumber(v(station, 16, stationIndex)) or stationIndex, station = text(v(station, 1, "Station " .. tostring(stationIndex))) })
+            end
+            if #refreshQueue == 0 then
+                menu.constructionStatus = "NO PLAYER STATIONS FOUND: There is nothing to refresh."
+                menu.refresh()
+                return
+            end
+            local firstStation = table.remove(refreshQueue, 1)
+            menu.constructionEmpireRefreshQueue = refreshQueue
+            menu.constructionRefreshing = true
+            menu.constructionStatus = "REFRESHING EMPIRE CONSTRUCTION: Checking " .. tostring(#refreshQueue + 1) .. " player station(s). This is read-only."
+            raise("construction.refresh", { index = firstStation.index, station = firstStation.station })
+            menu.refresh()
+        end, not menu.constructionRefreshing)
+        controls[3]:setColSpan(2)
+        addButton(controls, 3, menu.constructionShowIdle and "HIDE IDLE STATIONS" or "SHOW IDLE STATIONS", function()
+            menu.constructionShowIdle = not menu.constructionShowIdle
+            menu.refresh()
+        end, true)
+        local statusRow = tableWidget:addRow(false)
+        statusRow[1]:setColSpan(4):createText(menu.constructionStatus or "READY: Select REFRESH EMPIRE CONSTRUCTION for a current read-only scan, or open any listed station for details.", { wordwrap = true, color = menu.constructionRefreshing and resultColor("UNKNOWN") or navigationStoryColor })
+
+        local records = {}
+        for _, candidate in ipairs(menu.constructionRecords or {}) do
+            local total = tonumber(v(candidate, 3, 0)) or 0
+            if total > 0 or menu.constructionShowIdle then table.insert(records, candidate) end
+        end
+        local function blockerScore(candidate)
+            local total = tonumber(v(candidate, 3, 0)) or 0
+            local builders = tonumber(v(candidate, 6, 0)) or 0
+            local budget = tonumber(v(candidate, 9, 0)) or 0
+            local wanted = tonumber(v(candidate, 10, 0)) or 0
+            local missing = #(v(candidate, 11, {}) or {})
+            if total > 0 and builders == 0 then return 3 end
+            if total > 0 and wanted > budget then return 2 end
+            if total > 0 and missing > 0 then return 1 end
+            return 0
+        end
+        table.sort(records, function(a, b)
+            local aScore, bScore = blockerScore(a), blockerScore(b)
+            if aScore ~= bScore then return aScore > bScore end
+            return text(v(a, 1, "")) < text(v(b, 1, ""))
+        end)
+        local activeCount, blockedCount = 0, 0
+        for _, candidate in ipairs(records) do
+            if (tonumber(v(candidate, 3, 0)) or 0) > 0 then activeCount = activeCount + 1 end
+            if blockerScore(candidate) > 0 then blockedCount = blockedCount + 1 end
+        end
+        section(tableWidget, "STATIONS WITH CONSTRUCTION  |  " .. tostring(activeCount) .. " ACTIVE  |  " .. tostring(blockedCount) .. " NEED REVIEW")
+        local header = tableWidget:addRow(false)
+        header[1]:createText("STATION", { font = Helper.headerFont })
+        header[2]:createText("STATE", { font = Helper.headerFont })
+        header[3]:createText("BUILDING / PLANNED", { font = Helper.headerFont })
+        header[4]:createText("BUDGET / WARES", { font = Helper.headerFont })
+        if #records == 0 then
+            local empty = tableWidget:addRow(false)
+            empty[1]:setColSpan(4):createText("NO ACTIVE CONSTRUCTION FOUND. Run REFRESH EMPIRE CONSTRUCTION if station plans changed since the last scan.", { wordwrap = true, color = investigationPassColor })
+            return
+        end
+        local firstRecord, lastRecord = menu.adaptiveListNavigation(tableWidget, "construction.empire", #records, { fixedRows = 15, rowUnits = 2, maximum = 8 })
+        for recordIndex = firstRecord, lastRecord do
+            local candidate = records[recordIndex]
+            local name = text(v(candidate, 1, "Unknown station"))
+            local profileIndex = tonumber(v(candidate, 2, recordIndex)) or recordIndex
+            local total = tonumber(v(candidate, 3, 0)) or 0
+            local planned = tonumber(v(candidate, 4, 0)) or 0
+            local building = tonumber(v(candidate, 5, 0)) or 0
+            local builders = tonumber(v(candidate, 6, 0)) or 0
+            local budget = tonumber(v(candidate, 9, 0)) or 0
+            local wanted = tonumber(v(candidate, 10, 0)) or 0
+            local missing = #(v(candidate, 11, {}) or {})
+            local score = blockerScore(candidate)
+            local state = total <= 0 and "IDLE — NO BUILD PLAN" or (builders == 0 and "BLOCKED — BUILDER NEEDED" or (wanted > budget and "BLOCKED — FUNDING NEEDED" or (missing > 0 and "WAITING — BUILD WARES" or (building > 0 and "BUILDING NOW" or "PLANNED — WAITING TO START"))))
+            local row = tableWidget:addRow(true)
+            addButton(row, 1, "OPEN: " .. name, function()
+                menu.selected = profileIndex
+                menu.constructionView = "detail"
+                menu.constructionStatus = nil
+                menu.refresh()
+            end, true, score > 0 and resultColor("UNKNOWN") or investigationPassColor)
+            row[2]:createText(state, { wordwrap = true, color = score > 0 and resultColor("FAILED") or (total > 0 and investigationPassColor or investigationNeutralColor) })
+            row[3]:createText(tostring(building) .. " BUILDING / " .. tostring(planned) .. " PLANNED", { wordwrap = true })
+            row[4]:createText((wanted > budget and (tostring(math.max(0, wanted - budget)) .. " Cr SHORT") or "FUNDED") .. " / " .. tostring(missing) .. " WARE TYPE(S) MISSING", { wordwrap = true })
+        end
+        return
+    end
+
     local record = constructionRecordForSelected()
     local stationName = text(v(record, 1, "SELECTED STATION"))
     local index = tonumber(v(record, 2, menu.selected)) or menu.selected
@@ -5027,6 +5187,9 @@ local function constructionCenter(tableWidget)
     local lastFunding = tonumber(v(record, 12, 0)) or 0
     local lastFundingTime = tonumber(v(record, 13, 0)) or 0
     local row
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(4)
+    addButton(row, 1, "BACK TO EMPIRE CONSTRUCTION", function() menu.constructionView = "empire"; menu.constructionStatus = nil; menu.refresh() end, true)
     section(tableWidget, "STATION CONSTRUCTION - " .. stationName)
     row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText(total > 0 and "ONGOING CONSTRUCTION DETECTED" or "NO ONGOING CONSTRUCTION DETECTED", { color = total > 0 and investigationPassColor or investigationNeutralColor })
@@ -5043,10 +5206,10 @@ local function constructionCenter(tableWidget)
     local function check(label, state, detail, stateColor)
         local r = tableWidget:addRow(false); r[1]:createText(state, { color = stateColor }); r[2]:createText(label); r[3]:setColSpan(2):createText(detail, { wordwrap = true })
     end
-    check("BUILD PLAN / QUEUE", total > 0 and "MET" or "NOT MET", total > 0 and (tostring(total) .. " planned or active module(s) detected.") or "No planned or active modules were found.", total > 0 and investigationPassColor or resultColor("UNKNOWN"))
+    check("BUILD PLAN / QUEUE", total > 0 and "MET" or "IDLE — NO BUILD PLAN", total > 0 and (tostring(total) .. " planned or active module(s) detected.") or "No planned or active modules were found. This station is idle, not failing.", total > 0 and investigationPassColor or investigationNeutralColor)
     check("BUILDER ASSIGNED", builders > 0 and "MET" or (total > 0 and "STALLED - CHECK BUILDER" or "NOT REQUIRED"), builders > 0 and "X4 reports a construction vessel assigned to this station build." or (total > 0 and "No construction vessel is currently assigned. Assign a builder, then refresh Construction Status." or "No construction plan requires a builder."), builders > 0 and investigationPassColor or (total > 0 and resultColor("FAILED") or resultColor("UNKNOWN")))
     check("BUILD-STORAGE SHIP", buildStorage > 0 and "MET" or "OPTIONAL", buildStorage > 0 and (tostring(buildStorage) .. " assigned build-storage trader(s) detected.") or "No player build-storage trader is assigned. NPC deliveries may still satisfy construction, so this is not treated as a failure.", buildStorage > 0 and investigationPassColor or resultColor("UNKNOWN"))
-    check("CONSTRUCTION PROGRESS", building > 0 and "MET" or "WAITING", building > 0 and (tostring(building) .. " module(s) currently under construction.") or (planned > 0 and "Modules are queued but none is currently building." or "No construction progress to measure."), building > 0 and investigationPassColor or resultColor("UNKNOWN"))
+    check("CONSTRUCTION PROGRESS", building > 0 and "MET" or (total > 0 and "WAITING" or "NOT REQUIRED"), building > 0 and (tostring(building) .. " module(s) currently under construction.") or (planned > 0 and "Modules are queued but none is currently building." or "No build plan exists, so there is no construction progress to measure."), building > 0 and investigationPassColor or (total > 0 and resultColor("UNKNOWN") or investigationNeutralColor))
     local budgetMet = wantedBudget <= 0 or budget >= wantedBudget
     local shortfall = math.max(0, wantedBudget - budget)
     row = tableWidget:addRow(shortfall > 0)
@@ -5192,7 +5355,7 @@ local function casesCenter(tableWidget)
     local selectedObservations = selectedProfile and stationObservations(selectedProfile) or {}
     local selectedDifference = math.max(0, #selectedObservations - selectedEOCCases)
     local brief = tableWidget:addRow(false)
-    brief[1]:setColSpan(4):createText(menu.caseScope == "station" and "READ THIS FIRST: A CASE is one problem EOC is actively following for this station. Start with PLAYER COMMAND SUMMARY below: it says whether EOC is handling the case, waiting for normal game activity, or needs one action from you. The longer incident and evidence history is supporting detail, not a second to-do list." or "READ THIS FIRST: Each row is one station problem EOC is following. Open a case to see one plain-language next action. Use the filters only when you need to narrow the list.", { wordwrap = true, color = navigationStoryColor, font = Helper.headerFont })
+    brief[1]:setColSpan(4):createText(menu.caseScope == "station" and "READ THIS FIRST: EXISTING OPEN CASES are problems EOC is already following. VIEW CASE only opens the existing record; it creates nothing. Supporting issue history is evidence, not another task list. CREATE INVESTIGATION appears only where no player-requested case exists." or "READ THIS FIRST: Every row under EXISTING OPEN CASES is already open. VIEW CASE opens it and never creates another case. A separate CREATE INVESTIGATION control is clearly labeled when retained evidence is not yet a case.", { wordwrap = true, color = navigationStoryColor, font = Helper.headerFont })
     row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
     if menu.clearCasesConfirm then
@@ -5329,7 +5492,7 @@ local function casesCenter(tableWidget)
             row=tableWidget:addRow(true); row[1]:setColSpan(4)
             if existingPlayerCase then
                 local boundCase = existingPlayerCase
-                addButton(row,1,"OPEN EXISTING INVESTIGATION: "..subject,function()
+                addButton(row,1,"VIEW EXISTING OPEN INVESTIGATION: "..subject,function()
                     menu.caseDuplicateNotice = nil
                     menu.focusCaseStation(boundCase)
                     menu.diagnosticCase = boundCase
@@ -5340,7 +5503,7 @@ local function casesCenter(tableWidget)
                     menu.refresh()
                 end,true)
             else
-                addButton(row,1,"ASK EOC TO INVESTIGATE: "..subject,function()
+                addButton(row,1,"CREATE INVESTIGATION — NOT A CASE YET: "..subject,function()
                 if selectedProfile and startAction("case.create") then
                     table.insert(menu.cases,{text(v(selectedProfile,1,"Selected station")),"PLAYER","PLAYER-REPORTED",subject,"OPEN - PLAYER REQUESTED",text(v(leading,6,"Grouped retained evidence requires focused investigation.")),text(v(leading,7,"Review grouped evidence and run focused diagnostics.")),#incident.observations,0,0,"PLAYER"})
                     raise("case.create",{index=v(selectedProfile,16,menu.selected),subject=subject,issues=#incident.observations,rootcause=text(v(leading,6,"Grouped retained evidence requires focused investigation.")),corrective=text(v(leading,7,"Review grouped evidence and run focused diagnostics.")),observationindex=v(leading,14,0),observationcount=#incident.observations})
@@ -5358,7 +5521,7 @@ local function casesCenter(tableWidget)
     end
 
     menu.selectedCase = clamp(menu.selectedCase, 1, #cases)
-    section(tableWidget, "ACTIVE CASES — CHOOSE ONE PROBLEM TO FOLLOW  |  " .. #cases .. " SHOWN")
+    section(tableWidget, "EXISTING OPEN CASES — VIEW ONE PROBLEM  |  " .. #cases .. " SHOWN")
     local header = tableWidget:addRow(false)
     header[1]:setColSpan(2):createText("STATION")
     header[3]:createText("SEVERITY")
@@ -5370,7 +5533,7 @@ local function casesCenter(tableWidget)
         local caseData = case
         row = tableWidget:addRow(true)
         row[1]:setColSpan(2)
-        addModeButton(row, 1, "OPEN CASE: " .. text(v(caseData, 1, "Unknown station")) .. " -> " .. text(v(caseData, 4, "GENERAL OPERATIONS")), caseIndex == menu.selectedCase, true, function()
+        addModeButton(row, 1, "VIEW CASE: " .. text(v(caseData, 1, "Unknown station")) .. " -> " .. text(v(caseData, 4, "GENERAL OPERATIONS")), caseIndex == menu.selectedCase, true, function()
             menu.selectedCase = caseIndex
             menu.caseDuplicateNotice = nil
             for _, actionNameToClear in ipairs({ "case.create", "case.monitor", "case.close" }) do
@@ -5391,7 +5554,7 @@ local function casesCenter(tableWidget)
     end
 
     local selected = cases[menu.selectedCase]
-    section(tableWidget, "SELECTED CASE: " .. text(v(selected, 1, "Unknown station")) .. " -> " .. text(v(selected, 4, "GENERAL OPERATIONS")))
+    section(tableWidget, "SELECTED EXISTING CASE: " .. text(v(selected, 1, "Unknown station")) .. " -> " .. text(v(selected, 4, "GENERAL OPERATIONS")))
     pair(tableWidget, "SEVERITY", v(selected, 2, "ISSUE"), "WORKFLOW", "GUIDED RECOVERY")
     local selectedChecks = prerequisiteRows(selected)
     local selectedAction, selectedActionColor = managedActionText(selected)
@@ -5869,7 +6032,7 @@ local function fleetCenter(tableWidget)
             local totals = tableWidget:addRow(false)
             local actionTotal, waitingTotal, coveredTotal = 0, 0, 0
             for _, summary in ipairs(order) do actionTotal = actionTotal + summary.action; waitingTotal = waitingTotal + summary.waiting; coveredTotal = coveredTotal + summary.covered end
-            totals[1]:setColSpan(4):createText("EMPIRE SUMMARY — " .. actionTotal .. " ACTIONABLE | " .. waitingTotal .. " AWAITING EVIDENCE | " .. coveredTotal .. " COVERED | " .. #order .. " STATIONS", { halign = "center", color = actionTotal > 0 and investigationUnknownColor or investigationPassColor })
+            totals[1]:setColSpan(4):createText("EMPIRE ROUTE SUMMARY — " .. actionTotal .. " SUPPLY ROUTE(S) NEED PLAYER REVIEW | " .. waitingTotal .. " ROUTE(S) MONITORING DELIVERY / EVIDENCE | " .. coveredTotal .. " HEALTHY ROUTE(S) WITH STOCK OR MOVEMENT CONFIRMED | " .. #order .. " STATIONS", { halign = "center", color = actionTotal > 0 and investigationUnknownColor or investigationPassColor, wordwrap = true })
             local cardUnits = math.max(1, math.ceil(menu.supplyCardHeight() / math.max(1, Helper.scaleY(Helper.standardTextHeight) + Helper.borderSize)))
             local first, last = menu.adaptiveListNavigation(tableWidget, "fleet.coverage.empire", #order, { fixedRows = 11, rowUnits = cardUnits, columns = 2 })
             for index = first, last, 2 do
@@ -5879,7 +6042,7 @@ local function fleetCenter(tableWidget)
                     if summary then
                         local column = slot == 0 and 1 or 3
                         cardRow[column]:setColSpan(2)
-                        local label = summary.name .. "\n" .. summary.action .. " ACTIONABLE | " .. summary.waiting .. " WAITING | " .. summary.covered .. " COVERED"
+                        local label = summary.name .. "\n" .. summary.action .. " ROUTE(S) NEED PLAYER REVIEW\n" .. summary.waiting .. " MONITORING DELIVERY / EVIDENCE | " .. summary.covered .. " HEALTHY"
                         addButton(cardRow, column, label, function()
                             menu.coverageReturnContext = { scope = "global", filter = menu.coverageFilter or "action", page = menu.fleetPage or 1 }
                             for profileIndex, profile in ipairs(menu.stations or {}) do if text(v(profile, 1, "")) == summary.name then menu.selected = profileIndex break end end
@@ -5908,9 +6071,9 @@ local function fleetCenter(tableWidget)
 
         local filterRow = tableWidget:addRow(true)
         menu.coverageFilter = menu.coverageFilter or "action"
-        addModeButton(filterRow, 1, (menu.coverageFilter == "action" and "ACTIVE: " or "") .. "ACTIONABLE", menu.coverageFilter == "action", true, function() menu.coverageFilter = "action"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
-        addModeButton(filterRow, 2, (menu.coverageFilter == "waiting" and "ACTIVE: " or "") .. "WAITING", menu.coverageFilter == "waiting", true, function() menu.coverageFilter = "waiting"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
-        addModeButton(filterRow, 3, (menu.coverageFilter == "covered" and "ACTIVE: " or "") .. "COVERED", menu.coverageFilter == "covered", true, function() menu.coverageFilter = "covered"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
+        addModeButton(filterRow, 1, (menu.coverageFilter == "action" and "ACTIVE: " or "") .. "PLAYER REVIEW NEEDED", menu.coverageFilter == "action", true, function() menu.coverageFilter = "action"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
+        addModeButton(filterRow, 2, (menu.coverageFilter == "waiting" and "ACTIVE: " or "") .. "MONITORING DELIVERY", menu.coverageFilter == "waiting", true, function() menu.coverageFilter = "waiting"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
+        addModeButton(filterRow, 3, (menu.coverageFilter == "covered" and "ACTIVE: " or "") .. "HEALTHY ROUTES", menu.coverageFilter == "covered", true, function() menu.coverageFilter = "covered"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
         addModeButton(filterRow, 4, (menu.coverageFilter == "all" and "ACTIVE: " or "") .. "ALL EVIDENCE", menu.coverageFilter == "all", true, function() menu.coverageFilter = "all"; menu.coverageSelected = nil; menu.coverageShipListKey = nil; menu.fleetPage = 1; menu.refresh() end)
 
         local selectedName = text(v(selectedStation(), 1, ""))
@@ -6062,8 +6225,7 @@ local function fleetCenter(tableWidget)
             rowPitch = math.max(rowPitch, Helper.scaleY(Helper.standardTextOffsety) + measuredHeight)
         end
         rowPitch = rowPitch + Helper.borderSize
-        local fixedRows = 22
-        if menu.clickStatus and menu.clickStatusUntil and getElapsedTime() < menu.clickStatusUntil then fixedRows = fixedRows + 1 end
+        local fixedRows = 23
         if menu.navigationOrigin and menu.page ~= menu.navigationOrigin.page then fixedRows = fixedRows + 1 end
         local contentPixels = tonumber(menu.coverageContentHeight) or Helper.scaleY(config.maxHeight)
         local pixelRows = math.max(1, math.floor(contentPixels / rowPitch) - fixedRows)
@@ -6173,7 +6335,7 @@ local function fleetCenter(tableWidget)
         else
             for _, activity in ipairs(menu.capacityRecords or {}) do
                 if string.find(activity.role or "", "TRADE", 1, true) and (menu.fleetScope == "global" or activity.station == stationName) then
-                    addEntry({ activity.station, activity.role, "OPEN REQUESTS / ACTIVE SHIPS / QUEUED DEALS", tostring(activity.openorders) .. " / " .. tostring(activity.active) .. " / " .. tostring(activity.deals) })
+                    addEntry({ activity.station, activity.role, tostring(activity.openorders), tostring(activity.active), tostring(activity.deals) })
                 end
             end
         end
@@ -6285,6 +6447,13 @@ local function fleetCenter(tableWidget)
         statusRow[1]:createText("STATUS")
         statusRow[2]:setColSpan(3):createText(emptyMessages[menu.fleetView], { wordwrap = true })
     else
+        if menu.fleetView == "offers" and menu.tradeActivityView == "empire" then
+            local tradeHeader = tableWidget:addRow(false)
+            tradeHeader[1]:createText("STATION", { font = Helper.headerFont, color = navigationStoryColor })
+            tradeHeader[2]:createText("OPEN REQUESTS", { font = Helper.headerFont, color = navigationStoryColor })
+            tradeHeader[3]:createText("ACTIVE SHIPS", { font = Helper.headerFont, color = navigationStoryColor })
+            tradeHeader[4]:createText("QUEUED DEALS", { font = Helper.headerFont, color = navigationStoryColor })
+        end
         local first, last = menu.adaptiveListNavigation(tableWidget, "fleet." .. tostring(menu.fleetView), #entries, { fixedRows = menu.fleetView == "recommendations" and 28 or 18, rowUnits = menu.fleetView == "recommendations" and 12 or 1 })
         for index = first, last do
             local entry = entries[index]
@@ -6437,6 +6606,12 @@ local function fleetCenter(tableWidget)
                 reason[1]:setColSpan(4):createText("WHY ONE: The active EOC case reports a real shortfall and zero compatible logistics ships. Queue no more than one, register and assign it after construction, then rescan before considering another.", { wordwrap = true })
                 local safety = tableWidget:addRow(false)
                 safety[1]:setColSpan(4):createText("PLAYER AUTHORITY: Size choice, preview, and confirmation are separate deliberate actions when both sizes are available. EOC uses X4's valid-loadout generator, never bypasses shipyard resources, and never repeats the order automatically.", { wordwrap = true })
+            elseif menu.fleetView == "offers" and menu.tradeActivityView == "empire" then
+                local tradeRow = tableWidget:addRow(false)
+                tradeRow[1]:createText(text(entry[1]) .. "\n" .. text(entry[2]), { wordwrap = true })
+                tradeRow[2]:createText(text(entry[3]), { halign = "center" })
+                tradeRow[3]:createText(text(entry[4]), { halign = "center" })
+                tradeRow[4]:createText(text(entry[5]), { halign = "center" })
             else
                 pair(tableWidget, entry[1], entry[2], entry[3], entry[4])
             end
@@ -6675,7 +6850,9 @@ local function diagnosticsCenter(tableWidget)
         local diagnosticChecks = prerequisiteRows(diagnosticCase)
         local commandAction, commandColor = managedActionText(diagnosticCase)
         local commandBlocked = string.find(string.upper(commandAction), "BLOCKED", 1, true) ~= nil
-        local priorUnchanged = menu.verificationKey == verificationKey and string.upper(text(menu.verificationClass, "")) == "UNCHANGED"
+        local _, completedBackgroundState = menu.backgroundResultForCase(diagnosticCase)
+        local completedTestNeedsAction = completedBackgroundState == "UNCHANGED" or completedBackgroundState == "WORSENING" or completedBackgroundState == "FAILED"
+        local priorUnchanged = (menu.verificationKey == verificationKey and string.upper(text(menu.verificationClass, "")) == "UNCHANGED") or completedTestNeedsAction
         local recoveryPlannerReady, recoveryPlannerReason = menu.plannerAccessForCase(diagnosticCase)
         local recoveryExhausted = recoveryPlannerReady and (recoveryPlannerReason == "RECOVERY_EXHAUSTED" or recoveryPlannerReason == "RETAINED_READINESS")
         local playerOwnsNext = commandBlocked or priorUnchanged or recoveryExhausted
@@ -6683,7 +6860,7 @@ local function diagnosticsCenter(tableWidget)
         row = tableWidget:addRow(false)
         row[1]:setColSpan(4):createText(playerOwnsNext and "PLAYER ACTION REQUIRED" or "NO PLAYER ACTION RIGHT NOW — EOC IS HANDLING THIS CASE", { wordwrap = true, color = playerOwnsNext and investigationUnknownColor or investigationPassColor, font = Helper.headerFont })
         row = tableWidget:addRow(false)
-        local commandNext = recoveryExhausted and "DO THIS NEXT: Reopen Solution Planner. Temporary delivery recovery is exhausted, so EOC needs your project-demand or permanent-solution decision." or (commandBlocked and ("DO THIS NEXT: " .. manualNextAction(diagnosticCase, diagnosticChecks)) or (priorUnchanged and ("PLAYER CHECK REQUIRED: The completed wait-and-verify cycle was unchanged. " .. manualNextAction(diagnosticCase, diagnosticChecks)) or ("EOC STATUS: " .. commandAction)))
+        local commandNext = recoveryExhausted and "DO THIS NEXT: Reopen Solution Planner. Temporary delivery recovery is exhausted, so EOC needs your project-demand or permanent-solution decision." or (commandBlocked and ("DO THIS NEXT: " .. manualNextAction(diagnosticCase, diagnosticChecks)) or (completedTestNeedsAction and "PLAYER DECISION REQUIRED: The completed background test returned no improvement. Inspect the ware buy rule, price, manager range, restrictions, and assigned traders' live orders, or open the advisory Player Scenario Planner now to model permanent capacity." or (priorUnchanged and ("PLAYER CHECK REQUIRED: The completed wait-and-verify cycle was unchanged. " .. manualNextAction(diagnosticCase, diagnosticChecks)) or ("EOC STATUS: " .. commandAction))))
         row[1]:setColSpan(4):createText(commandNext, { wordwrap = true, color = priorUnchanged and investigationUnknownColor or commandColor })
         local firstProblem = nil
         for _, check in ipairs(diagnosticChecks) do
@@ -6696,6 +6873,16 @@ local function diagnosticsCenter(tableWidget)
         recoveryCommand[1]:setColSpan(4)
         if recoveryExhausted then
             menu.addPrimaryButton(recoveryCommand, 1, "REOPEN SOLUTION PLANNER — PLAYER DECISION REQUIRED", function()
+                menu.runExpansionReadiness(diagnosticCase)
+                menu.solutionCase = diagnosticCase
+                menu.focusCaseStation(diagnosticCase)
+                captureNavigation("DIAGNOSTICS - " .. text(v(diagnosticCase, 4, "SELECTED CASE")))
+                menu.page = "solution"
+                menu.activeTab = "solution"
+                menu.refresh()
+            end, true)
+        elseif completedTestNeedsAction then
+            menu.addPrimaryButton(recoveryCommand, 1, "OPEN SOLUTION PLANNER — PLAYER-INITIATED SCENARIO", function()
                 menu.runExpansionReadiness(diagnosticCase)
                 menu.solutionCase = diagnosticCase
                 menu.focusCaseStation(diagnosticCase)
@@ -7220,10 +7407,27 @@ local function kpiDashboardControls(tableWidget)
                 if selected then raise("construction.refresh", { index = selected.index, station = selected.station }) end
             end
         end)
-    elseif menu.kpiView == "trade" or menu.kpiView == "storage" then
+    elseif menu.kpiView == "trade" then
         local options, seen = kpiStationOptions(); local key = "kpiStation_" .. menu.kpiView; menu[key] = menu[key] or "__all__"; if menu[key] ~= "__all__" and not seen[menu[key]] then menu[key] = "__all__" end
         row = tableWidget:addRow(true); kpiControlLabel(row, "STATION FILTER")
         kpiProtectedDropdown(row, 2, options, menu[key], function(name) menu[key] = name end)
+    elseif menu.kpiView == "storage" then
+        local stationOptions, stationSeen = kpiStationOptions()
+        menu.kpiStation_storage = menu.kpiStation_storage or "__all__"
+        if menu.kpiStation_storage ~= "__all__" and not stationSeen[menu.kpiStation_storage] then menu.kpiStation_storage = "__all__" end
+        row = tableWidget:addRow(true); kpiControlLabel(row, "STATION FILTER")
+        kpiProtectedDropdown(row, 2, stationOptions, menu.kpiStation_storage, function(name) menu.kpiStation_storage = name end)
+        local typeOptions = { { id = "__all__", text = "ALL PHYSICAL STORAGE TYPES", icon = "", displayremoveoption = false } }
+        local typeSeen = {}
+        for _, storage in ipairs(menu.storageRecords or {}) do
+            local kind = string.upper(text(v(storage, 2, "UNKNOWN")))
+            if not typeSeen[kind] then typeSeen[kind] = true; table.insert(typeOptions, { id = kind, text = kind .. " STORAGE", icon = "", displayremoveoption = false }) end
+        end
+        table.sort(typeOptions, function(a, b) if a.id == "__all__" then return true end if b.id == "__all__" then return false end return a.text < b.text end)
+        menu.kpiStorageType = menu.kpiStorageType or "__all__"
+        if menu.kpiStorageType ~= "__all__" and not typeSeen[menu.kpiStorageType] then menu.kpiStorageType = "__all__" end
+        row = tableWidget:addRow(true); kpiControlLabel(row, "STORAGE TYPE FILTER")
+        kpiProtectedDropdown(row, 2, typeOptions, menu.kpiStorageType, function(kind) menu.kpiStorageType = kind end)
     elseif menu.kpiView == "shipyard" then
         local names, seen = {}, {}; local history = menu.kpiHistory or {}; local latest = history[#history] or {}
         for _, yard in ipairs(latest.shipyards or {}) do local name = text(yard.name, "Unknown shipyard"); if not seen[name] then seen[name] = true; table.insert(names, name) end end
@@ -7348,29 +7552,34 @@ function menu.kpiTradeGraph(t)
 end
 
 function menu.kpiStorageGraph(t)
-    section(t,"STORAGE LEVELS - CAPACITY USED")
-    local selected=menu.kpiStation_storage or "__all__"; local definitions={}
-    if selected=="__all__" then
-        local history=menu.kpiGraphHistory(); local latest=history[#history] or {}; local prior=history[#history-1] or {}; local stations, priorMap={},{}
-        for _,x in ipairs(prior.storageStations or {}) do priorMap[x.name]=math.max(priorMap[x.name] or 0,tonumber(x.percent) or 0) end
-        for _,x in ipairs(latest.storageStations or {}) do
-            local name=tostring(x.name or "Unknown station"); local fill=tonumber(x.percent) or 0
-            if not stations[name] or fill>stations[name].fill then stations[name]={name=name,fill=fill} end
+    section(t,"STORAGE LEVELS — PHYSICAL CAPACITY BY TYPE")
+    local selectedStation = menu.kpiStation_storage or "__all__"
+    local selectedType = menu.kpiStorageType or "__all__"
+    local history = menu.kpiGraphHistory(); local prior = history[#history - 1] or {}; local priorMap = {}
+    for _, item in ipairs(prior.storageStations or {}) do priorMap[tostring(item.name) .. "|" .. string.upper(tostring(item.kind or "UNKNOWN"))] = tonumber(item.percent) or 0 end
+    local rows = {}
+    for _, storage in ipairs(menu.storageRecords or {}) do
+        local station = text(v(storage, 1, "Unknown station")); local kind = string.upper(text(v(storage, 2, "UNKNOWN")))
+        local used = tonumber(v(storage, 3, 0)) or 0; local capacity = tonumber(v(storage, 4, 0)) or 0; local free = tonumber(v(storage, 5, 0)) or math.max(0, capacity - used)
+        if capacity > 0 and (selectedStation == "__all__" or station == selectedStation) and (selectedType == "__all__" or kind == selectedType) then
+            local fill = math.max(0, math.min(100, used * 100 / capacity)); local previous = priorMap[station .. "|" .. kind]
+            rows[#rows + 1] = { station = station, kind = kind, used = used, capacity = capacity, free = free, fill = fill, change = previous and fill - previous or nil }
         end
-        local rows={}; for _,item in pairs(stations) do item.change=priorMap[item.name] and item.fill-priorMap[item.name] or nil; table.insert(rows,item) end
-        table.sort(rows,function(a,b) if a.fill==b.fill then return a.name<b.name end return a.fill>b.fill end)
-        local help=t:addRow(false); help[1]:setColSpan(4):createText("HIGHEST STORAGE FILL BY STATION — highest first. Green is below 80%, amber is 80–89.9%, and red is 90% or more. Change is measured from the prior live sample.",{wordwrap=true,color=navigationStoryColor})
-        kpiHeader(t,{"STATION","STATUS","FILL / CHANGE","CAPACITY BAR"})
-        for index=1,math.min(12,#rows) do
-            local item=rows[index]; local state=item.fill>=90 and "CRITICAL — NEAR FULL" or item.fill>=80 and "HIGH" or "AVAILABLE"; local color=item.fill>=90 and investigationFailColor or item.fill>=80 and investigationUnknownColor or investigationPassColor
-            local row=t:addRow(false); row[1]:createText(item.name,{wordwrap=true}); row[2]:createText(state,{color=color}); row[3]:createText(string.format("%.1f%% FULL%s",item.fill,item.change and string.format(" | %+.1f points",item.change) or " | FIRST SAMPLE"),{color=color}); row[4]:createText("["..string.rep("=",math.max(0,math.min(20,math.floor(item.fill/5+0.5))))..string.rep(".",math.max(0,20-math.min(20,math.floor(item.fill/5+0.5)))).."]",{color=color})
-        end
-        if #rows==0 then pair(t,"STATUS","EOC has not retained the first storage sample yet.","NEXT","No player action — background collection continues.") end
-        return
-    else
-        local names=menu.kpiLatestNames("storageStations",selected,"kind"); definitions=menu.kpiGraphDefinitions("storageStations",names,"percent","kind")
     end
-    menu.kpiNativeGraph(t,selected=="__all__" and "HIGHEST STORAGE FILL BY STATION" or "STORAGE FILL BY TYPE",definitions,"USED","%",0,100)
+    table.sort(rows, function(a, b) if a.fill == b.fill then if a.station == b.station then return a.kind < b.kind end return a.station < b.station end return a.fill > b.fill end)
+    local help = t:addRow(false)
+    help[1]:setColSpan(4):createText("Each row is one physical cargo-storage class at one station. CONTAINER, SOLID, LIQUID, and CONDENSATE are separate capacities. This is physical capacity, not an individual ware allocation. Highest fill remains first and rows stay in that order until the next deliberate refresh.", { wordwrap = true, color = navigationStoryColor })
+    kpiHeader(t, { "STATION", "STORAGE TYPE", "USED / CAPACITY / FREE", "FILL / CHANGE" })
+    local first, last = menu.adaptiveListNavigation(t, "kpi.storage.filtered", #rows, { fixedRows = 8, rowUnits = 1, maximum = 12 })
+    for index = first, last do
+        local item = rows[index]; local color = item.fill >= 90 and investigationFailColor or item.fill >= 80 and investigationUnknownColor or investigationPassColor
+        local row = t:addRow(false)
+        row[1]:createText(item.station, { wordwrap = true })
+        row[2]:createText(item.kind .. " STORAGE", { color = color })
+        row[3]:createText(formatNumber(item.used) .. " / " .. formatNumber(item.capacity) .. " / " .. formatNumber(item.free), { wordwrap = true })
+        row[4]:createText(string.format("%.1f%% FULL%s", item.fill, item.change and string.format(" | %+.1f points", item.change) or " | FIRST SAMPLE"), { color = color, wordwrap = true })
+    end
+    if #rows == 0 then pair(t, "STATUS", "No verified storage class matches both filters.", "NEXT", "Choose ALL STORAGE TYPES or another station.") end
 end
 
 function menu.kpiShipyardGraph(t)
@@ -8240,7 +8449,7 @@ local function stationWorkspace(tableWidget)
         row[1]:setColSpan(4)
         addButton(row, 1, "ONGOING CONSTRUCTION - OPEN CONSTRUCTION CONTROL", function()
             captureNavigation("STATIONS - " .. text(v(station, 1, "SELECTED STATION")))
-            menu.page = "construction"; menu.activeTab = "construction"; menu.refresh()
+            menu.constructionView = "detail"; menu.page = "construction"; menu.activeTab = "construction"; menu.refresh()
         end, true)
     end
 
@@ -8297,7 +8506,7 @@ local function stationWorkspace(tableWidget)
         row[1]:setColSpan(4)
         addButton(row, 1, "ONGOING CONSTRUCTION DETECTED - VIEW CHECKLIST", function()
             captureNavigation("STATIONS - " .. text(v(station, 1, "SELECTED STATION")))
-            menu.page = "construction"; menu.activeTab = "construction"; menu.refresh()
+            menu.constructionView = "detail"; menu.page = "construction"; menu.activeTab = "construction"; menu.refresh()
         end, true)
     end
 
@@ -8696,10 +8905,8 @@ function menu.create()
         configureFourColumns(tableWidget, rightWidth)
         tableWidget.properties.maxVisibleHeight = contentHeight
         menu.mainTable = tableWidget
-        if menu.clickStatus and menu.clickStatusUntil and getElapsedTime() < menu.clickStatusUntil then
-            local feedbackRow = tableWidget:addRow(false)
-            feedbackRow[1]:setColSpan(4):createText(menu.clickStatus, { wordwrap = true })
-        end
+        local feedbackRow = tableWidget:addRow(false, { fixed = true })
+        feedbackRow[1]:setColSpan(4):createText((menu.clickStatus and menu.clickStatusUntil and getElapsedTime() < menu.clickStatusUntil) and menu.clickStatus or " ", { wordwrap = false, color = navigationStoryColor })
         if menu.navigationOrigin and menu.page ~= menu.navigationOrigin.page then
             local returnRow = tableWidget:addRow(true)
             returnRow[1]:setColSpan(4)
@@ -8752,10 +8959,8 @@ function menu.create()
         configureFourColumns(tableWidget, contentWidth)
         tableWidget.properties.maxVisibleHeight = contentHeight
         menu.mainTable = tableWidget
-        if menu.clickStatus and menu.clickStatusUntil and getElapsedTime() < menu.clickStatusUntil then
-            local feedbackRow = tableWidget:addRow(false)
-            feedbackRow[1]:setColSpan(4):createText(menu.clickStatus, { wordwrap = true })
-        end
+        local feedbackRow = tableWidget:addRow(false, { fixed = true })
+        feedbackRow[1]:setColSpan(4):createText((menu.clickStatus and menu.clickStatusUntil and getElapsedTime() < menu.clickStatusUntil) and menu.clickStatus or " ", { wordwrap = false, color = navigationStoryColor })
         if menu.navigationOrigin and menu.page ~= menu.navigationOrigin.page then
             local returnRow = tableWidget:addRow(true)
             returnRow[1]:setColSpan(4)
@@ -8900,7 +9105,7 @@ function menu.onUpdate()
         menu.kpiRefreshing = true
         menu.kpiNextRefreshAt = now + menu.kpiRefreshInterval(menu.kpiView)
         raise("kpi.refresh", { view = menu.kpiView })
-    elseif menu.page == "construction" and not menu.constructionRefreshing and now >= (tonumber(menu.constructionNextRefreshAt) or 0) then
+    elseif menu.page == "construction" and menu.constructionView == "detail" and not menu.constructionRefreshing and now >= (tonumber(menu.constructionNextRefreshAt) or 0) then
         local record = constructionRecordForSelected()
         local stationName = text(v(record, 1, "SELECTED STATION"))
         local index = tonumber(v(record, 2, menu.selected)) or menu.selected
@@ -8929,16 +9134,12 @@ function menu.onUpdate()
     if menu.analysisStatusUntil and now >= menu.analysisStatusUntil then
         menu.analysisStatusUntil = nil
         menu.analysisStatus = nil
-        menu.refresh()
-        return
     end
 
     if menu.clickStatusUntil and now >= menu.clickStatusUntil then
         menu.clickStatusUntil = nil
         menu.clickStatus = nil
         menu.lastClickedLabel = nil
-        menu.refresh()
-        return
     end
 
 
@@ -8946,7 +9147,6 @@ function menu.onUpdate()
         menu.reportStatusUntil = nil
         menu.reportStatus = nil
         menu.lastReport = nil
-        menu.refresh()
     end
 end
 

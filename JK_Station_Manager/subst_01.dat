@@ -201,6 +201,33 @@ menu.uix_callbacks = {}
 function menu.uix_getConfig() return config end
 -- kuertee end
 
+-- Build 363: the cataloged DockedMenu is the guaranteed EOC access bootstrap.
+-- This path does not depend on extension ui.xml being enumerated by X4.
+menu.jkeocIntegratedAccess = true
+menu.jkeocIntegratedRenderCount = 0
+
+local function jkeocOpenExecutiveOperationsCenter()
+	DebugError("[JKEOC][B363][DOCK_ACCESS] stage=BUTTON_CLICKED source=CATALOG_OWNER")
+	if type(menu.onCloseElement) == "function" then
+		menu.onCloseElement("close")
+	elseif Helper and type(Helper.closeMenu) == "function" then
+		Helper.closeMenu(menu, "close")
+	end
+	AddUITriggeredEvent("JKEOC_PersonalOfficeAccess", "open", nil)
+end
+
+local function jkeocAddIntegratedAccess(tableHeader)
+	menu.jkeocIntegratedRenderCount = menu.jkeocIntegratedRenderCount + 1
+	DebugError("[JKEOC][B363][DOCK_ACCESS] stage=BUTTON_RENDERED source=CATALOG_OWNER count=" .. tostring(menu.jkeocIntegratedRenderCount))
+	local row = tableHeader:addRow(true, { fixed = true })
+	row[1]:setColSpan(11):createButton({
+		bgColor = Color["button_background_default"],
+		highlightColor = Color["button_highlight_default"],
+		mouseOverText = "Open EOC - Executive Operations Center",
+	}):setText("OPEN EXECUTIVE OPERATIONS CENTER", { halign = "center" })
+	row[1].handlers.onClick = jkeocOpenExecutiveOperationsCenter
+end
+
 -- init menu and register with Helper
 local function init()
 	--print("Initializing")
@@ -215,9 +242,12 @@ local function init()
 				for _ in pairs(callbacks) do callbackcount = callbackcount + 1 end
 			end
 		end
-		DebugError("[JKEOC][B275][DOCK_ACCESS] stage=CALLBACKS_PRESERVED count=" .. tostring(callbackcount) .. " recurring_watchdog=0")
+		DebugError("[JKEOC][B265][DOCK_ACCESS] stage=CALLBACKS_PRESERVED count=" .. tostring(callbackcount) .. " recurring_watchdog=0")
 	else
-		DebugError("[JKEOC][B275][DOCK_ACCESS] stage=STANDALONE_MENU_READY preserved_callbacks=0 recurring_watchdog=0")
+		DebugError("[JKEOC][B265][DOCK_ACCESS] stage=STANDALONE_MENU_READY preserved_callbacks=0 recurring_watchdog=0")
+	end
+	if menu.uix_callbacks["display_on_after_main_interactions"] then
+		menu.uix_callbacks["display_on_after_main_interactions"]["jk_eoc_b257_standalone_access"] = nil
 	end
 	table.insert(Menus, menu)
 	if Helper then
@@ -625,16 +655,18 @@ function menu.display()
 			row[7].handlers.onClick = menu.buttonAutoPilot
 		end
 
+		jkeocAddIntegratedAccess(table_header)
+
 		-- start: kuertee call-back
 		if menu.uix_callbacks ["display_on_after_main_interactions"] then
 			menu.jkeocDockDiagnostics = (menu.jkeocDockDiagnostics or 0) + 1
 			if menu.jkeocDockDiagnostics <= 8 then
 				local eocpresent = menu.uix_callbacks ["display_on_after_main_interactions"]["jk_eoc_b257_standalone_access"] ~= nil
-				DebugError("[JKEOC][B275][DOCK_LIFECYCLE] stage=CALLBACK_DISPATCH surface=STANDARD eoc_callback_present=" .. tostring(eocpresent) .. " sample=" .. tostring(menu.jkeocDockDiagnostics) .. " recurring_watchdog=0")
+				DebugError("[JKEOC][B265][DOCK_LIFECYCLE] stage=CALLBACK_DISPATCH surface=STANDARD eoc_callback_present=" .. tostring(eocpresent) .. " sample=" .. tostring(menu.jkeocDockDiagnostics) .. " recurring_watchdog=0")
 			end
 			for uix_id, uix_callback in pairs (menu.uix_callbacks ["display_on_after_main_interactions"]) do
 				local success, failure = pcall(uix_callback, table_header)
-				if not success then DebugError("[JKEOC][B275][DOCK_CALLBACK_ERROR] callback=" .. tostring(uix_id) .. " error=" .. tostring(failure) .. " continued=1") end
+				if not success then DebugError("[JKEOC][B265][DOCK_CALLBACK_ERROR] callback=" .. tostring(uix_id) .. " error=" .. tostring(failure) .. " continued=1") end
 			end
 		end
 		-- end: kuertee call-back
@@ -1290,16 +1322,18 @@ function menu.display()
 		end
 		row[7]:createButton(config.inactiveButtonProperties):setText("", config.inactiveButtonTextProperties)	-- dummy
 
+		jkeocAddIntegratedAccess(table_header)
+
 		-- start: kuertee call-back
 		if menu.uix_callbacks ["display_on_after_main_interactions"] then
 			menu.jkeocDockDiagnostics = (menu.jkeocDockDiagnostics or 0) + 1
 			if menu.jkeocDockDiagnostics <= 8 then
 				local eocpresent = menu.uix_callbacks ["display_on_after_main_interactions"]["jk_eoc_b257_standalone_access"] ~= nil
-				DebugError("[JKEOC][B275][DOCK_LIFECYCLE] stage=CALLBACK_DISPATCH surface=TIMELINES eoc_callback_present=" .. tostring(eocpresent) .. " sample=" .. tostring(menu.jkeocDockDiagnostics) .. " recurring_watchdog=0")
+				DebugError("[JKEOC][B265][DOCK_LIFECYCLE] stage=CALLBACK_DISPATCH surface=TIMELINES eoc_callback_present=" .. tostring(eocpresent) .. " sample=" .. tostring(menu.jkeocDockDiagnostics) .. " recurring_watchdog=0")
 			end
 			for uix_id, uix_callback in pairs (menu.uix_callbacks ["display_on_after_main_interactions"]) do
 				local success, failure = pcall(uix_callback, table_header)
-				if not success then DebugError("[JKEOC][B275][DOCK_CALLBACK_ERROR] callback=" .. tostring(uix_id) .. " error=" .. tostring(failure) .. " continued=1") end
+				if not success then DebugError("[JKEOC][B265][DOCK_CALLBACK_ERROR] callback=" .. tostring(uix_id) .. " error=" .. tostring(failure) .. " continued=1") end
 			end
 		end
 		-- end: kuertee call-back

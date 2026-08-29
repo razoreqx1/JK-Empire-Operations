@@ -2,12 +2,12 @@
 <content
   id="ws_3778882957"
   name="EOC - Executive Operations Center"
-  description="EOC 3.9 GA - Build 359. Readable logistics evidence and saved-scenario-only progress refresh. Runtime accepted by RazorEQX."
+  description="EOC 3.9 GA - Build 364. Operational clarity, truthful raw-resource planning, and resilient dock access."
   author="RazorEQX"
-  version="459"
-  date="2026-08-28"
+  version="464"
+  date="2026-08-29"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 GA Build 359" description="Fleet evidence is summarized with paged ship details, and visible saved scenarios receive bounded progress refresh." />
+  <text language="44" name="EOC 3.9 GA Build 364" description="Operational clarity across Construction, Cases, Fleet, Supply and KPI views, with truthful raw-resource planning and resilient dock access." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

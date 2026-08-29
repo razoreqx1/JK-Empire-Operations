@@ -5,15 +5,27 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current GA release
 
 - Version: 3.9 GA
-- Engineering build: 359
-- Extension version: 4.59
-- Status: **GENERAL AVAILABILITY** — runtime accepted and published to Steam Workshop and GitHub
+- Engineering build: 364
+- Extension version: 4.64
+- Status: **GENERAL AVAILABILITY** — published to Steam Workshop; GitHub publication contains the exact governed GA runtime
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 359 is the identity-only GA promotion of the human-accepted Build 358 runtime.
+Build 364 retains the complete Build 359 foundation and adds the Build 361 operational-clarity work, truthful Build 362 raw-resource classification, and a catalog-owned dock-access path for affected player installations.
 
-## What is new in EOC 3.9 GA Build 359
+## What is new in EOC 3.9 GA Build 364
+
+- Adds an empire-wide Construction overview with clear blocked, waiting, funding, ware, builder, and idle-station states.
+- Clarifies existing cases versus new investigations and preserves duplicate-safe creation.
+- Explains Fleet route states and aligns station, registered-ship, trade-activity, and pending-assignment columns.
+- Improves Supply navigation, station-cache safety, raw-resource identity, and production-versus-storage explanations.
+- Keeps feedback rows stable and selectable across repeated actions.
+- Adds KPI station and physical storage-type filters.
+- Classifies SOLID and LIQUID raw resources as mining or trade sources instead of station production-module candidates.
+- Renders the EOC dock button from the cataloged DockedMenu component rather than depending solely on extension `ui.xml` startup, while retaining duplicate protection and compatible callback adoption.
+- The maintainer's game and EOC setup remain healthy. The public missing-button condition cannot be reproduced locally, so affected players are asked to report their field result and attach an X4 debug log if access remains unavailable.
+
+## Build 359 foundation retained by Build 364
 
 - Completes the guided production-planning workflow with clearer workforce, habitat, provision, storage, recipe, and raw-source boundaries.
 - Keeps unknown project demand honest while offering a clearly labeled player scenario for a chosen final-output count.

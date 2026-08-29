@@ -70,12 +70,24 @@ end
 --- Register on one concrete DockedMenu owner.
 -- The table identity guard prevents duplicate registration on the same owner.
 local function registerOnMenu(targetMenu, owner)
-    if not targetMenu or type(targetMenu.registerCallback) ~= "function" then
+    if not targetMenu then
         return false
     end
     if integration.registeredMenus[targetMenu] then
         integration.menu = targetMenu
         return true
+    end
+
+    -- Build 363's cataloged DockedMenu owns a native EOC access row. When
+    -- that owner is active, adopting it avoids registering a second button.
+    if targetMenu.jkeocIntegratedAccess then
+        integration.registeredMenus[targetMenu] = true
+        integration.menu = targetMenu
+        DebugError("[JKEOC][B363][DOCK_ACCESS] stage=INTEGRATED_OWNER_ADOPTED owner=" .. tostring(owner) .. " attempts=" .. tostring(integration.attempts + 1) .. " recurring_watchdog=0")
+        return true
+    end
+    if type(targetMenu.registerCallback) ~= "function" then
+        return false
     end
 
     targetMenu.registerCallback(

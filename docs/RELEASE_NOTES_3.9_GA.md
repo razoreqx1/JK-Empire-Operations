@@ -1,6 +1,33 @@
-# EOC 3.9 GA — Build 359
+# EOC 3.9 GA — Build 364
 
-Build 359 is the identity-only GA promotion of the RazorEQX runtime-accepted Build 358 behavior. It preserves the complete EOC 3.9 foundation introduced through Build 350 and adds the accepted guided-planning, case-disposition, save-safety, salvage-tug, logistics-evidence, and saved-scenario refresh work completed in Builds 351–358.
+Build 364 retains the complete Build 359 GA foundation and adds the operational-clarity work exercised during the Build 361 walkthrough, Build 362's truthful raw-resource classification and identity correction, and Build 363's more resilient dock-access bootstrap.
+
+## Operational clarity
+
+- Construction now provides an empire-wide overview with blocked stations first, explicit funding/ware/builder states, bounded paging, and optional idle-station visibility.
+- Cases clearly distinguish **VIEW CASE** from **CREATE INVESTIGATION**, and exact station/subject deduplication remains intact.
+- Fleet route-state meanings are explained and station, registered-ship, trade-activity, and pending-assignment columns remain aligned.
+- Supply navigation, selected-station cache ownership, raw-resource identity, resource cards, and production-versus-storage language are clearer.
+- Feedback rows retain stable selectable geometry across repeated actions.
+- KPI Storage Levels supports exact station and physical storage-type filtering.
+
+## Raw resources and dock access
+
+- SOLID and LIQUID raw resources are labeled as mining or trade sources instead of station production-module candidates.
+- Raw-source planning directs players to stock movement, mining coverage, reachable offers, and trade permissions; manufactured wares retain the Station Build Plan boundary.
+- The cataloged DockedMenu now owns one direct EOC access row and raises the established EOC open event without depending solely on extension `ui.xml` startup.
+- The existing adapter adopts that integrated owner without adding a duplicate button and retains its bounded compatibility route for a later replacement owner.
+- The maintainer's current game and EOC setup run normally, but the public missing-button condition cannot be reproduced locally. Affected players should report their field result and attach `debuglog.txt` if the button remains unavailable.
+
+## Evidence boundary
+
+- The Build 361 walkthrough rendered the new Construction, Cases, Fleet, Supply, feedback, and KPI views without EOC Lua/MD/widget/table/callback faults.
+- Build 362 raw-resource wording and the catalog-owned dock correction remain dependent on affected-player field evidence and are not described as runtime-proven fixes.
+- No new watcher, polling loop, hidden scan, gameplay authority, construction action, free ship, cargo movement, or credit movement was added.
+
+## Build 359 foundation retained
+
+Build 359 was the identity-only GA promotion of the RazorEQX runtime-accepted Build 358 behavior. Build 364 preserves its guided-planning, case-disposition, save-safety, salvage-tug, logistics-evidence, and saved-scenario refresh work.
 
 ## Guided planning and honest project scenarios
 
