@@ -21,8 +21,8 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-      <show_notification text="'EOC 3.9 GA Build 364 | Operational Clarity'" timeout="12s" />
-      <debug_text text="'[JKEOC][B364][STARTUP] version=464 build=364 phase=3 baseline_build=359 dock_access_catalog_bootstrap=1 raw_source_expansion_guard=1 operational_clarity=1 inherited_scheduler=5min new_hidden_scan=0 construction_authority=0 ga=1 test=0 player_field_validation=required'" filter="general" />
+      <show_notification text="'EOC 3.9 GA Build 366 | Steam UI Registration Delivery'" timeout="12s" />
+      <debug_text text="'[JKEOC][B366][STARTUP] version=466 build=366 phase=3 baseline_build=365 dock_access_catalog_bootstrap=1 steam_ui_registration_cataloged=1 raw_source_expansion_guard=1 operational_clarity=1 inherited_scheduler=5min new_hidden_scan=0 construction_authority=0 ga=1 test=0 player_field_validation=complete'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>

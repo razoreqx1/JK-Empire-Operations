@@ -5,15 +5,15 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current GA release
 
 - Version: 3.9 GA
-- Engineering build: 364
-- Extension version: 4.64
+- Engineering build: 366
+- Extension version: 4.66
 - Status: **GENERAL AVAILABILITY** — published to Steam Workshop; GitHub publication contains the exact governed GA runtime
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 364 retains the complete Build 359 foundation and adds the Build 361 operational-clarity work, truthful Build 362 raw-resource classification, and a catalog-owned dock-access path for affected player installations.
+Build 366 retains the complete Build 364 operational-clarity release and corrects Steam delivery of the UI registration required to open EOC.
 
-## What is new in EOC 3.9 GA Build 364
+## What is new in EOC 3.9 GA Build 366
 
 - Adds an empire-wide Construction overview with clear blocked, waiting, funding, ware, builder, and idle-station states.
 - Clarifies existing cases versus new investigations and preserves duplicate-safe creation.
@@ -22,10 +22,11 @@ Build 364 retains the complete Build 359 foundation and adds the Build 361 opera
 - Keeps feedback rows stable and selectable across repeated actions.
 - Adds KPI station and physical storage-type filters.
 - Classifies SOLID and LIQUID raw resources as mining or trade sources instead of station production-module candidates.
-- Renders the EOC dock button from the cataloged DockedMenu component rather than depending solely on extension `ui.xml` startup, while retaining duplicate protection and compatible callback adoption.
-- The maintainer's game and EOC setup remain healthy. The public missing-button condition cannot be reproduced locally, so affected players are asked to report their field result and attach an X4 debug log if access remains unavailable.
+- Renders the EOC dock button from the cataloged DockedMenu component while retaining duplicate protection and compatible callback adoption.
+- Catalog-delivers root `ui.xml` with the MD/Lua runtime so Workshop installations retain the menu registration required to open EOC.
+- Runtime testing confirmed a fresh six-file Workshop subscription with no loose `ui.xml` opens EOC successfully from Ship Interactions.
 
-## Build 359 foundation retained by Build 364
+## Build 359 foundation retained by Build 366
 
 - Completes the guided production-planning workflow with clearer workforce, habitat, provision, storage, recipe, and raw-source boundaries.
 - Keeps unknown project demand honest while offering a clearly labeled player scenario for a chosen final-output count.

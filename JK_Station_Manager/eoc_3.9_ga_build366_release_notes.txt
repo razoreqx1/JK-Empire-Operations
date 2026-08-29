@@ -1,0 +1,9 @@
+EOC 3.9 GA Build 366 / version 466
+
+Build 366 preserves the complete Build 364 operational-clarity release and corrects Steam delivery of EOC UI registration.
+
+- Root ui.xml is catalog-delivered with the MD/Lua runtime so Workshop installations retain the menu registration required to open EOC.
+- Runtime testing confirmed the exact catalog-prepared payload opens EOC from Ship Interactions through a ship control panel.
+- Construction, Cases, Fleet, Supply, KPI filters, raw-resource planning, stable feedback geometry, and catalog-owned dock access remain unchanged.
+- No gameplay authority, scheduler, hidden scan, station mutation, ship mutation, construction action, or resource bypass was added.
+- Startup notification, extension metadata, and debug telemetry identify Build 366/version 466 consistently.
