@@ -1,0 +1,188 @@
+Before beginning development, establish project-level engineering governance for this repository.
+
+This governance must persist across new Codex tasks and context-window rollovers. The conversation is NOT the authoritative source of project state.
+
+Create the following structure:
+
+1. Repository-level AGENTS.md
+
+This is the permanent Codex entry point for the project.
+
+AGENTS.md must require Codex to bootstrap from the authoritative governance files before performing development work.
+
+Keep AGENTS.md concise. It should enforce the governance system, not duplicate all governance content.
+
+2. Governance/PROJECT_STATE.md
+
+Purpose: WHERE ARE WE NOW?
+
+This document contains only current/changeable project state:
+
+- Current authorized build/version
+- Current accepted baseline
+- Protected rollback baseline
+- Current authorized objective
+- Current test/runtime status
+- Known issues
+- Deferred work
+- Working source location
+- Package/staging locations
+- Live/runtime location
+- Current acceptance evidence
+- Explicit next authorized action
+
+Do not turn this into a historical diary. Superseded history belongs in archive/evidence records.
+
+3. Governance/ENGINEERING_GOVERNANCE.md
+
+Purpose: HOW IS CODEX ALLOWED TO WORK?
+
+Include permanent engineering rules:
+
+- Project owner is the authority.
+- Never infer authorization.
+- Never modify the protected baseline.
+- Development occurs only in an isolated working copy.
+- Never develop directly from the live installation.
+- Investigate and trace root cause before patching.
+- Preserve previously accepted behavior unless the authorized objective explicitly changes it.
+- Unknown or unverified information remains UNKNOWN/UNVERIFIED.
+- Static validation does not equal runtime validation.
+- Implemented does not mean runtime verified.
+- Runtime-dependent behavior remains RUNTIME ACCEPTANCE REQUIRED until human tested.
+- Never reconstruct current project state from old chats.
+- On context rollover, bootstrap again from the authoritative files.
+
+AUTHORIZATION MODEL:
+
+Clear authorization from the project owner for one numbered TEST build includes that exact build's routine lifecycle:
+
+authority bookkeeping
+→ isolated working copy
+→ implementation
+→ static validation
+→ regression review
+→ TEST packaging
+→ clean archive staging
+→ routine governance bookkeeping
+
+Do NOT require magic authorization wording or repeated authorization merely to record authority already given.
+
+Separate explicit authorization remains required for:
+
+- another/new build number
+- live installation
+- human runtime acceptance where required
+- GA/production promotion
+- publication or push unless already authorized
+- destructive operations
+
+4. Governance/REGRESSION_AND_ACCEPTANCE.md
+
+Purpose: WHAT MUST NEVER SILENTLY BREAK?
+
+Record previously accepted behavior as permanent invariants.
+
+For every meaningful regression that is discovered and fixed, determine whether that lesson should become a permanent invariant.
+
+Include:
+
+- protected functionality
+- architecture invariants
+- UI/UX invariants
+- persistence requirements
+- transaction/duplicate protections
+- performance boundaries
+- security/safety boundaries
+- runtime-only acceptance requirements
+- required regression checks
+
+A previously accepted behavior remains protected unless the project owner explicitly authorizes changing it.
+
+5. Repository-local build/regression skill
+
+Create a Codex skill for the repeatable engineering workflow:
+
+BOOTSTRAP
+→ VERIFY AUTHORITY
+→ VERIFY CURRENT BASELINE
+→ VERIFY ROLLBACK
+→ INVESTIGATE
+→ TRACE ROOT CAUSE
+→ IMPLEMENT
+→ STATIC VALIDATION
+→ REGRESSION REVIEW
+→ PACKAGE TEST CANDIDATE
+→ RUNTIME ACCEPTANCE REQUIRED
+→ HUMAN ACCEPTANCE
+→ PROMOTION ONLY IF AUTHORIZED
+→ PUBLICATION ONLY IF AUTHORIZED
+
+6. Permanent pre-package regression review
+
+Before packaging any TEST candidate, compare:
+
+- AGENTS.md
+- PROJECT_STATE.md
+- ENGINEERING_GOVERNANCE.md
+- REGRESSION_AND_ACCEPTANCE.md
+- authorized build objective
+- changed-file diff
+
+Specifically look for indirect regressions to previously accepted behavior.
+
+If something cannot be proven without the real runtime environment, report:
+
+RUNTIME ACCEPTANCE REQUIRED
+
+Do not convert absence of a static failure into PASS.
+
+7. Debug evidence procedure
+
+If runtime logs are used:
+
+- Never modify the live log.
+- Create a uniquely named snapshot.
+- Record timestamp, byte size, and SHA-256.
+- Analyze only the snapshot.
+- Separate project evidence from unrelated environmental noise.
+- Preserve governed evidence when required.
+- Delete temporary analysis copies when finished.
+- Never claim runtime evidence belongs to a build unless artifact identity supports that conclusion.
+
+8. Context rollover
+
+A new Codex task must be able to recover the complete current engineering state by reading:
+
+AGENTS.md
+→ PROJECT_STATE.md
+→ ENGINEERING_GOVERNANCE.md
+→ REGRESSION_AND_ACCEPTANCE.md
+
+Historical records may be consulted when necessary but are NOT mandatory bootstrap material.
+
+Do not rely on previous chat history to continue the project.
+
+9. Validate the governance system before development
+
+After creating the governance framework:
+
+- Perform a fresh bootstrap test.
+- Verify all authoritative documents agree.
+- Verify the current baseline and rollback are unambiguous.
+- Verify authority boundaries are unambiguous.
+- Verify the regression workflow loads correctly.
+- Verify no project-specific assumptions were invented.
+- Verify the mandatory bootstrap remains small.
+
+IMPORTANT:
+
+Do not copy another project's current build state, source paths, build numbers, product-specific invariants, hashes, acceptance records, or historical records into this project.
+
+Governance documents should contain the current truth, not months of historical development notes. Archive superseded evidence outside the mandatory bootstrap.
+
+The purpose of governance is to reduce regressions and repeated work, not consume more compute than development itself. Keep mandatory bootstrap material concise and move historical evidence outside the normal bootstrap.
+
+Report the completed governance structure and STOP.
+
+Do not begin product development until the project owner explicitly authorizes the first build.
