@@ -1,4 +1,22 @@
-# EOC 3.9 GA — Build 364
+# EOC 3.9 GA — Build 369
+
+## Player-first update
+
+- New task-first Home, Stations, Plans, History and Settings; existing specialist tools and ship building remain under All Tools.
+- Independent production scenarios with owned recipes, module-count or hourly-output targets, and external-supply or dedicated-support assumptions.
+- In-page station selection preserves recipe/quantity intent and invalidates old calculated results.
+- More visible recipes, explicit quantity labels, next-action arrows and clearer return navigation.
+- Saved player scenarios are advisory snapshots, separate from evidence-backed repair plans and their progress workflow.
+
+Scenarios do not construct modules, spend credits or order ships. External input supply is assumed, not verified. Raw resources require mining or trade. Workforce, storage, throughput, costs and placement remain player review items.
+
+Build 369 is an identity-only GA promotion of Build 368. Maintainer live review confirmed the revised UI and station-switch draft retention; reviewed logs contained no EOC exceptions. This is not universal runtime coverage: save/reload, all display sizes, every navigation branch and fresh subscribed delivery remain unverified.
+
+## Preserved Build 366 delivery correction
+
+Root UI registration remains catalog-delivered with the Steam MD/Lua payload. The dock substitution and all existing operational features are retained.
+
+## Historical Build 364 release notes
 
 Build 364 retains the complete Build 359 GA foundation and adds the operational-clarity work exercised during the Build 361 walkthrough, Build 362's truthful raw-resource classification and identity correction, and Build 363's more resilient dock-access bootstrap.
 

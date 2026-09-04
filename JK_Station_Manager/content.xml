@@ -2,12 +2,12 @@
 <content
   id="ws_3778882957"
   name="EOC - Executive Operations Center"
-  description="EOC 3.9 GA - Build 366. Steam UI registration delivery correction with all operational-clarity features preserved."
+  description="EOC 3.9 GA - Build 369. Player-first menus, guided production plans and clearer navigation."
   author="RazorEQX"
-  version="466"
-  date="2026-08-29"
+  version="469"
+  date="2026-09-04"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 GA Build 366" description="Steam UI registration delivery correction with all operational-clarity features preserved." />
+  <text language="44" name="EOC 3.9 GA Build 369" description="Player-first menus, guided production plans and clearer navigation." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

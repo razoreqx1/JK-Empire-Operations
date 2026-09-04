@@ -5,15 +5,28 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current GA release
 
 - Version: 3.9 GA
-- Engineering build: 366
-- Extension version: 4.66
-- Status: **GENERAL AVAILABILITY** — published to Steam Workshop; GitHub publication contains the exact governed GA runtime
+- Engineering build: 369
+- Extension version: 4.69
+- Status: **GENERAL AVAILABILITY** — GitHub contains the exact governed GA runtime; Steam upload is handled separately by the maintainer
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 366 retains the complete Build 364 operational-clarity release and corrects Steam delivery of the UI registration required to open EOC.
+Build 369 retains the existing EOC features and adds player-first menus and guided production scenarios.
 
-## What is new in EOC 3.9 GA Build 366
+## What is new in EOC 3.9 GA Build 369
+
+- Task-first Home, Stations, Plans, History and Settings, with specialist features retained under All Tools, including ship building.
+- Independent production scenarios using owned recipes, additional modules or extra units per hour.
+- Direct station selection in Plans while retaining recipe and quantity intent; changing stations requires a fresh calculation.
+- More visible recipe choices, clearly labeled quantity fields and plain-language input-supply choices.
+- Steady next-action cues, explicit navigation labels and Back controls for the planning flow.
+- Saved advisory player scenarios remain separate from evidence-backed repair plans.
+
+Scenarios do not place modules, spend credits or order ships. External supply is an assumption, not proof of delivery. Supporting production is recipe-dependent; raw resources still need mining or trade. Workforce, storage, throughput, cost and placement require review. Saved player scenarios are snapshots, not live construction progress.
+
+The illustrated Player Guide is awaiting new Build 369 screenshots; older screenshots may show the previous menu layout.
+
+## Build 366 improvements retained
 
 - Adds an empire-wide Construction overview with clear blocked, waiting, funding, ware, builder, and idle-station states.
 - Clarifies existing cases versus new investigations and preserves duplicate-safe creation.

@@ -27,6 +27,14 @@
 local ffi = require("ffi")
 local C = ffi.C
 
+if not pcall(ffi.typeof,"UIConstructionPlanEntry") then
+    ffi.cdef[[typedef struct {
+        size_t idx; const char* macroid; UniverseID componentid; UIPosRot offset;
+        const char* connectionid; size_t predecessoridx;
+        const char* predecessorconnectionid; bool isfixed;
+    } UIConstructionPlanEntry;]]
+end
+
 ffi.cdef[[
     float GetTextHeight(const char*const text, const char*const fontname, const float fontsize, const float wordwrapwidth);
     typedef struct {
@@ -60,6 +68,11 @@ ffi.cdef[[
     uint32_t GetPlayerShipBuildTasks(BuildTaskInfo* result, uint32_t resultlen, bool isinprogress, bool includeupgrade);
     uint32_t GetNumBuildTasks(UniverseID containerid, UniverseID buildmoduleid, bool isinprogress, bool includeupgrade);
     UniverseID GetPlayerID(void);
+    bool IsComponentOperational(UniverseID componentid);
+    uint32_t GetNumStationModules(UniverseID stationid, bool includeconstructions, bool includewrecks);
+    uint32_t GetStationModules(UniverseID* result, uint32_t resultlen, UniverseID stationid, bool includeconstructions, bool includewrecks);
+    size_t GetNumPlannedStationModules(UniverseID defensibleid, bool includeall);
+    size_t GetPlannedStationModules(UIConstructionPlanEntry* result, uint32_t resultlen, UniverseID defensibleid, bool includeall);
     double GetContainerWareConsumption(UniverseID containerid, const char* wareid, bool ignorestate);
     double GetContainerWareProduction(UniverseID containerid, const char* wareid, bool ignorestate);
     uint32_t GetNumBlueprints(const char* set, const char* category, const char* macroname);
@@ -1757,6 +1770,7 @@ function menu.onShowMenu()
     menu.previousShipmode = v(menu.param, 9, "APPROVAL REQUIRED")
     menu.reports = importReports(v(menu.param, 10, menu.reports or {}))
     menu.cases = v(menu.param, 11, {})
+    menu.caseStationIds = v(menu.param, 43, {})
     menu.registeredShips = v(menu.param, 12, {})
     menu.tradeOffers = v(menu.param, 13, {})
     menu.pendingAssignments = v(menu.param, 14, {})
@@ -1920,6 +1934,19 @@ local function oneCycleFeedbackKey(label)
     return nil
 end
 
+function menu.guidedButtonLabel(label, active)
+    -- Presentation only: never change dispatch labels, throttling keys or authority.
+    local nextSteps={ ["RUN THIS ANALYSIS"]=true, ["RUN EMPIRE ANALYSIS - DIAGNOSE THIS CASE"]=true,
+        ["RUN FRESH ANALYSIS - IDENTIFY THE CAUSE"]=true, ["PREVIEW EXACT STATION CHANGES"]=true,
+        ["PREVIEW ONLY THE PRICES EOC WOULD CHANGE"]=true }
+    if active and nextSteps[label] then return "> NEXT: " .. label end
+    if not string.find(label,"(opens",1,true) and
+        (string.match(label,"^GO TO ") or string.match(label,"^OPEN ") or string.match(label,"^VIEW CASE:") or string.match(label,"^VIEW EXISTING OPEN INVESTIGATION:")) then
+        return label .. " (opens another view)"
+    end
+    return label
+end
+
 addButton = function(row, column, label, handler, active, background, height, textColor, preserveBackground, cardText)
     local properties = { active = active ~= false, bgColor = background, height = height }
     menu.oneCycleFeedback = menu.oneCycleFeedback or {}
@@ -1944,7 +1971,7 @@ addButton = function(row, column, label, handler, active, background, height, te
         -- established that positive y moves this exact text block upward.
         textProperties.y = Helper.standardTextHeight / 2
     end
-    row[column]:createButton(properties):setText(menu.playerDisplayText(label), textProperties)
+    row[column]:createButton(properties):setText(menu.playerDisplayText(menu.guidedButtonLabel(label,properties.active)), textProperties)
     if feedbackActive then menu.oneCycleFeedback[feedbackKey] = math.max(0, (tonumber(menu.oneCycleFeedback[feedbackKey]) or 0) - 1) end
     row[column].handlers.onClick = function()
         if feedbackActive then return end
@@ -2067,8 +2094,20 @@ menu.playerPageGuides = {
 }
 
 function menu.addPlayerPageGuide(tableWidget, page)
+    if page == "plans" and (menu.goalChoosing or menu.goalShowingSaved or menu.goalSavedPreview) then
+        local back = tableWidget:addRow(true)
+        back[1]:setColSpan(4)
+        addButton(back, 1, "< BACK TO YOUR PLAN (keeps your entries)", menu.goalBack, true)
+    end
     local guide = menu.playerPageGuides[page]
     if not guide then return end
+    local help = tableWidget:addRow(true)
+    help[1]:setColSpan(4)
+    addButton(help, 1, menu.playerHelpPage == page and "HIDE PAGE HELP" or "HOW TO USE THIS PAGE", function()
+        if menu.playerHelpPage == page then menu.playerHelpPage = nil else menu.playerHelpPage = page end
+        menu.refresh()
+    end, true)
+    if menu.playerHelpPage ~= page then return end
     section(tableWidget, "START HERE")
     local row = tableWidget:addRow(false)
     row[1]:setColSpan(4):createText("WHAT THIS PAGE DOES: " .. guide.purpose, { wordwrap = true })
@@ -3494,6 +3533,7 @@ local function restoreNavigation()
     menu.supplyOverviewDetailWare = origin.supplyOverviewDetailWare or menu.supplyOverviewDetailWare
     menu.page = origin.page
     menu.activeTab = origin.activeTab or origin.page
+    if origin.page == "plans" then menu.goalRestorePosition=menu.goalReturnPosition end
     table.remove(menu.navigationStack)
     menu.navigationOrigin = menu.navigationStack[#menu.navigationStack]
     menu.refresh()
@@ -3999,6 +4039,20 @@ end
 
 function menu.supplyNavigation(tableWidget)
     section(tableWidget, "SUPPLY MODEL — CHOOSE THE QUESTION YOU WANT ANSWERED")
+    if not menu.playerSupplyTools then
+        local choice=tableWidget:addRow(true); choice[1]:setColSpan(4)
+        addButton(choice,1,"WHAT IS MY EMPIRE SHORT OF?",function() menu.supplyView="balance"; menu.refresh() end,true)
+        choice=tableWidget:addRow(true); choice[1]:setColSpan(4)
+        addButton(choice,1,"WHAT DOES MY SELECTED STATION MAKE AND USE?",function() menu.supplyView="station"; menu.refresh() end,true)
+        choice=tableWidget:addRow(true); choice[1]:setColSpan(4)
+        addButton(choice,1,"PLAN MORE PRODUCTION",function() menu.playerRoute("plans") end,true)
+        choice=tableWidget:addRow(true); choice[1]:setColSpan(4)
+        addButton(choice,1,"ALL SUPPLY TOOLS: PRICES, STORAGE AND CAPACITY",function() menu.playerSupplyTools=true; menu.refresh() end,true)
+        local note=tableWidget:addRow(false); note[1]:setColSpan(4):createText("Nothing is scanned just by opening a view. Choose a question, then explicitly run its analysis.",{wordwrap=true})
+        return
+    end
+    local back=tableWidget:addRow(true); back[1]:setColSpan(4)
+    addButton(back,1,"BACK TO SUPPLY QUESTIONS",function() menu.playerSupplyTools=false; menu.refresh() end,true)
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
     addButton(row, 1, "START HERE — WHAT IS MY EMPIRE SHORT OF?\nEmpire-wide production versus owned-station use", function() menu.supplyView = "balance"; menu.supplyPages.balance = menu.supplyPages.balance or 1; menu.refresh() end, true, availableModeBackground, Helper.standardButtonHeight * 2, nil, true, true)
@@ -4535,66 +4589,495 @@ function menu.supplyModelCenter(tableWidget)
     end
 end
 
+-- Player-first presentation only. These routes reuse existing guarded actions;
+-- opening a task or a tool never creates an investigation or starts a scan.
+function menu.playerRoute(page)
+    menu.resetTabToRoot(page)
+    menu.page = page
+    menu.activeTab = page
+    menu.refresh()
+end
+
+function menu.playerTaskOpen(caseData)
+    local present = false
+    local stationId=""
+    for index, current in ipairs(menu.cases or {}) do
+        if current == caseData then present=true; stationId=tostring(v(menu.caseStationIds,index,"")); break end
+    end
+    local matches,matched = 0,nil
+    for index, profile in ipairs(menu.stations or {}) do
+        if text(v(profile, 1, "")) == text(v(caseData, 1, "")) then matches = matches + 1 end
+        if stationId ~= "" and tostring(v(profile,24,"")) == stationId and text(v(profile,1,"")) == text(v(caseData,1,"")) then matched=index end
+    end
+    if not present or matches ~= 1 or not matched or #(menu.caseStationIds or {}) ~= #(menu.cases or {}) then
+        menu.playerTaskNotice = "This problem's station is no longer uniquely available. Open All tools > Cases to review the current evidence. No action was taken."
+        menu.refresh()
+        return
+    end
+    menu.selected=matched
+    captureNavigation("YOUR TASK LIST")
+    menu.diagnosticCase = caseData
+    menu.diagnosticView = "recovery"
+    menu.page = "diagnostics"
+    menu.activeTab = "diagnostics"
+    menu.playerTaskNotice = nil
+    menu.refresh()
+end
+
+function menu.playerTaskList(tableWidget, profile)
+    section(tableWidget, profile and "WHAT DOES THIS STATION NEED?" or "WHAT NEEDS MY ATTENTION?")
+    local note = tableWidget:addRow(false)
+    note[1]:setColSpan(4):createText("Open a problem for its next step and result. This is retained evidence, not a new empire scan.", {wordwrap=true})
+    local tasks = {}
+    for index, caseData in ipairs(menu.cases or {}) do
+        if not profile or (tostring(v(menu.caseStationIds,index,"")) ~= "" and tostring(v(menu.caseStationIds,index,"")) == tostring(v(profile,24,""))) then
+            local state = managedActionText(caseData)
+            local ready, reason = menu.plannerAccessForCase(caseData)
+            local decision = string.find(string.upper(state), "BLOCKED", 1, true) ~= nil or (ready and (reason == "RECOVERY_EXHAUSTED" or reason == "RETAINED_READINESS")) or v(caseData, 11, "") == "PLAYER"
+            tasks[#tasks + 1] = {record=caseData, decision=decision, state=state}
+        end
+    end
+    table.sort(tasks, function(a,b)
+        if a.decision ~= b.decision then return a.decision end
+        return (text(v(a.record,1,"")) .. "|" .. text(v(a.record,4,""))) < (text(v(b.record,1,"")) .. "|" .. text(v(b.record,4,"")))
+    end)
+    if menu.playerTaskNotice then
+        local warning = tableWidget:addRow(false)
+        warning[1]:setColSpan(4):createText(menu.playerTaskNotice, {wordwrap=true,color=investigationUnknownColor})
+    end
+    if #tasks == 0 then
+        local empty = tableWidget:addRow(false)
+        empty[1]:setColSpan(4):createText("No open problem is available in this view. This does not prove every station is healthy. Use Supply analysis when you want a fresh resource check.", {wordwrap=true,color=investigationUnknownColor})
+    else
+        local first, last = menu.adaptiveListNavigation(tableWidget, profile and "player.station" or "player.home", #tasks, {fixedRows=16,rowUnits=3,maximum=4})
+        for index=first,last do
+            local task = tasks[index]
+            local button = tableWidget:addRow(true)
+            button[1]:setColSpan(4)
+            addButton(button,1,(task.decision and "REVIEW: " or "OPEN NEXT STEP: ") .. text(v(task.record,1,"Station")) .. " / " .. text(v(task.record,4,"Problem")),function() menu.playerTaskOpen(task.record) end,true)
+            local status = tableWidget:addRow(false)
+            status[1]:setColSpan(4):createText(task.state,{wordwrap=true})
+        end
+    end
+    local row = tableWidget:addRow(true)
+    row[1]:setColSpan(2); addButton(row,1,"PLAN MORE PRODUCTION",function() menu.playerRoute("plans") end,true)
+    row[3]:setColSpan(2); addButton(row,3,"CHECK RESOURCE SUPPLY",function() menu.playerRoute("supply") end,true)
+    row = tableWidget:addRow(true)
+    row[1]:setColSpan(2); addButton(row,1,"CONSTRUCTION PROGRESS",function() menu.playerRoute("construction") end,true)
+    row[3]:setColSpan(2); addButton(row,3,"DELIVERIES AND SHIPS",function() menu.playerRoute("fleet") end,true)
+end
+
+-- Standalone advisory scenarios. No case, order, construction or repair gate is changed.
+function menu.goalNumber(value)
+    local number = tonumber(value)
+    if not number or number ~= number or number == math.huge or number == -math.huge or number < 0 then return nil end
+    return number
+end
+
+function menu.goalRecipes()
+    local recipes, list = {}, {}
+    local count = menu.goalNumber(C.GetNumBlueprints("", "", ""))
+    assert(count and count <= 4096, "Blueprint inventory unavailable or exceeds the safe bound")
+    if count == 0 then return recipes, list end
+    local buffer = ffi.new("UIBlueprint[?]", count)
+    local actual = menu.goalNumber(C.GetBlueprints(buffer, count, "", "", ""))
+    assert(actual and actual <= count, "Blueprint inventory changed; check again")
+    for i=0,actual-1 do
+        local macro = ffi.string(buffer[i].macro)
+        local name, library = GetMacroData(macro, "name", "infolibrary")
+        if library == "moduletypes_production" or library == "moduletypes_processing" then
+            local data = GetLibraryEntry(library, macro)
+            -- Multi-product processing needs a separate shared-cycle model; never guess it here.
+            if type(data) == "table" and (library == "moduletypes_processing" or data.allowproduction == true) and type(data.products) == "table" and #data.products == 1 then
+                local product = data.products[1]
+                local cycle, amount = menu.goalNumber(product.cycle), menu.goalNumber(product.amount)
+                local ware = menu.supplyWareId(product.ware)
+                if cycle and cycle > 0 and amount and amount > 0 and ware ~= "" and not menu.supplyIsExcludedWare(ware) and type(product.resources) == "table" then
+                    local recipe = {macro=macro, name=tostring(name or macro), ware=ware, rate=amount*3600/cycle, inputs={}, workforce=menu.goalNumber(data.maxworkforce)}
+                    local valid = menu.goalNumber(recipe.rate) ~= nil and recipe.rate > 0
+                    for _, resource in ipairs(product.resources) do
+                        local input, quantity = menu.supplyWareId(resource.ware), menu.goalNumber(resource.amount)
+                        if input == "" or not quantity or not menu.goalNumber(quantity*3600/cycle) then valid = false; break end
+                        local inputName, transport = GetWareData(input, "name", "transport")
+                        recipe.inputs[#recipe.inputs+1] = {ware=input, name=tostring(inputName or input), rate=quantity*3600/cycle, transport=string.upper(tostring(transport or "UNKNOWN"))}
+                    end
+                    if valid then
+                        recipes[ware] = recipes[ware] or {}
+                        recipes[ware][#recipes[ware]+1] = recipe
+                        list[#list+1] = recipe
+                    end
+                end
+            end
+        end
+    end
+    table.sort(list,function(a,b) return a.ware .. a.macro < b.ware .. b.macro end)
+    return recipes,list
+end
+
+function menu.goalCalculate(root, recipes, quantity, mode, policy)
+    assert(mode == "modules" or mode == "rate", "Unknown target mode")
+    assert(policy == "external" or policy == "local", "Unknown support policy")
+    assert(quantity and quantity > 0 and quantity <= 10000000, "Enter a positive target within 10,000,000")
+    local count = mode == "modules" and quantity or math.ceil(quantity/root.rate)
+    assert(count >= 1 and count == math.floor(count) and count <= 999, "Use a whole module count between 1 and 999")
+    local selected, counts, demand = {[root.ware]=root}, {[root.ware]=count}, {}
+    local stable = false
+    for pass=1,24 do
+        demand = {}
+        for ware, modules in pairs(counts) do
+            for _, input in ipairs(selected[ware].inputs) do demand[input.ware] = (demand[input.ware] or 0) + input.rate*modules end
+        end
+        local nextCounts = {[root.ware]=count}
+        for ware, rate in pairs(demand) do
+            assert(ware ~= root.ware, "Cyclic recipe chain needs manual review")
+            local choices = recipes[ware]
+            local _, transport = GetWareData(ware,"name","transport")
+            transport = string.upper(tostring(transport or "UNKNOWN"))
+            if policy == "local" and transport == "CONTAINER" and choices and #choices == 1 then
+                selected[ware] = choices[1]
+                nextCounts[ware] = math.ceil(rate/choices[1].rate)
+                assert(nextCounts[ware] <= 999, "Support exceeds 999 modules; reduce the goal")
+            end
+        end
+        stable = true
+        for ware, value in pairs(nextCounts) do if counts[ware] ~= value then stable = false end end
+        for ware in pairs(counts) do if not nextCounts[ware] then stable = false end end
+        counts = nextCounts
+        if stable then break end
+    end
+    assert(stable, "Recipe chain did not converge within 24 tiers")
+    local rows = {}
+    for ware, modules in pairs(counts) do
+        local recipe = selected[ware]
+        rows[#rows+1] = {"MODULE",ware,recipe.macro,recipe.name,modules,recipe.rate*modules,recipe.workforce and tostring(recipe.workforce*modules) or "UNKNOWN"}
+    end
+    for ware, rate in pairs(demand) do
+        if not counts[ware] then
+            local name, transport = GetWareData(ware,"name","transport")
+            transport = string.upper(tostring(transport or "UNKNOWN"))
+            local raw = transport == "SOLID" or transport == "LIQUID"
+            rows[#rows+1] = {raw and "RAW SUPPLY" or "INPUT SUPPLY",ware,"",tostring(name or ware),0,rate,"UNVERIFIED"}
+        end
+    end
+    table.sort(rows,function(a,b) return a[1] .. a[2] < b[1] .. b[2] end)
+    assert(#rows <= 96,"Scenario exceeds the 96-row bound")
+    return rows,count
+end
+
+function menu.goalEqual(a,b,depth)
+    if type(a) ~= type(b) then return false end
+    if type(a) ~= "table" then return a == b end
+    if (depth or 0) > 8 then return false end
+    for key,value in pairs(a) do if not menu.goalEqual(value,b[key],(depth or 0)+1) then return false end end
+    for key in pairs(b) do if a[key] == nil then return false end end
+    return true
+end
+
+function menu.goalDense(value,maximum)
+    if type(value) ~= "table" or #value > maximum then return false end
+    local count=0
+    for key in pairs(value) do
+        if type(key) ~= "number" or key < 1 or key ~= math.floor(key) or key > #value then return false end
+        count=count+1
+    end
+    return count == #value
+end
+
+function menu.goalStore()
+    local player = ConvertStringTo64Bit(tostring(C.GetPlayerID()))
+    assert(player and player ~= 0,"Player identity unavailable")
+    local store = GetNPCBlackboard(player,"$JKEOC_B367_PlayerScenarios")
+    if store == nil then store = {1,{}} end
+    assert(menu.goalDense(store,2) and #store == 2 and store[1] == 1 and menu.goalDense(store[2],50),"Scenario store unavailable or incompatible; preserved unchanged")
+    for _, record in ipairs(store[2]) do
+        assert(menu.goalDense(record,14) and #record == 14 and record[1] == 1 and menu.goalDense(record[10],96),"Incomplete saved scenario; preserved unchanged")
+        for _, index in ipairs({2,3,4,5,6,7,8,11}) do assert(type(record[index]) == "string","Incomplete saved identity; preserved unchanged") end
+        for _, index in ipairs({9,12,13,14}) do assert(menu.goalNumber(record[index]),"Incomplete saved measurement; preserved unchanged") end
+        assert(record[7] == "modules" or record[7] == "rate","Unsupported saved target mode")
+        assert(record[8] == "local" or record[8] == "external","Unsupported saved support policy")
+        for _, item in ipairs(record[10]) do
+            assert(menu.goalDense(item,7) and #item == 7,"Incomplete saved checklist")
+            for _, index in ipairs({1,2,3,4,7}) do assert(type(item[index]) == "string","Invalid checklist identity") end
+            assert(menu.goalNumber(item[5]) and menu.goalNumber(item[6]),"Invalid checklist quantity")
+        end
+    end
+    return store,player
+end
+
+function menu.goalModuleInventory(station)
+    local installed,planned={},{}
+    local count=menu.goalNumber(C.GetNumStationModules(station,true,true))
+    assert(count and count <= 4096,"Station module inventory unavailable or too large")
+    if count > 0 then
+        local buffer=ffi.new("UniverseID[?]",count)
+        local actual=menu.goalNumber(C.GetStationModules(buffer,count,station,true,true))
+        assert(actual and actual <= count,"Station inventory changed")
+        for i=0,actual-1 do
+            local component=ConvertStringTo64Bit(tostring(buffer[i]))
+            if C.IsComponentOperational(component) and not IsComponentConstruction(component) then
+                local macro=GetComponentData(component,"macro")
+                assert(type(macro)=="string" and macro ~= "","Module macro unavailable")
+                installed[macro]=(installed[macro] or 0)+1
+            end
+        end
+    end
+    count=menu.goalNumber(C.GetNumPlannedStationModules(station,true))
+    assert(count and count <= 4096,"Persisted plan inventory unavailable or too large")
+    if count > 0 then
+        local buffer=ffi.new("UIConstructionPlanEntry[?]",count)
+        local actual=menu.goalNumber(C.GetPlannedStationModules(buffer,count,station,true))
+        assert(actual and actual <= count,"Persisted plan changed")
+        for i=0,actual-1 do
+            local component=buffer[i].componentid
+            if component == 0 or IsComponentConstruction(ConvertStringTo64Bit(tostring(component))) then
+                local macro=ffi.string(buffer[i].macroid)
+                assert(macro ~= "","Planned macro unavailable")
+                planned[macro]=(planned[macro] or 0)+1
+            end
+        end
+    end
+    return installed,planned
+end
+
+function menu.goalCheck()
+    menu.goalResult = nil
+    local ok, result = pcall(function()
+        local profile = selectedStation()
+        local id = profile and tostring(v(profile,24,"")) or ""
+        local station = profile and menu.supplyStationId(profile)
+        assert(station and id ~= "" and C.IsComponentOperational(station) and GetComponentData(station,"isplayerowned") == true,"Select a current operational player station first")
+        local recipes,list = menu.goalRecipes()
+        local draft = menu.goalDraft
+        local root
+        for _, recipe in ipairs(list) do if recipe.macro == draft.macro and recipe.ware == draft.ware then root=recipe; break end end
+        assert(root,"Selected owned recipe is no longer available")
+        local production = menu.goalNumber(C.GetContainerWareProduction(station,root.ware,true))
+        local consumption = menu.goalNumber(C.GetContainerWareConsumption(station,root.ware,true))
+        assert(production and consumption,"Native rates unavailable; no zero was assumed")
+        local rows,count = menu.goalCalculate(root,recipes,menu.goalNumber(draft.quantity),draft.mode,draft.policy)
+        local inventoryOk,installed,planned=pcall(menu.goalModuleInventory,station)
+        for _,item in ipairs(rows) do
+            if item[1] == "MODULE" then
+                item[4]=item[4] .. (inventoryOk and (" [operational " .. tostring(installed[item[3]] or 0) .. "; persisted unbuilt entries " .. tostring(planned[item[3]] or 0) .. "]") or " [installed/planned inventory UNKNOWN]")
+            end
+        end
+        local limits = "PLAYER SCENARIO, NOT BUILD APPROVAL. Dedicated additional capacity; existing/planned modules are NOT deducted. Compare the native Build Plan before adding anything. Habitat/provisions, storage allocation, delivery throughput, construction materials, placement and cost are UNVERIFIED. Raw inputs need mining/trade, not factories. Multiple/unsupported input recipes remain external dependencies. No construction or ship order is created."
+        return {1,id,text(v(profile,1,"Station")),root.ware,root.macro,tostring(draft.quantity),draft.mode,draft.policy,getElapsedTime(),rows,limits,production,consumption,count*root.rate}
+    end)
+    if ok then menu.goalResult=result; menu.goalNotice="Scenario calculated. Review every page and the unchecked prerequisites before saving."
+    else menu.goalNotice="CANNOT CHECK: " .. tostring(result) end
+    menu.refresh()
+end
+
+function menu.goalSave()
+    local result = menu.goalResult
+    local profile = selectedStation()
+    if not result or not profile or tostring(v(profile,24,"")) ~= result[2] then menu.goalNotice="Station changed: check the scenario again."; menu.refresh(); return end
+    local ok, failure = pcall(function()
+        local draft=menu.goalDraft
+        assert(draft and draft.ware == result[4] and draft.macro == result[5] and tostring(draft.quantity) == result[6] and draft.mode == result[7] and draft.policy == result[8],"Draft changed; check it again")
+        local station=menu.supplyStationId(profile)
+        assert(station and C.IsComponentOperational(station) and GetComponentData(station,"isplayerowned") == true,"Station is no longer operational and player-owned")
+        local store,player = menu.goalStore()
+        for _, old in ipairs(store[2]) do if menu.goalEqual(old,result) then return end end
+        assert(#store[2] < 50,"50 scenarios already saved; no records were removed")
+        local records = {}
+        for _, old in ipairs(store[2]) do records[#records+1]=old end
+        records[#records+1]=result
+        local proposed = {1,records}
+        SetNPCBlackboard(player,"$JKEOC_B367_PlayerScenarios",proposed)
+        local readback = GetNPCBlackboard(player,"$JKEOC_B367_PlayerScenarios")
+        assert(menu.goalEqual(proposed,readback),"Complete saved readback not proven; inspect saved scenarios before retrying")
+    end)
+    menu.goalNotice=ok and "SAVED: exact scenario read back. It is still an advisory checklist, not construction approval." or "SAVE NOT VERIFIED: " .. tostring(failure)
+    menu.refresh()
+end
+
+function menu.goalRememberPosition()
+    if menu.goalChoosing or menu.goalShowingSaved or menu.goalSavedPreview then return end
+    local id=menu.mainTable and menu.mainTable.id
+    local ok,top=false,nil
+    if id then ok,top=pcall(GetTopRow,id) end
+    menu.goalReturnPosition={top=ok and top or nil,selected=id and Helper.currentTableRow and Helper.currentTableRow[id] or nil}
+end
+
+function menu.goalBack()
+    menu.goalChoosing=false
+    menu.goalShowingSaved=false
+    if menu.goalSavedPreview then menu.goalResult=menu.goalWorkingResult end
+    menu.goalSavedPreview=false
+    menu.goalWorkingResult=nil
+    menu.goalRestorePosition=menu.goalReturnPosition
+    menu.goalNotice="Your plan entries are retained. Review the station and target before checking."
+    menu.refresh()
+end
+
+function menu.goalSelectStation(_, value)
+    local id=tostring(value or "")
+    local current=selectedStation()
+    if id == "" or (current and tostring(v(current,24,"")) == id) then return end
+    for index,profile in ipairs(menu.stations or {}) do
+        if tostring(v(profile,24,"")) == id then
+            menu.selected=index
+            menu.goalResult=nil; menu.goalWorkingResult=nil; menu.goalSavedPreview=false
+            menu.supplyDraft=nil; menu.supplyDrafts={}; menu.supplyPreview=nil; menu.supplyBatchPreview=nil
+            menu.supplyApplyResult=nil; menu.supplySelectedWare=nil; menu.supplyStationDetailWare=nil
+            menu.supplyProducerDetailWare=nil; menu.supplyCapacityDetailWare=nil
+            menu.goalNotice="Station changed. Your recipe and target are retained; check again for this station. No analysis ran automatically."
+            menu.refresh()
+            return
+        end
+    end
+end
+
+function menu.playerPlans(tableWidget)
+    section(tableWidget,"PLAN MORE PRODUCTION")
+    local row=tableWidget:addRow(false)
+    row[1]:setColSpan(4):createText("Choose where and what you want to produce, set your target, then check the plan.",{wordwrap=true})
+    local options={}
+    local profile=selectedStation()
+    for _,station in ipairs(menu.stations or {}) do
+        local id=tostring(v(station,24,""))
+        if id ~= "" then options[#options+1]={id=id,text=text(v(station,1,"Station")),icon="",displayremoveoption=false} end
+    end
+    row=tableWidget:addRow(true); row[1]:createText("1. STATION FOR THIS PLAN")
+    row[2]:setColSpan(3):createDropDown(options,{active=#options>0,startOption=profile and tostring(v(profile,24,"")) or "",height=Helper.standardButtonHeight}):setTextProperties({fontsize=Helper.standardFontSize})
+    row[2].handlers.onDropDownConfirmed=menu.goalSelectStation
+    row=tableWidget:addRow(true); row[1]:setColSpan(2)
+    addButton(row,1,menu.goalDraft and "CHANGE PRODUCT (opens recipe list)" or "> NEXT: CHOOSE PRODUCT (opens recipe list)",function()
+        menu.goalRememberPosition()
+        if menu.goalSavedPreview then menu.goalResult=menu.goalWorkingResult; menu.goalWorkingResult=nil; menu.goalSavedPreview=false end
+        local ok,recipes,list=pcall(menu.goalRecipes)
+        if ok then menu.goalChoices=list; menu.goalChoosing=true; menu.goalShowingSaved=false; menu.goalNotice="Choose an owned production recipe. Back keeps your previous choice. Multi-product processing is not modeled." else menu.goalNotice="Cannot read recipes: " .. tostring(recipes) end
+        menu.refresh()
+    end,true)
+    row[3]:setColSpan(2); addButton(row,3,"SAVED PLANS (opens saved list)",function()
+        menu.goalRememberPosition()
+        local ok,store=pcall(menu.goalStore)
+        if ok then menu.goalSaved=store[2]; menu.goalShowingSaved=true; menu.goalChoosing=false else menu.goalNotice=tostring(store) end
+        menu.refresh()
+    end,true)
+    if menu.goalNotice then row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(menu.goalNotice,{wordwrap=true}) end
+    if menu.goalChoosing then
+        local choices=menu.goalChoices or {}
+        local first,last=menu.adaptiveListNavigation(tableWidget,"goal.recipes",#choices,{fixedRows=20,rowUnits=1,columns=2,maximum=32})
+        for index=first,last do
+            local recipe=choices[index]
+            local column=((index-first)%2)*2+1
+            if column == 1 then row=tableWidget:addRow(true) end
+            row[column]:setColSpan(2)
+            addButton(row,column,recipe.ware .. " - " .. recipe.name,function()
+                menu.goalDraft={ware=recipe.ware,macro=recipe.macro,quantity="1",mode="modules",policy="external"}
+                menu.goalChoosing=false; menu.goalShowingSaved=false; menu.goalResult=nil; menu.refresh()
+            end,true)
+        end
+        return
+    end
+    if menu.goalShowingSaved then
+        local saved=menu.goalSaved or {}
+        local first,last=menu.adaptiveListNavigation(tableWidget,"goal.saved",#saved,{fixedRows=18,rowUnits=1,maximum=8})
+        for index=first,last do
+            local record=saved[index]
+            row=tableWidget:addRow(true); row[1]:setColSpan(4)
+            addButton(row,1,record[3] .. " / " .. record[4] .. " / " .. tostring(record[9]),function()
+                if not menu.goalSavedPreview then menu.goalWorkingResult=menu.goalResult end
+                menu.goalResult=record; menu.goalSavedPreview=true; menu.goalShowingSaved=false; menu.goalNotice="Saved snapshot only. Back returns to your unsaved plan; no current construction or supply guarantee."; menu.refresh()
+            end,true)
+        end
+        return
+    end
+    local draft=menu.goalDraft
+    if draft and not menu.goalSavedPreview then
+        pair(tableWidget,"WARE",draft.ware,"RECIPE",draft.macro)
+        row=tableWidget:addRow(true); row[1]:setColSpan(4)
+        addButton(row,1,draft.mode == "modules" and "2. TARGET: ADD PRODUCTION MODULES (click to use units per hour)" or "2. TARGET: INCREASE OUTPUT PER HOUR (click to use module count)",function() draft.mode=draft.mode == "modules" and "rate" or "modules"; draft.quantity=""; menu.goalResult=nil; menu.goalNotice="Target unit changed. Enter a new quantity; the old number was not converted."; menu.refresh() end,true)
+        row=tableWidget:addRow(true); row[1]:setColSpan(2):createText(draft.mode == "modules" and "MODULES TO ADD (enter number, then TAB)" or "EXTRA UNITS PER HOUR (enter number, then TAB)")
+        row[3]:setColSpan(2):createEditBox({height=Helper.standardButtonHeight}):setText(draft.quantity)
+        row[3].handlers.onEditBoxDeactivated=function(_,entered) if menu.goalDraft ~= draft then return end; draft.quantity=tostring(entered); menu.goalResult=nil; menu.goalNotice="Target edited: check the scenario again before saving."; menu.refresh() end
+        row=tableWidget:addRow(true); row[1]:setColSpan(4)
+        addButton(row,1,draft.policy == "external" and "3. INPUTS: SUPPLY FROM OTHER STATIONS OR TRADE (click to change)" or "3. INPUTS: INCLUDE SUPPORTING PRODUCTION HERE (click to change)",function() draft.policy=draft.policy == "external" and "local" or "external"; menu.goalResult=nil; menu.refresh() end,true)
+        row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(draft.policy == "external" and "Assumes you will arrange the required inputs elsewhere. This does not search for sellers, check availability or order deliveries." or "Adds dedicated supporting production to this calculation. Mined resources and unsupported recipes still need outside supply; existing capacity is not deducted.",{wordwrap=true})
+        row=tableWidget:addRow(true); row[1]:setColSpan(4); addButton(row,1,menu.goalResult and "CHECK SCENARIO AGAIN" or "> NEXT: CHECK SCENARIO",menu.goalCheck,menu.goalNumber(draft.quantity) ~= nil and menu.goalNumber(draft.quantity)>0)
+    end
+    local result=menu.goalResult
+    if result then
+        section(tableWidget,"SCENARIO: " .. result[3] .. " / " .. result[4])
+        pair(tableWidget,"ADDITIONAL RECIPE OUTPUT / H",result[14],"INSTALLED OUTPUT / INPUT / H",tostring(result[12]) .. " / " .. tostring(result[13]))
+        row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(result[11],{wordwrap=true,color=investigationUnknownColor})
+        local first,last=menu.adaptiveListNavigation(tableWidget,"goal.rows",#result[10],{fixedRows=36,rowUnits=2,maximum=4})
+        for index=first,last do
+            local item=result[10][index]
+            local detail = item[1] == "MODULE" and (tostring(item[5]) .. " additional modules | " .. tostring(item[6]) .. "/h | maximum workforce " .. item[7]) or (tostring(item[6]) .. "/h supply required; delivery not proven")
+            row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(item[1] .. ": " .. item[4] .. " | " .. detail,{wordwrap=true})
+        end
+        if draft and not menu.goalSavedPreview then row=tableWidget:addRow(true); row[1]:setColSpan(4); addButton(row,1,"> AFTER REVIEW: SAVE ADVISORY CHECKLIST",menu.goalSave,true) end
+    end
+    row=tableWidget:addRow(true); row[1]:setColSpan(4)
+    addButton(row,1,"RELATED TOOL: EXISTING REPAIR PLANS (opens another page)",function() menu.goalRememberPosition(); captureNavigation("YOUR PLAN"); menu.page="solution"; menu.activeTab="solution"; menu.refresh() end,true)
+end
+
+function menu.playerTools(tableWidget)
+    section(tableWidget,"ALL TOOLS - NOTHING REMOVED")
+    local entries = {
+        {"stations","Manage a station"},{"story","Station history and overview"},
+        {"kpi","Money, storage and other statistics"},{"supply","Resource supply analysis"},
+        {"fleet","Deliveries, assigned ships and ship building"},{"cases","Cases and retained evidence"},
+        {"solution","Repair planner and saved build lists"},{"construction","Construction and funding"},
+        {"reports","Reports"},{"settings","Permissions and preferences"},
+        {"diagnostics","Problem diagnosis and verification"}
+    }
+    local first,last=menu.adaptiveListNavigation(tableWidget,"player.tools",#entries,{fixedRows=12,rowUnits=1,maximum=8})
+    for index=first,last do
+        local item=entries[index]
+        local target = item[1]
+        local row = tableWidget:addRow(true); row[1]:setColSpan(4)
+        addButton(row,1,item[2],function() menu.playerRoute(target) end,true)
+    end
+end
+
 local function createHeader(frame, parentWidth)
     local titleHeight = Helper.scaleY(42)
     local tabHeight = Helper.scaleY(38)
     local headerHeight = titleHeight + tabHeight
     local usableWidth = parentWidth - 2 * Helper.borderSize
-    local tableWidget = frame:addTable(11, {
+    local tableWidget = frame:addTable(6, {
         tabOrder = 1,
         x = Helper.borderSize,
         y = Helper.borderSize,
         width = usableWidth,
         borderEnabled = true,
     })
-    local columnWidth = math.floor(usableWidth / 11)
+    local columnWidth = math.floor(usableWidth / 6)
 
     tableWidget:setColWidth(1, columnWidth, false)
     tableWidget:setColWidth(2, columnWidth, false)
     tableWidget:setColWidth(3, columnWidth, false)
     tableWidget:setColWidth(4, columnWidth, false)
     tableWidget:setColWidth(5, columnWidth, false)
-    tableWidget:setColWidth(6, columnWidth, false)
-    tableWidget:setColWidth(7, columnWidth, false)
-    tableWidget:setColWidth(8, columnWidth, false)
-    tableWidget:setColWidth(9, columnWidth, false)
-    tableWidget:setColWidth(10, columnWidth, false)
 
     local row = tableWidget:addRow(false, { fixed = true })
-    row[1]:setColSpan(11):createText(menu.title, {
+    row[1]:setColSpan(6):createText(menu.title, {
         halign = "center",
         font = Helper.titleFont,
         fontsize = Helper.standardFontSize + 4,
     })
 
     row = tableWidget:addRow(true, { fixed = true })
-    addTabButton(row, 1, "STATIONS", "stations")
-    addTabButton(row, 2, "OVERVIEW", "dashboard")
-    addTabButton(row, 3, "KPI CENTER", "kpi")
-    addTabButton(row, 4, "SUPPLY MODEL", "supply")
-    addTabButton(row, 5, "FLEET & LOGISTICS", "fleet")
-    addTabButton(row, 6, "DIAGNOSTICS", "diagnostics")
-    addTabButton(row, 7, "SOLUTION PLANNER", "solution")
-    addTabButton(row, 8, "CONSTRUCTION", "construction")
-    addTabButton(row, 9, "CASES", "cases")
-    addTabButton(row, 10, "REPORTS", "reports")
-    addTabButton(row, 11, "GLOBAL SETTINGS", "settings")
+    addTabButton(row, 1, "HOME", "dashboard")
+    addTabButton(row, 2, "STATIONS", "stations")
+    addTabButton(row, 3, "PLANS", "plans")
+    addTabButton(row, 4, "HISTORY", "reports")
+    addTabButton(row, 5, "SETTINGS", "settings")
+    addTabButton(row, 6, "ALL TOOLS", "tools")
 
     local activeColumns = {
-        stations = 1,
-        dashboard = 2,
-        kpi = 3,
-        supply = 4,
-        fleet = 5,
-        diagnostics = 6,
-        solution = 7,
-        construction = 8,
-        cases = 9,
-        reports = 10,
-        settings = 11,
+        dashboard = 1, stations = 2, plans = 3, solution = 3,
+        reports = 4, story = 4, settings = 5,
+        tools = 6, kpi = 6, supply = 6, fleet = 6,
+        diagnostics = 1, cases = 6, construction = 6,
     }
     tableWidget:setSelectedRow(2)
-    tableWidget:setSelectedCol(activeColumns[menu.activeTab or menu.page] or 2)
+    tableWidget:setSelectedCol(activeColumns[menu.activeTab or menu.page] or 1)
 
     tableWidget.properties.maxVisibleHeight = headerHeight
     return headerHeight
@@ -5356,6 +5839,9 @@ local function casesCenter(tableWidget)
     local selectedDifference = math.max(0, #selectedObservations - selectedEOCCases)
     local brief = tableWidget:addRow(false)
     brief[1]:setColSpan(4):createText(menu.caseScope == "station" and "READ THIS FIRST: EXISTING OPEN CASES are problems EOC is already following. VIEW CASE only opens the existing record; it creates nothing. Supporting issue history is evidence, not another task list. CREATE INVESTIGATION appears only where no player-requested case exists." or "READ THIS FIRST: Every row under EXISTING OPEN CASES is already open. VIEW CASE opens it and never creates another case. A separate CREATE INVESTIGATION control is clearly labeled when retained evidence is not yet a case.", { wordwrap = true, color = navigationStoryColor, font = Helper.headerFont })
+    local maintenance=tableWidget:addRow(true); maintenance[1]:setColSpan(4)
+    addButton(maintenance,1,menu.playerCaseMaintenance and "HIDE ADVANCED HISTORY MAINTENANCE" or "ADVANCED HISTORY MAINTENANCE",function() menu.playerCaseMaintenance=not menu.playerCaseMaintenance; menu.clearCasesConfirm=false; menu.refresh() end,true)
+    if menu.playerCaseMaintenance then
     row = tableWidget:addRow(true)
     row[1]:setColSpan(4)
     if menu.clearCasesConfirm then
@@ -5384,7 +5870,10 @@ local function casesCenter(tableWidget)
             menu.refresh()
         end, not actionState("case.clearall").running)
     end
-    actionResult(tableWidget, "case.clearall", "Deletes EOC case and retained evidence records only, then runs one fresh Empire Analysis. It does not change stations, ships, orders, funds, or settings.")
+    end
+    if menu.playerCaseMaintenance or actionState("case.clearall").running or actionState("case.clearall").result then
+        actionResult(tableWidget, "case.clearall", "Deletes EOC case and retained evidence records only, then runs one fresh Empire Analysis. It does not change stations, ships, orders, funds, or settings.")
+    end
     pair(
         tableWidget,
         "SCOPE",
@@ -5822,9 +6311,9 @@ local function fleetCenter(tableWidget)
     section(tableWidget, "EOC CONCLUSION")
     local fleetConclusion = #menu.pendingAssignments > 0 and
         (#menu.pendingAssignments .. " assignment(s) await " .. (menu.shipmode == "APPROVAL REQUIRED" and "your approval." or "EOC processing.")) or
-        (#menu.registeredShips == 0 and "No eligible logistics ships are registered." or "No assignment currently awaits player approval.")
+        (#menu.registeredShips == 0 and "No ships are registered for EOC assignment. This does not mean your stations lack working ships." or "No assignment currently awaits player approval.")
     local fleetNext = #menu.pendingAssignments > 0 and "Open PENDING and review the first assignment." or
-        (#menu.registeredShips == 0 and "Register suitable unassigned ships." or "Scan shipping needs only after station demand changes.")
+        "Review delivery coverage below. Register a ship only when a supported need requires an EOC candidate."
     local fleetRow = tableWidget:addRow(false)
     fleetRow[1]:setColSpan(4):createText(fleetConclusion .. " DO THIS NEXT: " .. fleetNext, { wordwrap = true })
     pair(tableWidget, "ASSIGNMENT AUTHORITY", menu.shipmode, "TRADE AUTHORITY", menu.mode)
@@ -5944,7 +6433,7 @@ local function fleetCenter(tableWidget)
         local authority = tableWidget:addRow(false)
         authority[1]:setColSpan(4):createText("AUTHORITY: OBSERVATION ONLY FOR LEARNED CAPACITY. The player floor remains the saved policy minimum. EOC's learned minimum changes with actual orders and repeated samples but cannot move, remove, build, or reassign a ship in this TEST build. Escorts remain under SSE control.", { wordwrap = true, color = navigationStoryColor })
         local learnedHelp = tableWidget:addRow(false)
-        learnedHelp[1]:setColSpan(4):createText("EOC FOR DUMMIES: PLAYER FLOOR is the minimum you saved. EOC MINIMUM is the number currently supported by observed open station orders, active ship deals, cargo volume, and assigned capacity. LEARNING means EOC needs six five-minute samples. Recommendations can rise quickly, but fall only one ship after six lower-pressure samples.", { wordwrap = true })
+        learnedHelp[1]:setColSpan(4):createText("HOW TO READ THIS: PLAYER FLOOR is the minimum you saved. EOC MINIMUM is the number currently supported by observed open station orders, active ship deals, cargo volume, and assigned capacity. LEARNING means EOC needs six five-minute samples. Recommendations can rise quickly, but fall only one ship after six lower-pressure samples.", { wordwrap = true })
         if #menu.minimumStaffing == 0 then
             local empty = tableWidget:addRow(false)
             empty[1]:setColSpan(4):createText("NO ACTIVE MINIMUMS: Every saved minimum is zero, or no applicable station currently exists. Zero means disabled. Open Global Settings to choose a target; saving a target does not create a free ship or bypass normal construction.", { wordwrap = true })
@@ -8402,6 +8891,14 @@ end
 
 local function stationWorkspace(tableWidget)
     local station = selectedStation()
+    local stationKey = station and tostring(v(station,24,"")) or ""
+    local switch = tableWidget:addRow(true)
+    switch[1]:setColSpan(4)
+    addButton(switch,1,menu.playerStationDetail == stationKey and "BACK TO STATION NEEDS" or "STATION DETAILS, REPORTS AND ROLE",function()
+        if menu.playerStationDetail == stationKey then menu.playerStationDetail=nil else menu.playerStationDetail=stationKey end
+        menu.refresh()
+    end,station ~= nil)
+    if station and menu.playerStationDetail ~= stationKey then menu.playerTaskList(tableWidget,station); return end
     section(tableWidget, "SELECTED STATION")
 
     if not station then
@@ -8638,6 +9135,14 @@ local function commandOSBoot(tableWidget)
 end
 
 local function globalSettings(tableWidget)
+    section(tableWidget,"WHAT MAY EOC CHANGE?")
+    pair(tableWidget,"TRADE AUTHORITY",menu.mode,"SHIP ASSIGNMENT",menu.shipmode)
+    pair(tableWidget,"CONSTRUCTION FUNDING",menu.constructionAuthority,"FUNDING LIMIT","EXACT VERIFIED SHORTFALL")
+    local summary = tableWidget:addRow(false)
+    summary[1]:setColSpan(4):createText("Review permissions before changing them. Opening this page changes nothing. Existing controls retain their own apply/save behavior.",{wordwrap=true})
+    local preference = tableWidget:addRow(true); preference[1]:setColSpan(4)
+    addButton(preference,1,menu.playerPreferences and "HIDE IDENTITY AND STARTUP PREFERENCES" or "IDENTITY AND STARTUP PREFERENCES",function() menu.playerPreferences=not menu.playerPreferences; menu.refresh() end,true)
+    if menu.playerPreferences then
     commandIdentitySetup(tableWidget, false)
     section(tableWidget, "STARTUP EXPERIENCE")
     local identity = commandIdentityStore()
@@ -8668,6 +9173,7 @@ local function globalSettings(tableWidget)
         menu.refresh()
     end, startupDirty, startupDirty and investigationUnknownColor or investigationPassColor)
 
+    end
     actionResult(tableWidget, "minimum.build", "AUTOMATIC MINIMUM BUILD: reports the last bounded one-ship procurement result. It never bypasses player-owned blueprints, shipyard compatibility, normal resources, or the current shortage check.")
 
     section(tableWidget, "GLOBAL SHIP MINIMUMS")
@@ -8976,6 +9482,12 @@ function menu.create()
         elseif menu.page == "boot" then
             commandOSBoot(tableWidget)
         elseif menu.page == "dashboard" then
+            menu.playerTaskList(tableWidget)
+        elseif menu.page == "tools" then
+            menu.playerTools(tableWidget)
+        elseif menu.page == "plans" then
+            menu.playerPlans(tableWidget)
+        elseif menu.page == "story" then
             dashboard(tableWidget)
         elseif menu.page == "supply" then
             menu.supplyModelCenter(tableWidget)
@@ -9060,6 +9572,12 @@ function menu.refresh(preserveScroll)
         menu.restoreNavigatorPage = nil
         menu.restoreNavigatorTopRow = nil
         menu.restoreNavigatorSelectedRow = nil
+    end
+    if menu.page == "plans" and menu.goalRestorePosition then
+        menu.restoreTablePage="plans"
+        menu.restoreTableTopRow=menu.goalRestorePosition.top
+        menu.restoreTableSelectedRow=menu.goalRestorePosition.selected
+        menu.goalRestorePosition=nil
     end
     menu.create()
 end
