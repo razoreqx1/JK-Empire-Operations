@@ -24,7 +24,7 @@ Build 369 retains the existing EOC features and adds player-first menus and guid
 
 Scenarios do not place modules, spend credits or order ships. External supply is an assumption, not proof of delivery. Supporting production is recipe-dependent; raw resources still need mining or trade. Workforce, storage, throughput, cost and placement require review. Saved player scenarios are snapshots, not live construction progress.
 
-The illustrated Player Guide is awaiting new Build 369 screenshots; older screenshots may show the previous menu layout.
+The illustrated Player Guide now documents the Build 369 task-first menus with verified screenshots of Home, Stations, Plans, Supply, History, Settings, All Tools, and fleet building.
 
 ## Build 366 improvements retained
 
