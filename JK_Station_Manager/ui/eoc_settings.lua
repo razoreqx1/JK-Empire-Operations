@@ -27,6 +27,20 @@
 local ffi = require("ffi")
 local C = ffi.C
 
+-- Native map ABI. Read failures; never clear the player's recorded evidence.
+if not pcall(ffi.typeof, "AIOrderID") then ffi.cdef[[typedef uint64_t AIOrderID;]] end
+if not pcall(ffi.typeof, "OrderFailure") then
+    ffi.cdef[[typedef struct {
+        uint32_t id; AIOrderID orderid; const char* orderdef; const char* message;
+        double timestamp; bool wasdefaultorder; bool wasinloop;
+    } OrderFailure;]]
+end
+ffi.cdef[[
+    uint32_t GetNumOrderFailures(UniverseID controllableid, bool includelooporders);
+    uint32_t GetOrderFailures(OrderFailure* result, uint32_t resultlen, UniverseID controllableid, bool includelooporders);
+    bool GetDefaultOrderFailure(OrderFailure* result, UniverseID controllableid);
+]]
+
 if not pcall(ffi.typeof,"UIConstructionPlanEntry") then
     ffi.cdef[[typedef struct {
         size_t idx; const char* macroid; UniverseID componentid; UIPosRot offset;
@@ -1698,6 +1712,18 @@ local function init()
     RegisterEvent(menu.name .. ".rawsource.detail", menu.rawSourceDetail)
     RegisterEvent(menu.name .. ".rawsource.commit", menu.rawSourceCommit)
     RegisterEvent(menu.name .. ".agreed.status", menu.agreedPlanStatus)
+    RegisterEvent(menu.name .. ".route.begin", menu.routeBegin)
+    RegisterEvent(menu.name .. ".recovery.probe.id", function(_,value) menu.recoveryProbe={id=tonumber(value)} end)
+    RegisterEvent(menu.name .. ".recovery.probe.token", function(_,value) if menu.recoveryProbe then menu.recoveryProbe.token=tonumber(value) end end)
+    RegisterEvent(menu.name .. ".recovery.probe.ship", function(_,value) if menu.recoveryProbe then menu.recoveryProbe.ship=value end end)
+    RegisterEvent(menu.name .. ".recovery.probe.execute", menu.recoveryReadFailures)
+    for index, field in ipairs(menu.routeFields) do
+        local fieldIndex = index
+        RegisterEvent(menu.name .. ".route." .. field, function(_, value) menu.routeField(fieldIndex, value) end)
+    end
+    RegisterEvent(menu.name .. ".route.commit", menu.routeCommit)
+    RegisterEvent(menu.name .. ".route.clear", function() menu.routeRecords={}; menu.routeSelected=nil; menu.routeIncoming=nil; menu.routeWaiting=false; menu.routePending=nil; menu.routeRequestedKey=nil; menu.routeGeneration=0; menu.routeRelated=nil; menu.routeRelatedOpen=false; menu.routeEvidence=nil end)
+    RegisterEvent(menu.name .. ".route.error", function(_, value) menu.routeNotice=tostring(value); menu.routeWaiting=false; menu.routePending=nil; if menu.page=="fleet" then menu.refresh() end end)
 end
 
 function menu.resetTabToRoot(page)
@@ -1724,7 +1750,10 @@ function menu.resetTabToRoot(page)
         menu.supplyCapacityDetailWare = nil
         menu.supplyOverviewDetailWare = {}
     elseif page == "fleet" then
-        menu.fleetScope = "global"
+        menu.routeAdvanced=nil; menu.routeSelected=nil; menu.routeRequestedKey=nil; menu.routeNotice=nil; menu.routeWaiting=false
+        menu.fleetScope = "station"
+        menu.routePending=nil; menu.routeWare=nil; menu.routeWareName=nil
+        menu.routeRelated=nil; menu.routeRelatedOpen=false; menu.routeEvidence=nil
         menu.fleetView = "coverage"
         menu.fleetPage = 1
         menu.coverageFilter = "action"
@@ -1803,6 +1832,12 @@ function menu.onShowMenu()
         menu.rawSourceRecords[key] = { status = text(v(record, 4, "SOURCE REQUIRED")), ship = text(v(record, 5, "")), detail = text(v(record, 6, "")) }
     end
     menu.logisticsCoverage = v(menu.param, 37, {})
+    menu.routeGeneration = tonumber(v(menu.param,44,0)) or 0
+    menu.routeRecords = {}
+    for _, record in ipairs(v(menu.param,45,{})) do
+        if menu.routeValid(record) then menu.routeRecords[tonumber(record[1])]=record end
+    end
+    menu.routeWaiting=false; menu.routePending=nil
     menu.minimumStaffing = v(menu.param, 38, {})
     menu.capacityByRole = {}
     menu.capacityRecords = {}
@@ -1885,7 +1920,7 @@ function menu.onShowMenu()
     menu.caseSeverity = menu.caseSeverity or "all"
     menu.selectedCase = clamp(menu.selectedCase or 1, 1, math.max(1, #menu.cases))
     menu.casePage = math.max(1, tonumber(menu.casePage) or 1)
-    menu.fleetScope = menu.fleetScope or "global"
+    menu.fleetScope = menu.fleetScope or "station"
     menu.fleetView = menu.fleetView or "coverage"
     menu.tradeActivityView = menu.tradeActivityView or "empire"
     menu.fleetPage = math.max(1, tonumber(menu.fleetPage) or 1)
@@ -2094,6 +2129,8 @@ menu.playerPageGuides = {
 }
 
 function menu.addPlayerPageGuide(tableWidget, page)
+    if page == "fleet" and (not menu.fleetView or menu.fleetView == "coverage") and not menu.routeAdvanced then return end
+    if page == "solution" and not menu.solutionRepairEvidence then return end
     if page == "plans" and (menu.goalChoosing or menu.goalShowingSaved or menu.goalSavedPreview) then
         local back = tableWidget:addRow(true)
         back[1]:setColSpan(4)
@@ -3379,6 +3416,15 @@ local function addWorkingStationBanner(tableWidget)
     local stationName = text(v(station, 1, "SELECTED STATION"))
     local caseSubject = menu.diagnosticCase and text(v(menu.diagnosticCase, 1, "")) == stationName and text(v(menu.diagnosticCase, 4, "")) or nil
     local label = "WORKING STATION - " .. stationName
+    if menu.page=="supply" and menu.supplyView and menu.supplyView~="home" and menu.supplyView~="station" and menu.supplyView~="settings" then
+        label="ANALYSIS SCOPE: EMPIRE - ALL MEASURED STATIONS"; caseSubject=nil
+    elseif menu.page=="fleet" and not menu.routeAdvanced then
+        local route=menu.routeSelected and (menu.routeRecords or {})[menu.routeSelected]
+        if route then label="INVESTIGATING: "..route[3].." - "..route[4]
+        elseif menu.fleetScope=="global" then label="ANALYSIS SCOPE: EMPIRE - ALL STATIONS"
+        else label="ANALYSIS SCOPE: SELECTED STATION - "..stationName end
+        caseSubject=nil
+    end
     if caseSubject and caseSubject ~= "-" then label = label .. "  |  CASE - " .. caseSubject end
     local row = tableWidget:addRow(false)
     row[1]:setColSpan(4)
@@ -3855,7 +3901,12 @@ function menu.supplyCaseBridge(tableWidget, detailRecord, prior)
         raw[1]:setColSpan(4):createText("This is a mined raw resource. Zero station-module production is expected and does not by itself justify a production case. Review assigned miners, station stock, confirmed movement, and reachable trade supply in Fleet & Logistics.", { wordwrap = true, color = navigationStoryColor })
         local route = tableWidget:addRow(true)
         route[1]:setColSpan(4)
-        addButton(route, 1, "OPEN FLEET & LOGISTICS — RAW RESOURCE COVERAGE", function() menu.page = "fleet"; menu.activeTab = "fleet"; menu.fleetView = "coverage"; menu.fleetScope = "global"; menu.refresh() end, true)
+        addButton(route, 1, "CHECK THIS RESOURCE AT THE SELECTED STATION", function()
+            menu.page="fleet"; menu.activeTab="fleet"; menu.fleetView="coverage"; menu.fleetScope="station"
+            menu.routeWare=detailRecord.ware; menu.routeWareName=detailRecord.name
+            menu.routeSelected=nil; menu.routeAdvanced=nil; menu.routeWaiting=false; menu.routePending=nil; menu.routeNotice=nil
+            menu.refresh()
+        end, true)
         return
     end
     if (tonumber(detailRecord.coverage) or 100) >= 50 then return end
@@ -4041,9 +4092,11 @@ function menu.supplyNavigation(tableWidget)
     section(tableWidget, "SUPPLY MODEL — CHOOSE THE QUESTION YOU WANT ANSWERED")
     if not menu.playerSupplyTools then
         local choice=tableWidget:addRow(true); choice[1]:setColSpan(4)
-        addButton(choice,1,"WHAT IS MY EMPIRE SHORT OF?",function() menu.supplyView="balance"; menu.refresh() end,true)
+        addButton(choice,1,"CHECK DELIVERY PROBLEMS AT MY SELECTED STATION",function() menu.playerRoute("fleet") end,true)
         choice=tableWidget:addRow(true); choice[1]:setColSpan(4)
         addButton(choice,1,"WHAT DOES MY SELECTED STATION MAKE AND USE?",function() menu.supplyView="station"; menu.refresh() end,true)
+        choice=tableWidget:addRow(true); choice[1]:setColSpan(4)
+        addButton(choice,1,"SEPARATE EMPIRE ANALYSIS - ALL STATIONS",function() menu.supplyView="balance"; menu.refresh() end,true)
         choice=tableWidget:addRow(true); choice[1]:setColSpan(4)
         addButton(choice,1,"PLAN MORE PRODUCTION",function() menu.playerRoute("plans") end,true)
         choice=tableWidget:addRow(true); choice[1]:setColSpan(4)
@@ -4431,6 +4484,13 @@ function menu.supplySelectedStationView(tableWidget, view, current, previous)
             menu.supplyBar(tableWidget, "EFFECTIVE OUTPUT", chosen.effectiveProduction, maximum, "/h", investigationPassColor)
             local prior = previousMap[chosen.ware]
             local delta = tableWidget:addRow(false); delta[1]:setColSpan(4):createText("Stock " .. formatNumber(chosen.stock) .. " | effective-output delta " .. menu.supplyDelta(chosen.effectiveProduction, prior and prior.effectiveProduction or nil), { wordwrap = true })
+            local investigate=tableWidget:addRow(true); investigate[1]:setColSpan(4)
+            addButton(investigate,1,"CHECK DELIVERY OF THIS RESOURCE AT THIS STATION",function()
+                menu.page="fleet"; menu.activeTab="fleet"; menu.fleetView="coverage"; menu.fleetScope="station"
+                menu.routeWare=chosen.ware; menu.routeWareName=chosen.name
+                menu.routeSelected=nil; menu.routeAdvanced=nil; menu.routeWaiting=false; menu.routePending=nil; menu.routeNotice=nil
+                menu.refresh()
+            end,true)
         end
         if #displayWares == 0 then local empty = tableWidget:addRow(false); empty[1]:setColSpan(4):createText("No measurable production or consumption rate was returned for this station.") end
         return
@@ -4592,6 +4652,7 @@ end
 -- Player-first presentation only. These routes reuse existing guarded actions;
 -- opening a task or a tool never creates an investigation or starts a scan.
 function menu.playerRoute(page)
+    if page == "solution" or page == "plans" then menu.solutionRepairEvidence = nil end
     menu.resetTabToRoot(page)
     menu.page = page
     menu.activeTab = page
@@ -4790,9 +4851,10 @@ function menu.goalStore()
     if store == nil then store = {1,{}} end
     assert(menu.goalDense(store,2) and #store == 2 and store[1] == 1 and menu.goalDense(store[2],50),"Scenario store unavailable or incompatible; preserved unchanged")
     for _, record in ipairs(store[2]) do
-        assert(menu.goalDense(record,14) and #record == 14 and record[1] == 1 and menu.goalDense(record[10],96),"Incomplete saved scenario; preserved unchanged")
+        assert(menu.goalDense(record,14) and #record == 14 and (record[1] == 1 or record[1] == 2) and menu.goalDense(record[10],96),"Incomplete saved scenario; preserved unchanged")
         for _, index in ipairs({2,3,4,5,6,7,8,11}) do assert(type(record[index]) == "string","Incomplete saved identity; preserved unchanged") end
-        for _, index in ipairs({9,12,13,14}) do assert(menu.goalNumber(record[index]),"Incomplete saved measurement; preserved unchanged") end
+        for _, index in ipairs({9,14}) do assert(menu.goalNumber(record[index]),"Incomplete saved measurement; preserved unchanged") end
+        for _, index in ipairs({12,13}) do assert(menu.goalNumber(record[index]) or (record[1] == 2 and record[index] == "UNKNOWN"),"Incomplete saved measurement; preserved unchanged") end
         assert(record[7] == "modules" or record[7] == "rate","Unsupported saved target mode")
         assert(record[8] == "local" or record[8] == "external","Unsupported saved support policy")
         for _, item in ipairs(record[10]) do
@@ -4851,9 +4913,11 @@ function menu.goalCheck()
         local root
         for _, recipe in ipairs(list) do if recipe.macro == draft.macro and recipe.ware == draft.ware then root=recipe; break end end
         assert(root,"Selected owned recipe is no longer available")
-        local production = menu.goalNumber(C.GetContainerWareProduction(station,root.ware,true))
-        local consumption = menu.goalNumber(C.GetContainerWareConsumption(station,root.ware,true))
-        assert(production and consumption,"Native rates unavailable; no zero was assumed")
+        -- Current station telemetry is optional context, not permission to do recipe math.
+        local productionOk, production = pcall(C.GetContainerWareProduction,station,root.ware,true)
+        local consumptionOk, consumption = pcall(C.GetContainerWareConsumption,station,root.ware,true)
+        production = productionOk and menu.goalNumber(production) or "UNKNOWN"
+        consumption = consumptionOk and menu.goalNumber(consumption) or "UNKNOWN"
         local rows,count = menu.goalCalculate(root,recipes,menu.goalNumber(draft.quantity),draft.mode,draft.policy)
         local inventoryOk,installed,planned=pcall(menu.goalModuleInventory,station)
         for _,item in ipairs(rows) do
@@ -4861,11 +4925,11 @@ function menu.goalCheck()
                 item[4]=item[4] .. (inventoryOk and (" [operational " .. tostring(installed[item[3]] or 0) .. "; persisted unbuilt entries " .. tostring(planned[item[3]] or 0) .. "]") or " [installed/planned inventory UNKNOWN]")
             end
         end
-        local limits = "PLAYER SCENARIO, NOT BUILD APPROVAL. Dedicated additional capacity; existing/planned modules are NOT deducted. Compare the native Build Plan before adding anything. Habitat/provisions, storage allocation, delivery throughput, construction materials, placement and cost are UNVERIFIED. Raw inputs need mining/trade, not factories. Multiple/unsupported input recipes remain external dependencies. No construction or ship order is created."
-        return {1,id,text(v(profile,1,"Station")),root.ware,root.macro,tostring(draft.quantity),draft.mode,draft.policy,getElapsedTime(),rows,limits,production,consumption,count*root.rate}
+        local limits = "You can save this plan with these warnings. The calculation adds dedicated support for your chosen production; it does not assume your existing factories have spare capacity. Before building, compare this list with your station's build plan so you do not add support you already have available. Recipe output is a planning rate, not a promise of live output. Workforce bonuses and location effects have not been applied. Arrange storage of the right type and deliveries for every outside input. Check habitat food and medical supplies if you add workers. Construction materials, funding, builder availability and whether everything fits your plot still need your review. Multiple or unsupported recipes are left as outside supply rather than guessed. Saving remembers your choice; it does not build or order anything."
+        return {2,id,text(v(profile,1,"Station")),root.ware,root.macro,tostring(draft.quantity),draft.mode,draft.policy,getElapsedTime(),rows,limits,production,consumption,count*root.rate}
     end)
-    if ok then menu.goalResult=result; menu.goalNotice="Scenario calculated. Review every page and the unchecked prerequisites before saving."
-    else menu.goalNotice="CANNOT CHECK: " .. tostring(result) end
+    if ok then menu.goalResult=result; menu.goalNotice="Your what-if plan is calculated. You decide whether to use it; the warnings do not prevent saving."
+    else menu.goalNotice="I could not calculate a reliable answer: " .. tostring(result) end
     menu.refresh()
 end
 
@@ -4889,7 +4953,50 @@ function menu.goalSave()
         local readback = GetNPCBlackboard(player,"$JKEOC_B367_PlayerScenarios")
         assert(menu.goalEqual(proposed,readback),"Complete saved readback not proven; inspect saved scenarios before retrying")
     end)
-    menu.goalNotice=ok and "SAVED: exact scenario read back. It is still an advisory checklist, not construction approval." or "SAVE NOT VERIFIED: " .. tostring(failure)
+    menu.goalNotice=ok and "SAVED: your plan and its warnings were read back successfully. You can choose to build it; EOC has not placed any modules or orders." or "SAVE NOT VERIFIED: " .. tostring(failure)
+    menu.refresh()
+end
+
+function menu.plannerOpenPlayerScenario(nativePlan, caseData, calculatorState)
+    local readiness = menu.expansionReadiness
+    if not readiness or readiness.nativePlan ~= nativePlan or readiness.key ~= checklistCaseKey(caseData) or readiness.evidenceKey ~= expansionEvidenceKey(caseData) then
+        menu.plannerSaveStatus = "SCENARIO NOT OPENED: Case evidence changed. Run the readiness check again."
+        menu.refresh()
+        return
+    end
+    local ok, transfer = pcall(function()
+        local index
+        for i, profile in ipairs(menu.stations or {}) do
+            if tostring(menu.supplyStationId(profile)) == tostring(nativePlan.station) then index = i; break end
+        end
+        assert(index and nativePlan.station and C.IsComponentOperational(nativePlan.station) and GetComponentData(nativePlan.station, "isplayerowned") == true, "Station is no longer operational and player-owned")
+        local ware = menu.supplyWareId(nativePlan.ware)
+        local count = menu.goalNumber(calculatorState.counts[ware])
+        assert(count and count >= 1 and count <= 999 and count == math.floor(count), "Enter at least one final-output module and press TAB first")
+        local _, recipes = menu.goalRecipes()
+        local root
+        for _, recipe in ipairs(recipes) do
+            if recipe.ware == ware and nativePlan.selected and recipe.macro == nativePlan.selected.macro then root = recipe; break end
+        end
+        assert(root, "The exact owned recipe is unavailable in the player scenario planner")
+        return {index=index, draft={ware=ware, macro=root.macro, quantity=tostring(count), mode="modules", policy="local"}}
+    end)
+    if not ok then
+        menu.plannerSaveStatus = "SCENARIO NOT OPENED: " .. tostring(transfer)
+        menu.refresh()
+        return
+    end
+    if menu.goalDraft and not menu.goalRepairPrevious then
+        menu.goalRepairPrevious = {draft=menu.goalDraft, result=menu.goalResult, station=selectedStation() and tostring(v(selectedStation(),24,"")) or ""}
+    end
+    if menu.selected ~= transfer.index then
+        menu.goalSelectStation(nil, tostring(v(menu.stations[transfer.index],24,"")))
+    end
+    menu.goalDraft = transfer.draft
+    menu.goalResult = nil; menu.goalWorkingResult = nil; menu.goalSavedPreview = false
+    menu.goalChoosing = false; menu.goalShowingSaved = false; menu.goalRestorePosition = nil
+    menu.goalNotice = "Your station, product and module count were copied from the repair plan. Check this separate player scenario. Supporting production is dedicated additional capacity; existing capacity is not deducted. Repair counts and warnings are retained."
+    menu.page = "plans"; menu.activeTab = "plans"
     menu.refresh()
 end
 
@@ -4957,6 +5064,20 @@ function menu.playerPlans(tableWidget)
         if ok then menu.goalSaved=store[2]; menu.goalShowingSaved=true; menu.goalChoosing=false else menu.goalNotice=tostring(store) end
         menu.refresh()
     end,true)
+    if menu.goalRepairPrevious then
+        row=tableWidget:addRow(true); row[1]:setColSpan(4)
+        addButton(row,1,"RESTORE MY PREVIOUS PLANS DRAFT",function()
+            local previous=menu.goalRepairPrevious
+            if not previous then return end
+            menu.goalSelectStation(nil, previous.station)
+            menu.goalDraft=previous.draft
+            menu.goalResult=nil
+            menu.goalWorkingResult=nil; menu.goalSavedPreview=false; menu.goalChoosing=false; menu.goalShowingSaved=false
+            menu.goalRepairPrevious=nil
+            menu.goalNotice="Previous draft restored. Verify the station and check again before saving."
+            menu.refresh()
+        end,true)
+    end
     if menu.goalNotice then row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(menu.goalNotice,{wordwrap=true}) end
     if menu.goalChoosing then
         local choices=menu.goalChoices or {}
@@ -4967,7 +5088,7 @@ function menu.playerPlans(tableWidget)
             if column == 1 then row=tableWidget:addRow(true) end
             row[column]:setColSpan(2)
             addButton(row,column,recipe.ware .. " - " .. recipe.name,function()
-                menu.goalDraft={ware=recipe.ware,macro=recipe.macro,quantity="1",mode="modules",policy="external"}
+                menu.goalDraft={ware=recipe.ware,macro=recipe.macro,quantity="1",mode="modules",policy="local"}
                 menu.goalChoosing=false; menu.goalShowingSaved=false; menu.goalResult=nil; menu.refresh()
             end,true)
         end
@@ -5004,16 +5125,21 @@ function menu.playerPlans(tableWidget)
         section(tableWidget,"SCENARIO: " .. result[3] .. " / " .. result[4])
         pair(tableWidget,"ADDITIONAL RECIPE OUTPUT / H",result[14],"INSTALLED OUTPUT / INPUT / H",tostring(result[12]) .. " / " .. tostring(result[13]))
         row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(result[11],{wordwrap=true,color=investigationUnknownColor})
-        local first,last=menu.adaptiveListNavigation(tableWidget,"goal.rows",#result[10],{fixedRows=36,rowUnits=2,maximum=4})
+        local first,last=menu.adaptiveListNavigation(tableWidget,"goal.rows",#result[10],{fixedRows=46,rowUnits=5,maximum=2})
         for index=first,last do
             local item=result[10][index]
-            local detail = item[1] == "MODULE" and (tostring(item[5]) .. " additional modules | " .. tostring(item[6]) .. "/h | maximum workforce " .. item[7]) or (tostring(item[6]) .. "/h supply required; delivery not proven")
-            row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(item[1] .. ": " .. item[4] .. " | " .. detail,{wordwrap=true})
+            local detail
+            if item[1] == "MODULE" then
+                detail = "Add " .. tostring(item[5]) .. " of " .. item[4] .. ". Together their recipe output is " .. tostring(item[6]) .. " units per hour. Maximum workforce for these modules: " .. item[7] .. ". Workers and their supplies are not included automatically."
+            else
+                detail = "Arrange " .. tostring(item[6]) .. " units of " .. item[4] .. " every hour from outside this production chain. " .. (item[1] == "RAW SUPPLY" and "This is a mined resource, not another factory. You need compatible miners or a supplier and suitable storage. " or "Provide another producer or a supplier and compatible transport. ") .. "This calculation has not verified a reachable source or enough delivery capacity."
+            end
+            row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(tostring(index) .. ". " .. detail,{wordwrap=true})
         end
-        if draft and not menu.goalSavedPreview then row=tableWidget:addRow(true); row[1]:setColSpan(4); addButton(row,1,"> AFTER REVIEW: SAVE ADVISORY CHECKLIST",menu.goalSave,true) end
+        if draft and not menu.goalSavedPreview then row=tableWidget:addRow(true); row[1]:setColSpan(4); addButton(row,1,"SAVE MY PLAN - KEEP THE WARNINGS",menu.goalSave,true) end
     end
     row=tableWidget:addRow(true); row[1]:setColSpan(4)
-    addButton(row,1,"RELATED TOOL: EXISTING REPAIR PLANS (opens another page)",function() menu.goalRememberPosition(); captureNavigation("YOUR PLAN"); menu.page="solution"; menu.activeTab="solution"; menu.refresh() end,true)
+    addButton(row,1,"DETAILS: EOC REPAIR EVIDENCE AND OLDER BUILD LISTS",function() menu.goalRememberPosition(); captureNavigation("YOUR PLAN"); menu.solutionRepairEvidence=true; menu.page="solution"; menu.activeTab="solution"; menu.refresh() end,true)
 end
 
 function menu.playerTools(tableWidget)
@@ -5084,6 +5210,18 @@ local function createHeader(frame, parentWidth)
 end
 
 local function solutionPlannerCenter(tableWidget)
+    -- Player planning is independent of permission to recommend an automatic repair.
+    -- Retain the evidence-led review and old saved lists behind an explicit Details action.
+    if not menu.solutionRepairEvidence and not menu.solutionAgreedStandaloneKey then
+        menu.playerPlans(tableWidget)
+        return
+    end
+    local advisoryBack = tableWidget:addRow(true)
+    advisoryBack[1]:setColSpan(4)
+    addButton(advisoryBack,1,"BACK TO MY WHAT-IF CALCULATOR",function()
+        menu.solutionRepairEvidence=nil; menu.solutionAgreedStandaloneKey=nil
+        menu.page="plans"; menu.activeTab="plans"; menu.refresh()
+    end,true)
     local caseData = menu.solutionCase or menu.diagnosticCase
     if menu.diagnosticCase and (not caseData or (
         text(v(caseData, 1, "")) == text(v(menu.diagnosticCase, 1, ""))
@@ -5242,7 +5380,7 @@ local function solutionPlannerCenter(tableWidget)
             for _, item in ipairs(displayedPlan) do
                 if item.wareId and calculatorState.counts[menu.supplyWareId(item.wareId)] == nil then calculatorState.counts[menu.supplyWareId(item.wareId)] = "0" end
             end
-            local simplePageSize = 6
+            local simplePageSize = 5
             local simplePageCount = math.max(1, math.ceil(#displayedPlan / simplePageSize))
             menu.plannerSimplePage = math.max(1, math.min(tonumber(menu.plannerSimplePage) or 1, simplePageCount))
             section(tableWidget, (commandScenarioMode and "PLAYER SCENARIO - CHOOSE FINAL MODULE COUNT" or "WHAT TO ADD - BEST CURRENT ESTIMATE") .. (simplePageCount > 1 and (" - PAGE " .. tostring(menu.plannerSimplePage) .. " OF " .. tostring(simplePageCount)) or ""))
@@ -5252,7 +5390,7 @@ local function solutionPlannerCenter(tableWidget)
             local cascadeText = commandScenarioMode and not calculatorState.result and "PLAYER SCENARIO READY: Choose at least one final-output module and check the plan. EOC will calculate the bounded native support cascade without claiming that X4 demand proves your chosen count." or ((activeCascadePassed and "CASCADE CHECK COMPLETE: " or "CASCADE GATE STOPPED - ESTIMATE INCOMPLETE: ") .. activeCascadeReason)
             cascadeRow[1]:setColSpan(4):createText(cascadeText, { wordwrap = true, color = activeCascadePassed and investigationPassColor or investigationFailColor })
             local calculatorGuide = tableWidget:addRow(false)
-            calculatorGuide[1]:setColSpan(4):createText(calculatorState.dirty and "YOUR PLAN CHANGED: Press TAB after the number, then select CHECK MY MODULE PLAN again. The prior result is stale." or (commandScenarioMode and "PROJECT DEMAND IS UNKNOWN: Enter how many final-output modules you are considering, press TAB, then select CHECK MY MODULE PLAN. EOC will calculate the supporting modules and safety gates; it does not claim your chosen final count is required." or "TRY YOUR OWN PLAN: Type how many modules you intend to add, press TAB after each number, then select CHECK MY MODULE PLAN. EOC changes no station or build plan."), { wordwrap = true, color = calculatorState.dirty and investigationFailColor or navigationStoryColor })
+            calculatorGuide[1]:setColSpan(4):createText(calculatorState.dirty and "YOUR PLAN CHANGED: Press TAB after the number, then select CHECK MY MODULE PLAN again. The prior result is stale." or (commandScenarioMode and "PROJECT DEMAND IS UNKNOWN: Enter how many final-output modules you are considering, press TAB, then select CHECK MY MODULE PLAN. EOC will calculate the supporting modules and safety gates; it does not claim your chosen final count is required." or "REPAIR COMPARISON: These counts must match EOC demand estimates to save an agreed repair list. For your own expansion, enter the final factory count, press TAB, then choose PLAN MY OWN EXPANSION."), { wordwrap = true, color = calculatorState.dirty and investigationFailColor or navigationStoryColor })
             local simpleFirst = (menu.plannerSimplePage - 1) * simplePageSize + 1
             local simpleLast = math.min(#displayedPlan, simpleFirst + simplePageSize - 1)
             for simpleIndex = simpleFirst, simpleLast do
@@ -5262,7 +5400,7 @@ local function solutionPlannerCenter(tableWidget)
                 local playerCount = math.max(0, math.floor((tonumber(calculatorState.counts[wareId]) or 0) + 0.5))
                 local simpleRow = tableWidget:addRow(false)
                 if recommended ~= nil and item.editable ~= false then
-                    local comparison = commandScenarioMode and item.finalOutput and (calculatorState.result and ("PLAYER SCENARIO COUNT " .. tostring(playerCount) .. " - NOT AN EOC DEMAND ESTIMATE") or "CHOOSE YOUR COUNT - EOC DEMAND ESTIMATE UNKNOWN") or (calculatorState.result and (playerCount > recommended and ("TOO MANY BY ABOUT " .. tostring(playerCount - recommended)) or (playerCount < recommended and ("ADD ABOUT " .. tostring(recommended - playerCount) .. " MORE") or "MATCHES CURRENT ESTIMATE")) or ("EOC ESTIMATE: ADD ABOUT " .. tostring(recommended)))
+                    local comparison = commandScenarioMode and item.finalOutput and (calculatorState.result and ("PLAYER SCENARIO COUNT " .. tostring(playerCount) .. " - NOT AN EOC DEMAND ESTIMATE") or "CHOOSE YOUR COUNT - EOC DEMAND ESTIMATE UNKNOWN") or (calculatorState.result and (playerCount > recommended and ("ABOVE REPAIR ESTIMATE BY " .. tostring(playerCount - recommended)) or (playerCount < recommended and ("ADD ABOUT " .. tostring(recommended - playerCount) .. " MORE") or "MATCHES CURRENT ESTIMATE")) or ("EOC ESTIMATE: ADD ABOUT " .. tostring(recommended)))
                     local simpleText = (item.module ~= "" and item.module or item.ware) .. " | " .. comparison
                     if item.finalOutput then simpleText = simpleText .. " | INSTALLED " .. tostring(item.installed or 0) .. " | ALREADY PLANNED " .. tostring(item.planned or 0) end
                     if item.kind == "HABITAT" then simpleText = simpleText .. " | " .. formatNumber(item.capacityPerModule or 0) .. " WORKFORCE EACH | ALREADY PLANNED " .. tostring(item.planned or 0) end
@@ -5324,6 +5462,11 @@ local function solutionPlannerCenter(tableWidget)
                 menu.plannerSimplePage = 1
                 menu.refresh()
             end, true)
+            local scenarioRow = tableWidget:addRow(true)
+            scenarioRow[1]:setColSpan(4)
+            addButton(scenarioRow, 1, "PLAN MY OWN EXPANSION (opens Plans with my factory count)", function()
+                menu.plannerOpenPlayerScenario(commandNativePlan, caseData, calculatorState)
+            end, true)
             local canSaveAgreement = calculatorState.result and not calculatorState.dirty and calculatorState.result.cascadePassed and (tonumber(calculatorState.result.moduleIssues) or 0) == 0
             local saveRow = tableWidget:addRow(true)
             saveRow[1]:setColSpan(4)
@@ -5353,7 +5496,7 @@ local function solutionPlannerCenter(tableWidget)
             end
             if calculatorState.result and not canSaveAgreement then
                 local saveGuide = tableWidget:addRow(false)
-                saveGuide[1]:setColSpan(4):createText(calculatorState.dirty and "SAVE LOCKED: Press TAB after the changed number and check the module plan again." or (commandScenarioMode and "SAVE LOCKED: Choose at least one final-output module, match every calculated support count, and complete the cascade before saving this player scenario." or "SAVE LOCKED: EOC and player module counts must match and the cascade must complete before this becomes the remembered build list."), { wordwrap = true, color = investigationFailColor })
+                saveGuide[1]:setColSpan(4):createText(calculatorState.dirty and "SAVE LOCKED: Press TAB after the changed number and check the module plan again." or (commandScenarioMode and "SAVE LOCKED: Choose at least one final-output module, match every calculated support count, and complete the cascade before saving this player scenario." or "REPAIR LIST NOT SAVED: Counts differ from the repair estimate or the cascade is incomplete. To evaluate your chosen factory count separately, select PLAN MY OWN EXPANSION."), { wordwrap = true, color = investigationFailColor })
             end
         end
         local commandRow = tableWidget:addRow(true)
@@ -6289,7 +6432,352 @@ function menu.reconciledLogisticsCoverage()
     return order
 end
 
+function menu.fleetStaffingConclusion(covered, missing, affectedCount, learning, learnedGaps)
+    local floorSummary
+    if missing == 0 then
+        floorSummary = "ALL " .. covered .. " PLAYER-CONFIGURED SHIP FLOORS ARE COVERED."
+    else
+        floorSummary = missing .. " SHIP ROLE(S) AT " .. affectedCount .. " STATION(S) ARE BELOW THE PLAYER FLOOR; " .. covered .. " meet it."
+    end
+    return floorSummary .. " EOC CAPACITY: " .. learning .. " role(s) learning, " .. learnedGaps .. " mature role(s) below the learned operational minimum."
+end
+
+-- Original 22 fields plus optional exact ship identity; old records remain readable.
+menu.routeFields={"id","revision","stationname","warename","role","status","report","step1","step2","step3","ack1","ack2","ack3","time","station","wareid","slot","generation","overview","sourcebrief","changes","actions","ship"}
+function menu.routeValid(record)
+    if type(record)~="table" or (#record~=22 and #record~=23) or not menu.goalDense(record,#record) then return false end
+    for _,i in ipairs({17,18}) do local n=menu.goalNumber(record[i]); if not n or n~=math.floor(n) then return false end end
+    for _,i in ipairs({1,2,14}) do
+        local n=menu.goalNumber(record[i])
+        if not n or (i~=14 and (n<1 or n~=math.floor(n))) then return false end
+    end
+    for _,i in ipairs({3,4,5,6,7,8,9,10,16,19,20,21,22}) do if type(record[i])~="string" then return false end end
+    for i=11,13 do if tonumber(record[i])~=0 and tonumber(record[i])~=1 then return false end end
+    local id=tostring(record[15] or "")
+    return ((id~="" and id~="0") or record[6]=="BLOCKED") and record[16]~=""
+end
+function menu.routeBegin(_,id)
+    menu.routeIncoming={id=tonumber(id),fields={},seen={}}
+end
+function menu.routeField(index,value)
+    local incoming=menu.routeIncoming
+    if not incoming then return end
+    if incoming.seen[index] then incoming.invalid=true end
+    incoming.seen[index]=true
+    incoming.fields[index]=value
+end
+function menu.routeCommit(_,id)
+    local incoming=menu.routeIncoming
+    menu.routeIncoming=nil
+    if not incoming or incoming.invalid or tonumber(id)~=incoming.id or tonumber(incoming.fields[1])~=incoming.id or not menu.routeValid(incoming.fields) then return end
+    menu.routeRecords=menu.routeRecords or {}
+    local prior=menu.routeRecords[incoming.id]
+    if prior and tonumber(prior[2])>tonumber(incoming.fields[2]) then return end
+    menu.routeRecords[incoming.id]=incoming.fields
+    local pending=menu.routePending
+    if pending and tonumber(incoming.fields[17])==pending.slot and tonumber(incoming.fields[18])==pending.generation and incoming.fields[16]==pending.ware and incoming.fields[5]==pending.role then
+        pending.coverage[20]=incoming.id
+        menu.routePending=nil
+        menu.routeSelected=incoming.id
+        menu.routeWaiting=false
+        menu.routeRequestedKey=nil
+        menu.routeNotice=nil
+    elseif menu.routeSelected==incoming.id then menu.routeWaiting=false end
+    if menu.page=="fleet" and not menu.routeAdvanced then menu.refresh() end
+end
+function menu.routeKey(station,ware,role)
+    return tostring(station or "").."|"..tostring(ware or "").."|"..tostring(role or "")
+end
+function menu.routeRecordFor(coverage)
+    local id=tonumber(v(coverage,20,0))
+    if id and id>0 then return (menu.routeRecords or {})[id] end
+end
+function menu.recoveryReadFailures(_,value)
+    local request=menu.recoveryProbe
+    menu.recoveryProbe=nil
+    if not request or not request.id or not request.token or tonumber(value)~=request.token then return end
+    local reply={id=request.id,token=request.token,ok=0,text="Native order-failure reading was unavailable.",latest=0}
+    local ok,err=pcall(function()
+        local raw=tostring(request.ship or ""):gsub("ULL$","")
+        if not raw:match("^%d+$") or not raw:find("[1-9]") then error("Invalid ship identity") end
+        local ship=ConvertStringTo64Bit(raw)
+        if not C.IsComponentOperational(ship) then error("Ship no longer operational") end
+        local findings={}
+        local function add(failure,label)
+            local stamp=tonumber(failure.timestamp)
+            if not stamp or stamp<0 or failure.message==nil then return end
+            local definition=failure.orderdef~=nil and ffi.string(failure.orderdef) or "unknown behavior"
+            findings[#findings+1]={time=stamp,text=label..ffi.string(failure.message),order=tostring(failure.orderid),id=tonumber(failure.id),definition=definition}
+        end
+        local current=ffi.new("OrderFailure[1]")
+        if C.GetDefaultOrderFailure(current,ship) then add(current[0],"Current behavior: ") end
+        local count=tonumber(C.GetNumOrderFailures(ship,true))
+        if not count or count<0 then error("Invalid failure count") end
+        if count>128 then error("Order-failure history exceeds bounded read; current behavior requires separate review") end
+        if count>0 then
+            local rows=ffi.new("OrderFailure[?]",count)
+            local actual=tonumber(C.GetOrderFailures(rows,count,ship,true))
+            if not actual or actual<0 or actual>count then error("Incomplete native failure response") end
+            for i=0,actual-1 do add(rows[i],"Recorded order "..tostring(rows[i].orderid)..": ") end
+        end
+        table.sort(findings,function(a,b) return a.time>b.time end)
+        local lines={}
+        for i=1,math.min(3,#findings) do
+            local finding=findings[i]
+            local details={}
+            if finding.id and type(GetOrderFailureParams)=="function" then
+                local read,params=pcall(GetOrderFailureParams,ship,finding.id)
+                if read and type(params)=="table" then
+                    for j=1,math.min(6,#params) do
+                        local param=params[j]
+                        if type(param)=="table" and not param.hasinfinitevalue and param.type~="internal" and param.value~=nil then
+                            local values={}
+                            if type(param.value)=="table" then
+                                for k=1,math.min(4,#param.value) do
+                                    if type(param.value[k])~="table" then values[#values+1]=tostring(param.value[k]) end
+                                end
+                            else values[1]=tostring(param.value) end
+                            if #values>0 then details[#details+1]=tostring(param.text or param.name or "Parameter")..": "..table.concat(values,", ") end
+                        end
+                    end
+                else details[1]="Recorded parameters unavailable" end
+            end
+            lines[#lines+1]=finding.text.." ["..finding.definition.."; recorded at game time "..tostring(finding.time).."]"..(#details>0 and (" ("..table.concat(details,"; ")..")") or "")
+        end
+        reply.ok=1; reply.latest=findings[1] and findings[1].time or 0
+        reply.text=#lines>0 and table.concat(lines," | ") or "X4 reports no recorded order failure for this ship."
+    end)
+    if not ok then reply.text="EOC could not read this ship's native failure record: "..tostring(err) end
+    raise("recovery.probe.result",reply)
+end
+
+function menu.routeProblem(coverage)
+    local stock,target,blocked=tonumber(coverage[5]),tonumber(coverage[6]),tonumber(coverage[10])
+    local assigned=tonumber(coverage[7])
+    if blocked and blocked>0 then return "A ship or delivery is blocked. EOC needs to check what is stopping it.",true end
+    if tostring(coverage[4]):find("SELL",1,true) then
+        if stock and target and target>0 and stock<=math.ceil(target*0.75) then return "Current stock is already below the selling reserve threshold; no excess-stock fix is indicated.",false end
+        return "Stock may need a selling-route assessment. This is not a buying shortage.",true
+    end
+    if not stock or not target or target<=0 then return "EOC does not have a usable stock target for this route. Its condition is unverified.",true end
+    if stock>=target then return "Current stock meets the reported target. Future delivery is not guaranteed.",false end
+    if tostring(coverage[12]):find("UNAVAILABLE",1,true) then return "Supply is short and the last source check did not establish a usable source.",true end
+    if assigned and assigned==0 then return "Supply is short, and no compatible assigned ship is reported for this route.",true end
+    return "Stock is below its replenishment target. FIX THIS will check actual orders and incoming deliveries before treating this as a failure.",true
+end
+function menu.routeRequest(action,record,step,done)
+    if not menu.routeValid(record) then menu.routeNotice="This recovery record is incomplete. Reopen EOC before acting."; return end
+    local current=menu.routeRecords and menu.routeRecords[tonumber(record[1])]
+    if current~=record then menu.routeNotice="The instructions changed. Read the new instructions before acting."; menu.refresh(); return end
+    menu.routeWaiting=true
+    raise(action,{id=tonumber(record[1]),revision=tonumber(record[2]),step=step or 0,done=done or 0})
+    menu.refresh()
+end
+function menu.routeOpen(coverage)
+    local related=false
+    for _,entry in ipairs(menu.routeRelated or {}) do if entry.coverage==coverage then related=true; break end end
+    if not related then menu.routeRelated=nil; menu.routeRelatedOpen=false end
+    menu.routeEvidence=nil
+    local record=menu.routeRecordFor(coverage)
+    if record then menu.routeSelected=tonumber(record[1]); menu.routeNotice=nil; menu.refresh(); return end
+    local present=false
+    for _,current in ipairs(menu.logisticsCoverage or {}) do if current==coverage then present=true; break end end
+    local slot=tonumber(v(coverage,19,0))
+    if not present or not slot or slot<1 or slot~=math.floor(slot) or menu.routeGeneration<=0 or tostring(v(coverage,17,""))=="" then
+        menu.routeNotice="This route has no current native identity. Close and reopen EOC before asking it to change ships."; menu.refresh(); return
+    end
+    menu.routeRequestedKey=nil
+    menu.routePending={slot=slot,generation=menu.routeGeneration,ware=coverage[2],role=coverage[4],coverage=coverage}
+    menu.routeWaiting=true; menu.routeNotice="FIX THIS received. EOC is checking this station and resource; a ship change is not yet confirmed."
+    raise("route.fix",{slot=slot,generation=menu.routeGeneration})
+    menu.refresh()
+end
+function menu.routeGroupEntries(entries)
+    local groups,bykey={},{}
+    local function priority(entry)
+        local status=entry.saved and entry.saved[6]
+        if status=="APPROVAL NEEDED" or status=="VERIFYING ASSIGNMENT" then return 1 end
+        if not tostring(entry.coverage[4]):find("SELL",1,true) then return 2 end
+        return 3
+    end
+    for _,entry in ipairs(entries) do
+        -- Native handles, not display names. Exact direction records remain separate.
+        local key=menu.routeKey(entry.coverage[17],entry.coverage[2],"")
+        local group=bykey[key]
+        if not group then
+            group={coverage=entry.coverage,problem=entry.problem,saved=entry.saved,members={},groupkey=key,priority=priority(entry)}
+            bykey[key]=group; groups[#groups+1]=group
+        elseif priority(entry)<group.priority then
+            group.coverage=entry.coverage; group.problem=entry.problem; group.saved=entry.saved; group.priority=priority(entry)
+        end
+        group.members[#group.members+1]=entry
+    end
+    return groups
+end
+function menu.routeProgressMessage(status)
+    if status=="INVESTIGATING" or status=="QUEUED" or status=="VERIFYING ASSIGNMENT" or status=="VERIFYING MINING RESOURCE" then
+        return "EOC IS WORKING IN THE BACKGROUND. You can open supporting evidence or leave this screen; neither cancels the job. Return to this route to review progress. Work advances while the game simulation is running."
+    elseif status=="AWAITING DELIVERY" or status=="PINNED - AWAITING DELIVERY" or status=="DELIVERY OBSERVED" then
+        return "EOC IS MONITORING DELIVERY AND RECOVERY. No player action is requested right now. You can leave this screen; the job continues while the game simulation runs. CHECK PROGRESS is optional."
+    elseif status=="DELIVERY DELAYED" then
+        return "EOC IS STILL MONITORING THE DELAYED JOB. Checks are now less frequent; no duplicate purchase is requested. You can leave this screen. Review the findings below for any blocker."
+    elseif status=="RESOLVED" or status=="NOT CURRENTLY FAILING" or status=="REQUIREMENT CHANGED" then
+        return "THIS ASSESSMENT IS COMPLETE. Read the result below; queued native orders are not cancelled by leaving this screen. CHECK PROGRESS requests a fresh assessment."
+    elseif status=="APPROVAL NEEDED" then
+        return "WAITING FOR YOUR DECISION. EOC has not approved this action for you. Review the proposal below; opening evidence or leaving this screen does not approve it."
+    end
+    return "REVIEW THE FINDINGS AND ANY NEXT STEPS BELOW. CHECK PROGRESS asks EOC to reassess; it does not claim you changed anything. Supporting evidence and leaving this screen do not cancel existing native orders."
+end
+function menu.routeMapShip(record)
+    local raw=tostring(record and record[23] or ""):gsub("ULL$", ""):gsub("LL$", "")
+    if not raw:match("^%d+$") or not raw:find("[1-9]") then return nil end
+    local ship=ConvertStringTo64Bit(raw)
+    if not IsValidComponent(ship) or not IsComponentClass(ship,"ship") then return nil end
+    return ship
+end
+function menu.routeShowShip(id)
+    if not menu.shown or menu.minimized or menu.closeInProgress or menu.page~="fleet" or menu.routeSelected~=id then return end
+    local ship=menu.routeMapShip(menu.routeRecords and menu.routeRecords[id])
+    if not ship then
+        menu.routeNotice="The recorded recovery ship is unavailable. No other ship was substituted."
+        menu.refresh()
+        return
+    end
+    menu.closeInProgress=true
+    raise("closed", {reason="shipmap"})
+    Helper.closeMenuAndOpenNewMenu(menu,"MapMenu",{0,0,true,ship})
+    menu.frame=nil
+    menu.closeInProgress=false
+end
+function menu.routePage(tableWidget)
+    local function prose(value,color)
+        local row=tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText(tostring(value),{wordwrap=true,color=color or navigationStoryColor})
+    end
+    local record=menu.routeSelected and menu.routeRecords and menu.routeRecords[menu.routeSelected]
+    if record then
+        section(tableWidget,record[3].." - "..record[4])
+        prose(record[6])
+        prose(menu.routeProgressMessage(record[6]))
+        if menu.routeWaiting then
+            local release=tableWidget:addRow(true); release[1]:setColSpan(4)
+            addButton(release,1,"RETURN TO ROUTES - KEEP ANY REQUESTED ACTION",function() menu.routeWaiting=false; menu.routePending=nil; menu.routeSelected=nil; menu.refresh() end,true)
+        end
+        -- Fixed wrapped rows scroll within the content table; no sentence pagination.
+        section(tableWidget,"WHAT EOC FOUND")
+        prose(record[19]~="" and record[19] or "This saved assessment predates the readable report. CHECK PROGRESS will refresh it; supporting evidence is retained below.")
+        if record[20]~="" then section(tableWidget,"SOURCE"); prose(record[20]) end
+        if record[22]~="" then section(tableWidget,"WHAT EOC DID"); prose(record[22]) end
+        if record[21]~="" then section(tableWidget,"WHAT CHANGED"); prose(record[21]) end
+        if record[8]~="" or record[9]~="" or record[10]~="" then
+            section(tableWidget,(record[6]=="RESOLVED" or record[6]=="NOT CURRENTLY FAILING") and "PREVIOUS STEPS - RETAINED FOR REVIEW" or "YOUR NEXT STEPS")
+            prose("Tick only steps you actually completed. Unchanged ticks are kept when you check again; they are your report, not proof of delivery.")
+        end
+        for i=1,3 do
+            if record[7+i]~="" then
+                local step=i
+                prose(tostring(i)..". "..record[7+i])
+                local row=tableWidget:addRow(true); row[1]:setColSpan(4)
+                addButton(row,1,(tonumber(record[10+i])==1 and "[X] REPORTED COMPLETE - instruction " or "[ ] I COMPLETED instruction ")..i,function()
+                    menu.routeRequest("route.ack",record,step,tonumber(record[10+step])==1 and 0 or 1)
+                end,not menu.routeWaiting)
+            end
+        end
+        local row=tableWidget:addRow(true); row[1]:setColSpan(4)
+        if record[6]=="APPROVAL NEEDED" then
+            addButton(row,1,"APPROVE THE SHIP ASSIGNMENT DESCRIBED ABOVE",function() menu.routeRequest("route.approve",record) end,not menu.routeWaiting)
+            row=tableWidget:addRow(true); row[1]:setColSpan(4)
+            addButton(row,1,"I MADE CHANGES MYSELF - CHECK THEM INSTEAD",function() menu.routeRequest("route.check",record) end,not menu.routeWaiting)
+        else
+            addButton(row,1,menu.routeWaiting and "EOC IS CHECKING YOUR REQUEST" or "CHECK PROGRESS",function() menu.routeRequest("route.check",record) end,not menu.routeWaiting and record[6]~="VERIFYING ASSIGNMENT")
+        end
+        row=tableWidget:addRow(true); row[1]:setColSpan(4)
+        addButton(row,1,"SHOW SHIP ON MAP",function() menu.routeShowShip(record[1]) end,menu.routeMapShip(record)~=nil)
+        row=tableWidget:addRow(true); row[1]:setColSpan(2)
+        addButton(row,1,"BACK TO ROUTES",function() menu.routeSelected=nil; menu.routeNotice=nil; menu.refresh() end,true)
+        row[3]:setColSpan(2)
+        addButton(row,3,menu.routeEvidence==record[1] and "HIDE SUPPORTING EVIDENCE" or "SHOW SUPPORTING EVIDENCE",function()
+            if menu.routeEvidence==record[1] then menu.routeEvidence=nil else menu.routeEvidence=record[1] end
+            menu.refresh()
+        end,true)
+        if menu.routeEvidence==record[1] then section(tableWidget,"SUPPORTING EVIDENCE"); prose(record[7]) end
+        if menu.routeRelated and #menu.routeRelated>1 then
+            row=tableWidget:addRow(true); row[1]:setColSpan(4)
+            addButton(row,1,menu.routeRelatedOpen and "HIDE RELATED CHECKS" or "OTHER CHECKS FOR THIS RESOURCE",function()
+                menu.routeRelatedOpen=not menu.routeRelatedOpen; menu.refresh()
+            end,true)
+            if menu.routeRelatedOpen then
+                local first,last=menu.adaptiveListNavigation(tableWidget,"route.related",#menu.routeRelated,{fixedRows=35,rowUnits=3,maximum=4})
+                for index=first,last do
+                    local related=menu.routeRelated[index]
+                    row=tableWidget:addRow(true); row[1]:setColSpan(4)
+                    addButton(row,1,tostring(related.coverage[4]).." - "..(related.saved and "REVIEW" or "CHECK THIS DIRECTION"),function()
+                        menu.routeEvidence=nil; menu.routeOpen(related.coverage)
+                    end,not menu.routeWaiting)
+                end
+            end
+        end
+        if menu.routeNotice then prose(menu.routeNotice) end
+        return
+    end
+    section(tableWidget,menu.fleetScope=="global" and "EMPIRE DELIVERY PROBLEMS" or "SELECTED STATION DELIVERY PROBLEMS")
+    if menu.routeWare then prose("RESOURCE: "..(menu.routeWareName or menu.routeWare)) end
+    prose("Choose FIX THIS for a problem. EOC will check what it can do, report its attempts, and give you the remaining steps in plain English.")
+    if menu.routeNotice then prose(menu.routeNotice) end
+    if menu.routeWaiting then
+        local pendingRow=tableWidget:addRow(true); pendingRow[1]:setColSpan(4)
+        addButton(pendingRow,1,"RETURN TO ROUTES - KEEP ANY REQUESTED ACTION",function()
+            menu.routeWaiting=false; menu.routePending=nil; menu.routeRequestedKey=nil
+            menu.routeNotice="Returned to the list. This does not cancel or repeat a native action. Reopen EOC if the result did not arrive."
+            menu.refresh()
+        end,true)
+    end
+    local entries,seen,covered={}, {}, {}
+    local selected=selectedStation()
+    for _,coverage in ipairs(menu.logisticsCoverage or {}) do
+        local inScope=(menu.fleetScope=="global" or (selected and tonumber(v(coverage,21,0))==tonumber(v(selected,16,0)))) and (not menu.routeWare or coverage[2]==menu.routeWare)
+        if tonumber(coverage[20]) and tonumber(coverage[20])>0 then covered[tonumber(coverage[20])]=true end
+        if inScope then
+            local problem,failed=menu.routeProblem(coverage)
+            local saved=menu.routeRecordFor(coverage)
+            local key=menu.routeKey((tonumber(coverage[21]) or 0)>0 and coverage[21] or coverage[17],coverage[2],coverage[4])
+            if not seen[key] and (failed or (saved and saved[6]~="RESOLVED" and saved[6]~="NOT CURRENTLY FAILING")) then entries[#entries+1]={coverage=coverage,problem=problem,saved=saved}; seen[key]=true end
+        end
+    end
+    for _,saved in pairs(menu.routeRecords or {}) do
+        local key=menu.routeKey(saved[15],saved[16],saved[5])
+        local inScope=menu.fleetScope=="global" or (selected and tostring(v(selected,24,""))==tostring(saved[15]))
+        if inScope and not covered[tonumber(saved[1])] and not seen[key] and (not menu.routeWare or saved[16]==menu.routeWare) then
+            local coverage={[1]=saved[3],[2]=saved[16],[3]=saved[4],[4]=saved[5],[17]=saved[15],[20]=saved[1]}
+            entries[#entries+1]={coverage=coverage,problem="Saved recovery: "..saved[6]..". You can review it even if the route is absent from the latest coverage list.",saved=saved}
+            seen[key]=true
+        end
+    end
+    entries=menu.routeGroupEntries(entries)
+    table.sort(entries,function(a,b) return a.groupkey<b.groupkey end)
+    local row=tableWidget:addRow(true); row[1]:setColSpan(2)
+    addButton(row,1,menu.fleetScope=="global" and "SHOW SELECTED STATION" or "SHOW ALL STATIONS",function()
+        menu.fleetScope=menu.fleetScope=="global" and "station" or "global"; menu.refresh()
+    end,true)
+    row[3]:setColSpan(2)
+    addButton(row,3,"DETAILS AND OTHER TOOLS",function() menu.routeAdvanced=true; menu.refresh() end,true)
+    if #entries==0 then prose("No failing route is present in this view. That is not proof that every delivery is healthy; Details retains the full coverage evidence.") end
+    local first,last=menu.adaptiveListNavigation(tableWidget,"route.list",#entries,{fixedRows=14,rowUnits=5,maximum=4})
+    for index=first,last do
+        local entry=entries[index]
+        prose(tostring(entry.coverage[1]).." - "..tostring(entry.coverage[3])..": "..entry.problem)
+        row=tableWidget:addRow(true); row[1]:setColSpan(4)
+        addButton(row,1,entry.saved and "CONTINUE FIX" or "FIX THIS",function()
+            menu.routeRelated=entry.members; menu.routeRelatedOpen=false; menu.routeEvidence=nil
+            menu.routeOpen(entry.coverage)
+        end,not menu.routeWaiting)
+    end
+end
+
 local function fleetCenter(tableWidget)
+    if (not menu.fleetView or menu.fleetView=="coverage") and not menu.routeAdvanced then menu.routePage(tableWidget); return end
+    local simpleBack=tableWidget:addRow(true); simpleBack[1]:setColSpan(4)
+    addButton(simpleBack,1,"BACK TO PLAIN-ENGLISH ROUTE FIXES",function() menu.routeAdvanced=nil; menu.fleetView="coverage"; menu.refresh() end,true)
     local station = selectedStation()
     local stationName = text(v(station, 1, "SELECTED STATION"))
     local entries = {}
@@ -6425,8 +6913,8 @@ local function fleetCenter(tableWidget)
         local affectedCount = 0
         for _ in pairs(affectedStations) do affectedCount = affectedCount + 1 end
         local conclusion = tableWidget:addRow(false)
-        conclusion[1]:setColSpan(4):createText(missing == 0 and
-            ((missing == 0 and ("ALL " .. covered .. " PLAYER-CONFIGURED SHIP FLOORS ARE COVERED.") or (missing .. " SHIP ROLE(S) AT " .. affectedCount .. " STATION(S) ARE BELOW THE PLAYER FLOOR; " .. covered .. " meet it.")) .. " EOC CAPACITY: " .. learning .. " role(s) learning, " .. learnedGaps .. " mature role(s) below the learned operational minimum."),
+        conclusion[1]:setColSpan(4):createText(
+            menu.fleetStaffingConclusion(covered, missing, affectedCount, learning, learnedGaps),
             { wordwrap = true, color = missing == 0 and investigationPassColor or investigationUnknownColor, fontsize = Helper.headerRow1FontSize or Helper.standardFontSize })
         local meaning = tableWidget:addRow(false)
         meaning[1]:setColSpan(4):createText("THIS PAGE COUNTS ASSIGNED SHIPS, NOT STATION EMPLOYEES. Example: '11 assigned | player floor 2 | EOC minimum 8' means you required at least 2, while current observed logistics evidence supports keeping 8.", { wordwrap = true })
@@ -9385,6 +9873,7 @@ function menu.create()
     local contentHeight = height - contentY - 2 * Helper.borderSize
     menu.coverageContentHeight = contentHeight
     menu.listContentHeight = contentHeight
+    menu.listContentWidth = width - 2 * Helper.borderSize
 
     if menu.page == "stations" then
         local usableWidth = width - 2 * Helper.borderSize
@@ -9534,6 +10023,8 @@ function menu.create()
 end
 
 function menu.refresh(preserveScroll)
+    -- Native Helper owns shown/minimized; retained page names do not own a UI layer.
+    if not menu.shown or menu.minimized or menu.closeInProgress then return end
     local samePage = menu.renderedPage == nil or menu.renderedPage == menu.page
     local shouldPreserve = preserveScroll ~= false and samePage
     if shouldPreserve and menu.mainTable then
@@ -9588,7 +10079,7 @@ function menu.onCloseElement(reason, layer)
     -- in that state closes/exposes the menu now owned by X4 (including the
     -- Station Build Plan). A missing frame or an in-flight close is therefore
     -- a no-op; only the live EOC frame may alter the menu stack.
-    if menu.frame == nil or menu.closeInProgress then
+    if not menu.shown or menu.minimized or menu.frame == nil or menu.closeInProgress then
         DebugError("[JKEOC][B312][MENU_CLOSE_SUPPRESSED] reason=" .. tostring(reason or "close") .. " frame_present=" .. tostring(menu.frame ~= nil) .. " close_in_progress=" .. tostring(menu.closeInProgress == true))
         return
     end
@@ -9616,6 +10107,7 @@ function menu.solutionRefreshSelection()
 end
 
 function menu.onUpdate()
+    if not menu.shown or menu.minimized or menu.closeInProgress then return end
     local now = getElapsedTime()
 
     if menu.kpiView == "shortages" then menu.kpiView = "cash" end

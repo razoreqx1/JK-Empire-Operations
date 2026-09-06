@@ -62,7 +62,7 @@
                   <set_value name="$shipschecked" exact="$shipschecked + 1" />
                   <do_if value="$ship.exists and $ship.owner == faction.player and $ship.commander == $station and $ship.assignment == assignment.mining">
                     <append_to_list name="$validships" exact="$ship" />
-                    <do_if value="not $ship.defaultorder? or $ship.defaultorder.id != 'MiningRoutine'">
+                    <do_if value="not $record.$recoveryowner? and (not $ship.defaultorder? or $ship.defaultorder.id != 'MiningRoutine')">
                       <create_order id="'MiningRoutine'" object="$ship" default="true">
                         <param name="warebasket" value="[$record.$ware]" />
                         <param name="warebasket_override" value="[$record.$ware]" />
@@ -70,7 +70,7 @@
                     </do_if>
                     <set_value name="$basketok" exact="$ship.defaultorder? and $ship.defaultorder.id == 'MiningRoutine' and $ship.defaultorder.$warebasket? and $ship.defaultorder.$warebasket_override? and $ship.defaultorder.$warebasket_override.count == 1 and ($ship.defaultorder.$warebasket == $record.$ware or @$ship.defaultorder.$warebasket.indexof.{$record.$ware}) and ($ship.defaultorder.$warebasket_override == $record.$ware or @$ship.defaultorder.$warebasket_override.indexof.{$record.$ware})" />
                     <do_if value="not $basketok"><set_value name="$record.$pinunproven" exact="true" /></do_if>
-                    <do_if value="$record.$pinunproven? and $ship.defaultorder? and $ship.defaultorder.id == 'MiningRoutine'">
+                    <do_if value="not $record.$recoveryowner? and $record.$pinunproven? and $ship.defaultorder? and $ship.defaultorder.id == 'MiningRoutine'">
                       <edit_order_param order="$ship.defaultorder" param="'warebasket'" value="[$record.$ware]" />
                       <edit_order_param order="$ship.defaultorder" param="'warebasket_override'" value="[$record.$ware]" />
                       <do_if value="$ship.defaultorder.$warebasket? and $ship.defaultorder.$warebasket_override? and $ship.defaultorder.$warebasket_override.count == 1 and ($ship.defaultorder.$warebasket == $record.$ware or @$ship.defaultorder.$warebasket.indexof.{$record.$ware}) and ($ship.defaultorder.$warebasket_override == $record.$ware or @$ship.defaultorder.$warebasket_override.indexof.{$record.$ware})"><set_value name="$record.$pinunproven" exact="false" /><set_value name="$record.$status" exact="'PINNED - AWAITING DELIVERY'" /><set_value name="$record.$detail" exact="'Delayed read-back proved %1 is now pinned to %2 through the native manual mining override.'.[$ship.name, $record.$warename]" /></do_if>
@@ -101,7 +101,7 @@
                 </do_if>
 
                 <!-- At most one registered idle ship is changed in the entire five-minute cycle. -->
-                <do_if value="$managed and $changes == 0 and not global.$JKEOC_B298Pending? and not ($record.$pinunproven? and $record.$pinunproven) and $validships.count lt $desired">
+                <do_if value="not $record.$recoveryowner? and $managed and $changes == 0 and not global.$JKEOC_B298Pending? and not ($record.$pinunproven? and $record.$pinunproven) and $validships.count lt $desired">
                   <remove_value name="$selected" />
                   <do_for_each name="$candidate" in="global.$JKEOC_B76EligibleShips"><do_if value="not $selected? and $candidate.exists and $candidate != player.ship and $candidate.owner == faction.player and $candidate.isclass.ship and $candidate.isoperational and not $candidate.isunit and not $candidate.isclass.ship_xs and not $candidate.commander and not $candidate.subordinates.count and $candidate.primarypurpose == purpose.mine and $candidate.waretransport.indexof.{$record.$ware.waretransport}"><set_value name="$selected" exact="$candidate" /></do_if></do_for_each>
                   <do_if value="$selected?">
@@ -125,8 +125,14 @@
       <conditions><event_cue_signalled /></conditions>
       <delay exact="8s" />
       <actions>
-        <set_value name="$pending" exact="global.$JKEOC_B298Pending" />
-        <do_if value="$pending? and $pending.$ship.exists and $pending.$ship.commander == $pending.$station and $pending.$ship.assignment == assignment.mining">
+        <set_value name="$pending" exact="if event.param.$recovery? then event.param else @global.$JKEOC_B298Pending" />
+        <do_if value="$pending? and global.$JKEOC_B298Pending? and global.$JKEOC_B298Pending == $pending">
+        <set_value name="$recoverysafe" exact="true" />
+        <do_if value="$pending? and $pending.$recovery?">
+          <set_value name="$route" exact="$pending.$recovery" /><set_value name="$actor" exact="$pending.$ship" />
+          <set_value name="$recoverysafe" exact="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$route} and $route.$token == $pending.$recoverytoken and $actor.exists and $actor.owner == faction.player and $actor != player.ship and $actor.isoperational and $actor.pilot.exists and not $actor.hasorderloop and $actor.orders.count == 0 and $actor.tradeorders.count == 0 and (not $actor.defaultorder.exists or $actor.defaultorder.id == 'Wait' or $actor.defaultorder.id == 'MiningRoutine') and (not @$actor.defaultorder.$warebasket_override.count or @$actor.defaultorder.$warebasket_override.indexof.{$pending.$ware}) and (global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' or (global.$JKEOC_B76AssignmentMode == 'APPROVAL REQUIRED' and @$route.$approvedtoken == $route.$token))" />
+        </do_if>
+        <do_if value="$recoverysafe and $pending? and $pending.$ship.exists and $pending.$ship.commander == $pending.$station and $pending.$ship.assignment == assignment.mining">
           <set_value name="$ship" exact="$pending.$ship" /><set_value name="$record" exact="$pending.$record" /><set_value name="$pending.$attempts" exact="if $pending.$attempts? then $pending.$attempts + 1 else 1" />
           <set_value name="$pinned" exact="false" />
           <do_if value="not $ship.defaultorder? or $ship.defaultorder.id != 'MiningRoutine'">
@@ -152,7 +158,7 @@
           <do_elseif value="$pending.$attempts lt 4">
             <set_value name="$record.$status" exact="'ASSIGNING AND PINNING'" /><set_value name="$record.$detail" exact="'%1 is assigned; X4 has not exposed a writable mining ware basket yet. Bounded pin check %2 of 4 is waiting.'.[$ship.name, $pending.$attempts]" />
             <debug_text text="'[JKEOC][B304][RAW_PIN_VERIFY] result=WAIT_ORDER_OR_OVERRIDE attempt=%1 station=%2 ware=%3 ship=%4'.[$pending.$attempts, $record.$stationname, $record.$wareid, $ship.name]" filter="general" />
-            <signal_cue_instantly cue="this.static" />
+            <signal_cue_instantly cue="this.static" param="$pending" />
           </do_elseif>
           <do_else>
             <append_to_list name="$record.$ships" exact="$ship" /><remove_from_list name="global.$JKEOC_B76EligibleShips" exact="$ship" />
@@ -166,6 +172,17 @@
         </do_if>
         <do_else><do_if value="$pending? and $pending.$record?"><set_value name="$pending.$record.$transactionactive" exact="false" /><set_value name="$pending.$record.$status" exact="'BLOCKED'" /><set_value name="$pending.$record.$detail" exact="'BLOCKED: The station mining assignment did not remain valid through exact-resource pin verification.'" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.station'" param="$pending.$record.$stationname" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.ware'" param="$pending.$record.$wareid" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.status'" param="$pending.$record.$status" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.ship'" param="if $pending.$record.$shipname? then $pending.$record.$shipname else ''" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.detail'" param="$pending.$record.$detail" /><raise_lua_event name="'JKEOC_SettingsMenu.rawsource.commit'" /></do_if><remove_value name="global.$JKEOC_B298Pending" /><debug_text text="'[JKEOC][B304][RAW_PIN_VERIFY] result=ASSIGNMENT_FAIL ui_readback=PUSHED'" filter="general" /></do_else>
         <do_if value="global.$JKEOC_B298Pending? and (not global.$JKEOC_B298Pending.$attempts? or global.$JKEOC_B298Pending.$attempts ge 4 or $pinned)"><remove_value name="global.$JKEOC_B298Pending" /></do_if>
+        <do_if value="$pending? and $pending.$recovery? and not global.$JKEOC_B298Pending?">
+          <set_value name="$route" exact="$pending.$recovery" />
+          <do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$route} and $route.$token == $pending.$recoverytoken">
+            <set_value name="$route.$pinpending" exact="false" /><set_value name="$route.$active" exact="false" />
+            <set_value name="$route.$status" exact="if @$pinned then 'PINNED - AWAITING DELIVERY' else 'PIN NOT PROVEN'" />
+            <set_value name="$route.$overview" exact="if @$pinned then 'The exact native mining resource pin is confirmed. I am watching the station stock; assignment is not delivery.' else 'The mining pin was not confirmed. The ship or its orders changed, or native readback did not retain the exact resource. No delivery success is claimed.'" />
+            <set_value name="$route.$actions" exact="$pending.$record.$detail" />
+            <signal_cue_instantly cue="md.JKEOC_Recovery_Workflow.Finish" param="$route" />
+          </do_if>
+        </do_if>
+        </do_if>
       </actions>
     </cue>
   </cues>

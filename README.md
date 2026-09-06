@@ -5,13 +5,26 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current GA release
 
 - Version: 3.9 GA
-- Engineering build: 369
-- Extension version: 4.69
+- Engineering build: 378
+- Extension version: 4.78
 - Status: **GENERAL AVAILABILITY** — GitHub contains the exact governed GA runtime; Steam upload is handled separately by the maintainer
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 369 retains the existing EOC features and adds player-first menus and guided production scenarios.
+Build 378 retains the existing EOC features and adds guided route recovery, recovery-ship map access and independent production planning. It is an identity-only GA promotion of Build377, accepted by the maintainer with partial runtime coverage.
+
+## What is new in EOC 3.9 GA Build 378
+
+- Station/resource-specific FIX THIS investigations with retained progress, source/action/change summaries and optional supporting evidence.
+- Native trade-failure evidence, eligible paid delivery orders and bounded follow-up; queued orders and observed delivery remain distinct from resolved shortages.
+- Saved recovery tracking, corrected periodic checks, expired-cue guards and post-delivery watcher continuation.
+- SHOW SHIP ON MAP opens the native map for the recovery job's ship.
+- Hidden/minimized/closing EOC views are guarded against background redraw over native map/build screens.
+- Improved station/resource response matching, route display, assessment readability and checklist acknowledgment retention.
+- Voluntary what-if production scenarios no longer require repair permission; readiness warnings remain.
+- Retained Build370 fleet-staffing result-text correction.
+
+Release coverage is partial: automatic final recovery, rapid repeated-request duplicate-order safety and other untested native paths remain unverified. See [release notes](docs/RELEASE_NOTES_3.9_GA.md). The illustrated guide remains the Build369 edition; its screenshots have not been relabeled as Build378.
 
 ## What is new in EOC 3.9 GA Build 369
 

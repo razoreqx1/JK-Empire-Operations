@@ -1,0 +1,20 @@
+EOC 3.9 GA Build 378 — Route Recovery and Planning
+Identity-only GA promotion of Build377; no new gameplay changes in378.
+
+Changes since Build370:
+- Added station/resource-specific FIX THIS investigations and retained recovery progress, with separate source, attempted action, changes and supporting evidence.
+- Added native trade-failure evidence and bounded recovery using eligible ships, current offers, normal reservations and payment; no free cargo, credits or ships.
+- Added saved recovery-job continuity, exact trade-deal delivery correlation and guarded tracking of expired cue references.
+- Corrected the periodic reconciliation condition and post-delivery Watch continuation.
+- Added CHECK PROGRESS wording and clear background-monitoring responsibility.
+- Added SHOW SHIP ON MAP for the recovery record's exact ship, including retained saved jobs.
+- Guarded hidden/minimized/closing EOC views against background redraw over native map or build screens.
+- Corrected station/resource response correlation, duplicate route display and retained instruction acknowledgments.
+- Improved recovery readability with one scrollable assessment and optional supporting evidence.
+- Made voluntary what-if production planning independent of recovery permission, while retaining warnings and evidence gates for EOC repair recommendations.
+
+Retained Build370 correction:
+- Corrected missing fleet-staffing result text below the selected staffing floor, preventing the invalid descriptor that could abort All Tools > Deliveries, assigned ships and ship building > Do my stations have enough assigned ships?
+
+Release coverage:
+Human release acceptance includes partial live coverage. Delivery, changed stock/source and saved-job navigation were observed. Automatic versus manually retriggered follow-up, final stock recovery, duplicate-order safety under rapid repeated requests and remaining untested runtime paths are not certified. No claim of universal automatic repair.

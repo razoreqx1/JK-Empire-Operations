@@ -1,4 +1,21 @@
-# EOC 3.9 GA — Build 369
+# EOC 3.9 GA — Build 378
+
+Build378 is an identity-only GA promotion of Build377. Gameplay code is unchanged by the promotion.
+
+## Route recovery and planning update
+
+- Added station/resource-specific recovery requests, native failure evidence, eligible paid trade orders, retained progress and bounded follow-up.
+- Corrected periodic reconciliation conditions, expired tracking-cue handling and post-delivery Watch continuation.
+- Added SHOW SHIP ON MAP for the exact recovery ship, including retained saved jobs.
+- Guarded hidden/minimized/closing EOC views against background redraw over map/build screens.
+- Corrected station/resource response correlation, duplicate route display and retained checklist acknowledgments.
+- Improved recovery readability and source/action/change evidence.
+- Separated voluntary advisory production scenarios from repair permission while retaining warnings.
+- Retained Build370's fleet-staffing text correction, preventing the invalid descriptor below the player-selected staffing floor.
+
+Maintainer acceptance is a release decision with partial live coverage. Screenshots show delivery, updated stock/source and retained navigation; the reviewed377 log contains no EOC exception. These do not certify final automatic recovery or duplicate-order safety under rapid requests. Remaining native save/load, UI, mod-set, timing and performance paths require runtime testing. Scenarios remain advisory, not construction authority. No free ships, cargo or credits are introduced.
+
+## Historical Build 369
 
 ## Player-first update
 

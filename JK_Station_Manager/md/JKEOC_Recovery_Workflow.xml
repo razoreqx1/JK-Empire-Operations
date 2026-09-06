@@ -1,0 +1,479 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Recovery_Workflow" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- Only explicitly requested route jobs run. Native orders retain their own payment,
+       reservations and execution. No cargo grants, construction or blacklist overrides. -->
+  <cues>
+    <cue name="Begin" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
+      <actions>
+        <set_value name="$r" exact="event.param" />
+        <do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r}">
+          <set_value name="$running" exact="0" /><do_for_each name="$other" in="global.$JKEOC_B371Routes"><do_if value="$other != $r and $other.$active"><set_value name="$running" operation="add" exact="1" /></do_if></do_for_each>
+          <do_if value="$r.$job? and $r.$job"><signal_cue_instantly cue="Reconcile" param="$r" /></do_if>
+          <do_elseif value="$running ge 4">
+            <do_if value="not @$r.$queued"><set_value name="$r.$queued" exact="true" /><set_value name="$r.$status" exact="'QUEUED'" /><set_value name="$r.$overview" exact="'This route is queued behind other requested investigations. It will start automatically.'" /><signal_cue_instantly cue="Queue" param="$r" /></do_if>
+          </do_elseif>
+          <do_elseif value="not $r.$active">
+            <set_value name="$r.$token" exact="if $r.$token? then $r.$token + 1 else 1" />
+            <set_value name="$r.$attempts" exact="if $r.$attempts? then $r.$attempts else 0" />
+            <do_if value="not $r.$failedsources?"><set_value name="$r.$failedsources" exact="[]" /></do_if>
+            <set_value name="$r.$oldsteps" exact="$r.$steps" /><set_value name="$r.$oldacks" exact="$r.$acks" />
+            <do_if value="$r.$revision gt 0"><append_to_list name="$r.$history" exact="[$r.$revision,$r.$time,$r.$report,$r.$steps,$r.$acks,$r.$laststock]" /><do_if value="$r.$history.count gt 12"><remove_value name="$r.$history.{1}" /></do_if></do_if>
+            <set_value name="$r.$revision" operation="add" exact="1" /><set_value name="$r.$time" exact="player.age" />
+            <set_value name="$r.$active" exact="true" /><set_value name="$r.$steps" exact="['','','']" /><set_value name="$r.$acks" exact="[0,0,0]" />
+            <set_value name="$r.$actions" exact="'I am checking the actual route before changing a ship.'" />
+            <set_value name="$r.$sourcebrief" exact="'Source checks are scoped to this station and the actual ships.'" />
+            <set_value name="$r.$status" exact="'INVESTIGATING'" /><set_value name="$r.$overview" exact="'Reading stock, committed deliveries, ship orders and usable sources.'" />
+            <set_value name="$r.$report" exact="''" /><set_value name="$r.$faults" exact="''" /><set_value name="$r.$rejections" exact="''" />
+            <set_value name="$r.$changes" exact="'No new station reading is available yet.'" />
+            <set_value name="$r.$bestblocked" exact="''" /><set_value name="$r.$beststep" exact="''" />
+            <set_value name="$r.$candidates" exact="[]" /><set_value name="$r.$donors" exact="table[]" /><set_value name="$r.$cursor" exact="0" /><set_value name="$r.$incoming" exact="0" />
+            <set_value name="$r.$destination" exact="if $r.$role == 'BUILD STORAGE' then @$r.$station.buildstorage else $r.$station" />
+            <do_if value="not $r.$station.exists or $r.$station.owner != faction.player or not $r.$destination.exists or not $r.$ware? or $r.$ware == null">
+              <set_value name="$r.$overview" exact="'The original station, storage or resource is no longer available. No change was made.'" /><signal_cue_instantly cue="Finish" param="$r" />
+            </do_if>
+            <do_else>
+              <set_value name="$w" exact="$r.$ware" /><set_value name="$s" exact="$r.$station" />
+              <set_value name="$stock" exact="$r.$destination.cargo.{$w}.count" />
+              <set_value name="$target" exact="if $r.$role == 'BUILD STORAGE' then $r.$destination.buildprocessor.neededsequenceresources.{$w}.count else $r.$destination.cargo.{$w}.target" />
+              <set_value name="$r.$changes" exact="'Stock: %1 units; replenishment target: %2. A small gap alone is not proof of a broken route.'.[$stock,$target]" />
+              <set_value name="$r.$laststock" exact="$stock" /><set_value name="$r.$target" exact="$target" />
+              <set_value name="$r.$selling" exact="$r.$role == 'EOC EMERGENCY SELL'" />
+              <set_value name="$r.$raw" exact="$w.waretransport == waretransport.solid or $w.waretransport == waretransport.liquid" />
+              <set_value name="$r.$needed" exact="if $r.$selling then [$stock - (($target * 3 + 3) / 4)i,0].max else [$target - $stock,0].max" />
+              <set_value name="$r.$assignment" exact="if $r.$role == 'BUILD STORAGE' then assignment.tradeforbuildstorage else if $r.$raw then assignment.mining else assignment.trade" />
+              <do_if value="$target le 0 or $w == ware.rawscrap"><set_value name="$r.$overview" exact="'This route has no supported positive replenishment target. I did not invent an amount or change a ship.'" /><signal_cue_instantly cue="Finish" param="$r" /></do_if>
+              <do_elseif value="$r.$needed == 0"><set_value name="$r.$status" exact="'NOT CURRENTLY FAILING'" /><set_value name="$r.$overview" exact="'Current stock already satisfies this route threshold. No repair was needed.'" /><signal_cue_instantly cue="Finish" param="$r" /></do_elseif>
+              <do_else>
+                <signal_cue_instantly cue="md.JKEOC_Route_Recovery.EnsureOffer" param="$r" />
+                <do_for_each name="$ship" in="$s.subordinates">
+                  <do_if value="$ship.exists and $ship.isclass.ship and $ship.owner == faction.player and $ship.isoperational and $ship.waretransport.indexof.{$w.waretransport}">
+                    <do_for_each name="$order" in="$ship.tradeorders"><do_if value="$order.exists and $order.trade.exists and $order.trade.ware == $w and (($r.$selling and $order.trade.seller == $r.$destination) or (not $r.$selling and $order.trade.buyer == $r.$destination))"><set_value name="$r.$incoming" operation="add" exact="[$order.trade.amount,0].max" /></do_if></do_for_each>
+                    <append_to_list name="$r.$candidates" exact="$ship" />
+                  </do_if>
+                </do_for_each>
+                <do_if value="global.$JKEOC_B76EligibleShips?"><do_for_each name="$ship" in="global.$JKEOC_B76EligibleShips"><do_if value="$ship.exists and not $ship.commander and not $r.$candidates.indexof.{$ship} and $ship.waretransport.indexof.{$w.waretransport}"><append_to_list name="$r.$candidates" exact="$ship" /></do_if></do_for_each></do_if>
+                <do_if value="not $r.$raw"><do_for_each name="$old" in="global.$JKEOC_B371Routes"><do_if value="$old != $r and $old.$status == 'RESOLVED' and not $old.$active and not @$old.$job and $old.$ship? and $old.$ship.exists and @$old.$assignmentownedship == $old.$ship and $old.$station.exists and $old.$station != $s and $old.$ship.commander == $old.$station and not $r.$candidates.indexof.{$old.$ship}"><append_to_list name="$r.$candidates" exact="$old.$ship" /><set_value name="$r.$donors.{$old.$ship}" exact="$old.$station" /></do_if></do_for_each></do_if>
+                <do_if value="$r.$incoming gt 0">
+                  <set_value name="$r.$status" exact="'AWAITING DELIVERY'" /><set_value name="$r.$overview" exact="'Existing native trade orders already commit %1 units on this route. I will check their outcome before adding another ship.'.[$r.$incoming]" />
+                  <set_value name="$r.$watchuntil" exact="player.age + 30min" /><set_value name="$r.$watch" exact="true" /><signal_cue_instantly cue="Watch" param="[$r,$r.$token]" /><signal_cue_instantly cue="Finish" param="$r" />
+                </do_if>
+                <do_else><signal_cue_instantly cue="NextShip" param="[$r,$r.$token]" /></do_else>
+              </do_else>
+            </do_else>
+          </do_elseif>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="NextShip" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions><delay exact="1s" />
+      <actions>
+        <set_value name="$r" exact="event.param.{1}" />
+        <do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r} and $r.$token == event.param.{2} and $r.$active">
+          <set_value name="$r.$cursor" operation="add" exact="1" />
+          <do_if value="$r.$cursor le $r.$candidates.count and $r.$cursor le 128">
+            <set_value name="$r.$actor" exact="$r.$candidates.{$r.$cursor}" />
+            <do_if value="$r.$actor.exists and $r.$actor.owner == faction.player and $r.$actor.isoperational">
+              <set_value name="$r.$probewait" exact="true" />
+              <raise_lua_event name="'JKEOC_SettingsMenu.recovery.probe.id'" param="$r.$id" />
+              <raise_lua_event name="'JKEOC_SettingsMenu.recovery.probe.token'" param="$r.$token * 1000 + $r.$cursor" />
+              <raise_lua_event name="'JKEOC_SettingsMenu.recovery.probe.ship'" param="$r.$actor" />
+              <raise_lua_event name="'JKEOC_SettingsMenu.recovery.probe.execute'" param="$r.$token * 1000 + $r.$cursor" />
+              <signal_cue_instantly cue="ProbeTimeout" param="[$r,$r.$token,$r.$cursor]" />
+            </do_if>
+            <do_else><signal_cue_instantly cue="NextShip" param="[$r,$r.$token]" /></do_else>
+          </do_if>
+          <do_else>
+            <set_value name="$r.$overview" exact="if $r.$candidates.count == 0 then 'No compatible assigned or registered ship is available for this resource.' else 'I checked the available ships but found no safe usable delivery under the current route settings.'" />
+            <do_if value="$r.$candidates.count gt 128"><set_value name="$r.$overview" exact="'The bounded assessment reached 128 ships. This is an incomplete search, not proof that no usable ship exists.'" /></do_if>
+            <set_value name="$r.$sourcebrief" exact="$r.$bestblocked" />
+            <set_value name="$r.$steps.{1}" exact="if $r.$candidates.count == 0 then 'Register an idle player-owned ship with the correct cargo type and role in EOC, or assign one to this station. Then choose CHECK PROGRESS; EOC will inspect its route and arrange supported work.' else 'Read the specific ship or source restriction above. If you choose to change that restriction or make another idle ship available, do so for the named object, then choose CHECK PROGRESS. EOC will run the route checks again.'" />
+            <do_if value="$r.$beststep != ''"><set_value name="$r.$steps.{1}" exact="$r.$beststep" /></do_if>
+            <signal_cue_instantly cue="Finish" param="$r" />
+          </do_else>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Queue" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="5s" /><actions>
+      <set_value name="$r" exact="event.param" /><do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r} and @$r.$queued"><set_value name="$r.$queued" exact="false" /><signal_cue_instantly cue="Begin" param="$r" /></do_if>
+    </actions></cue>
+    <cue name="ProbeResult" instantiate="true" namespace="this"><conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'recovery.probe.result'" /></conditions><actions>
+      <do_if value="global.$JKEOC_B371Routes? and event.param3.$id? and event.param3.$token? and event.param3.$ok? and event.param3.$text?">
+        <do_for_each name="$r" in="global.$JKEOC_B371Routes"><do_if value="$r.$token? and $r.$cursor? and $r.$probewait? and $r.$probewait and $r.$active and $r.$id == event.param3.$id and $r.$token * 1000 + $r.$cursor == event.param3.$token">
+          <set_value name="$r.$probewait" exact="false" /><set_value name="$r.$fault" exact="event.param3.$text" />
+          <do_if value="$r.$cursor le 8"><set_value name="$r.$faults" exact="$r.$faults + ' ' + $r.$actor.name + ': ' + $r.$fault" /></do_if>
+          <signal_cue_instantly cue="ProbeRoute" param="$r" />
+        </do_if></do_for_each>
+      </do_if>
+    </actions></cue>
+    <cue name="ProbeTimeout" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="5s" /><actions>
+      <set_value name="$r" exact="event.param.{1}" /><do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r} and $r.$token == event.param.{2} and $r.$cursor == event.param.{3} and $r.$probewait">
+        <set_value name="$r.$probewait" exact="false" /><set_value name="$r.$fault" exact="'The native failure reader did not answer; order identity and route checks remain available.'" /><signal_cue_instantly cue="ProbeRoute" param="$r" />
+      </do_if>
+    </actions></cue>
+    <cue name="ProbeRoute" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$r" exact="event.param" /><set_value name="$ship" exact="$r.$actor" /><set_value name="$s" exact="$r.$station" /><set_value name="$w" exact="$r.$ware" />
+      <set_value name="$r.$reason" exact="''" /><set_value name="$r.$routevalid" exact="false" />
+      <set_value name="$r.$nextstep" exact="'If you want EOC to use another ship, open its Registered Ships tool and register a genuinely idle compatible ship. EOC will then check the source and arrange supported work; do not remove a busy ship from another service.'" />
+      <remove_value name="$r.$donor" /><set_value name="$r.$donorvalid" exact="false" />
+      <do_if value="$r.$donors.{$ship}?"><set_value name="$r.$ship" exact="$ship" /><set_value name="$r.$donor" exact="$r.$donors.{$ship}" /><signal_cue_instantly cue="md.JKEOC_Route_Recovery.CheckDonor" param="$r" /></do_if>
+      <do_if value="$ship.exists and $s.exists and $r.$destination.exists and $ship.owner == faction.player and $ship.isoperational and $ship != player.ship and not $ship.subordinates.count and not $ship.isunit and $ship.pilot.exists and not $ship.hasorderloop and $ship.cargo.list.count == 0 and $ship.tradeorders.count == 0 and $ship.orders.count == 0 and ($r.$donorvalid or ($ship.commander == $s and $ship.assignment == (if $r.$role == 'BUILD STORAGE' then assignment.tradeforbuildstorage else if $r.$raw and $ship.primarypurpose == purpose.mine then assignment.mining else assignment.trade)) or (not $ship.commander and global.$JKEOC_B76EligibleShips? and global.$JKEOC_B76EligibleShips.indexof.{$ship}))">
+        <set_value name="$reserved" exact="false" />
+        <do_for_each name="$other" in="global.$JKEOC_B371Routes"><do_if value="$other != $r and (($other.$actor? and $other.$actor == $ship and $other.$active) or ($other.$ship? and $other.$ship == $ship and ($other.$active or @$other.$job or $other.$status == 'APPROVAL NEEDED')))"><set_value name="$reserved" exact="true" /></do_if></do_for_each>
+        <do_if value="(global.$JKEOC_B74PendingShip? and global.$JKEOC_B74PendingShip == $ship) or (global.$JKEOC_B298Pending? and @$global.$JKEOC_B298Pending.$ship == $ship) or (global.$JKEOC_B219MinimumPending? and @$global.$JKEOC_B219MinimumPending.$ship == $ship)"><set_value name="$reserved" exact="true" /></do_if>
+        <do_if value="$ship.defaultorder? and $ship.defaultorder.exists and $ship.defaultorder.id != 'Wait' and not (($ship.commander == $s or $r.$donorvalid) and ($ship.defaultorder.id == 'TradeRoutine' or $ship.defaultorder.id == 'MiningRoutine'))"><set_value name="$reserved" exact="true" /></do_if>
+        <do_if value="@$ship.defaultorder.$warebasket_override.count and not @$ship.defaultorder.$warebasket_override.indexof.{$w}"><set_value name="$reserved" exact="true" /></do_if>
+        <do_if value="$reserved"><set_value name="$r.$reason" exact="'Another transaction or a nonstandard default behavior owns this ship. I will not replace it.'" /></do_if>
+        <do_elseif value="($r.$raw and $ship.primarypurpose != purpose.mine and $ship.primarypurpose != purpose.trade) or (not $r.$raw and $ship.primarypurpose != purpose.trade)"><set_value name="$r.$reason" exact="'The ship has the wrong operating role for this resource.'" /></do_elseif>
+        <do_else>
+          <set_value name="$r.$maxrange" exact="[@$s.tradenpc.skill.management,@$ship.pilot.skill.piloting].max / 3" />
+          <do_if value="$r.$raw and not $r.$selling and $ship.primarypurpose == purpose.mine"><signal_cue_instantly cue="ProbeMining" param="$r" /><do_if value="not $r.$routevalid"><set_value name="$miningreason" exact="$r.$reason" /><set_value name="$miningstep" exact="$r.$nextstep" /><signal_cue_instantly cue="ProbeTrade" param="$r" /><do_if value="not $r.$routevalid"><set_value name="$r.$reason" exact="'Mining: ' + $miningreason + ' Buying instead: ' + $r.$reason" /><set_value name="$r.$nextstep" exact="$miningstep" /></do_if></do_if></do_if>
+          <do_else><signal_cue_instantly cue="ProbeTrade" param="$r" /></do_else>
+        </do_else>
+      </do_if>
+      <do_else><set_value name="$r.$reason" exact="'This ship is busy, carries cargo, has queued/manual work, lacks a pilot, or is not eligible for EOC reassignment. Its work was left intact.'" /></do_else>
+      <do_if value="$r.$routevalid">
+        <set_value name="$r.$ship" exact="$ship" /><set_value name="$r.$active" exact="false" />
+        <do_if value="global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED'"><signal_cue_instantly cue="Apply" param="$r" /></do_if>
+        <do_elseif value="global.$JKEOC_B76AssignmentMode == 'APPROVAL REQUIRED'"><set_value name="$r.$status" exact="'APPROVAL NEEDED'" /><set_value name="$r.$overview" exact="'A usable route is ready for %1. Your assignment mode requires approval before I use this ship.'.[$ship.name]" /><signal_cue_instantly cue="Finish" param="$r" /></do_elseif>
+        <do_else><set_value name="$r.$overview" exact="'A usable route was found, but shipping is disabled in EOC settings. I did not override your choice.'" /><set_value name="$r.$steps.{1}" exact="'If you want EOC to operate this route, change shipping authority to approval-required or automatic registered ships, then check again.'" /><signal_cue_instantly cue="Finish" param="$r" /></do_else>
+      </do_if>
+      <do_else>
+        <do_if value="$r.$bestblocked == '' or $r.$nextstep != 'If you want EOC to use another ship, open its Registered Ships tool and register a genuinely idle compatible ship. EOC will then check the source and arrange supported work; do not remove a busy ship from another service.'"><set_value name="$r.$bestblocked" exact="$ship.name + ': ' + $r.$reason" /><set_value name="$r.$beststep" exact="$r.$nextstep" /></do_if>
+        <do_if value="$r.$cursor le 8"><set_value name="$r.$rejections" exact="$r.$rejections + ' ' + $ship.name + ': ' + $r.$reason" /></do_if>
+        <signal_cue_instantly cue="NextShip" param="[$r,$r.$token]" />
+      </do_else>
+    </actions></cue>
+    <cue name="Reach" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$r" exact="event.param" /><set_value name="$ship" exact="$r.$actor" /><set_value name="$sector" exact="if $r.$probeobject.isclass.sector then $r.$probeobject else $r.$probeobject.sector" />
+      <set_value name="$r.$reachable" exact="false" />
+      <set_value name="$r.$maxrange" exact="[@$r.$station.tradenpc.skill.management,@$ship.pilot.skill.piloting].max / 3" />
+      <set_value name="$minrange" exact="[[(if $r.$selling then @$ship.defaultorder.$minsell else @$ship.defaultorder.$minbuy),0].max,[$r.$maxrange - 1,0].max].min" />
+      <do_if value="$sector.exists and $sector.isknown and $r.$station.sector.exists">
+        <set_value name="$distance" exact="$r.$station.gatedistance.{$sector}.{blacklistgroup.civilian}.{$ship}" />
+        <set_value name="$return" exact="$sector.gatedistance.{$r.$station.sector}.{blacklistgroup.civilian}.{$ship}" />
+        <set_value name="$r.$reachable" exact="$distance ge 0 and $return ge 0 and $distance le $r.$maxrange and $return le $r.$maxrange and $ship.gatedistance.{$sector}.{blacklistgroup.civilian}.{$ship} ge 0 and ($sector == $r.$station.sector or (not $sector.isblacklisted.{blacklisttype.sectoractivity}.{blacklistgroup.civilian}.{$ship} and not $sector.isblacklisted.{blacklisttype.sectortravel}.{blacklistgroup.civilian}.{$ship}))" />
+        <do_if value="not $r.$reachable"><set_value name="$r.$reason" exact="'%1 in %2 is outside %3 permitted operating range (%4 gates), has no permitted return path, or is excluded by its travel/activity rules. I did not send the ship there.'.[$r.$probeobject.name,$sector.name,$ship.name,$r.$maxrange]" /></do_if>
+        <do_if value="$sector != $r.$station.sector and $sector.isblacklisted.{blacklisttype.sectoractivity}.{blacklistgroup.civilian}.{$ship}"><set_value name="$r.$reason" exact="'%1 is in %2, where %3 activity blacklist forbids work. I did not override that rule.'.[$r.$probeobject.name,$sector.name,$ship.name]" /></do_if>
+        <do_elseif value="$sector != $r.$station.sector and $sector.isblacklisted.{blacklisttype.sectortravel}.{blacklistgroup.civilian}.{$ship}"><set_value name="$r.$reason" exact="'%1 is in %2, where %3 travel blacklist forbids entry.'.[$r.$probeobject.name,$sector.name,$ship.name]" /></do_elseif>
+        <do_elseif value="$distance lt 0 or $return lt 0"><set_value name="$r.$reason" exact="'There is no permitted outward or return path between %1 and %2 for %3. Adding this ship would not make the source accessible.'.[$r.$station.name,$r.$probeobject.name,$ship.name]" /></do_elseif>
+        <do_elseif value="$distance gt $r.$maxrange or $return gt $r.$maxrange"><set_value name="$r.$reason" exact="'%1 in %2 needs %3 gates outward and %4 returning; %5 is allowed %6. This source is too far away for this ship under its current operating range.'.[$r.$probeobject.name,$sector.name,$distance,$return,$ship.name,$r.$maxrange]" /></do_elseif>
+        <do_if value="$distance ge 0 and $distance lt $minrange"><set_value name="$r.$reachable" exact="false" /><set_value name="$r.$reason" exact="'%1 is %2 gates away, but %3 has a minimum operating distance of %4. I did not bypass that setting.'.[$r.$probeobject.name,$distance,$ship.name,$minrange]" /></do_if>
+        <do_if value="@$ship.defaultorder.$range.exists and not $ship.defaultorder.$range.hascontext.{$r.$station.sector} and $ship.defaultorder.$range != $r.$station.sector"><set_value name="$r.$reachable" exact="false" /><set_value name="$r.$reason" exact="'%1 has a custom operating area at %2 rather than this station. I preserved that choice; this station-centered recovery has not verified the custom area.'.[$ship.name,$ship.defaultorder.$range.name]" /></do_if>
+        <do_if value="not $r.$reachable"><set_value name="$r.$nextstep" exact="'For %1 at %2, decide whether to improve the manager/pilot operating range, change the specific travel/activity restriction described above, or arrange supply through an intermediate station. Do not add another identical ship: it would face the same blocked route. After your chosen change, CHECK PROGRESS will repeat the native reach checks.'.[$r.$ware.name,$r.$station.name]" /></do_if>
+      </do_if>
+      <do_else><set_value name="$r.$reason" exact="'The source sector is unknown or no longer available. I did not treat undiscovered supply as a usable route.'" /><set_value name="$r.$nextstep" exact="'Discover a permitted source sector for this resource or make a known supplier available, then choose CHECK PROGRESS. EOC will validate the actual ship route before using it.'" /></do_else>
+    </actions></cue>
+    <cue name="ProbeTrade" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$r" exact="event.param" /><set_value name="$ship" exact="$r.$actor" /><set_value name="$w" exact="$r.$ware" />
+      <set_value name="$r.$routevalid" exact="false" />
+      <set_value name="$current" exact="$r.$destination.cargo.{$w}.count" /><set_value name="$target" exact="if $r.$role == 'BUILD STORAGE' then $r.$destination.buildprocessor.neededsequenceresources.{$w}.count else $r.$destination.cargo.{$w}.target" />
+      <set_value name="$r.$needed" exact="if $r.$selling then [$current - (($target * 3 + 3) / 4)i,0].max else [$target - $current,0].max" />
+      <remove_value name="$r.$fromoffer" /><remove_value name="$r.$tooffer" />
+      <set_value name="$homes" exact="[]" /><set_value name="$offers" exact="[]" />
+      <do_if value="$target gt 0 and $r.$needed gt 0 and $w != ware.rawscrap">
+      <do_if value="$r.$selling">
+        <find_sell_offer seller="$r.$destination" tradepartner="$ship" wares="$w" result="$homes" multiple="true" />
+        <find_buy_offer space="player.galaxy" tradepartner="$ship" wares="$w" result="$offers" multiple="true"><match_buyer excluded="$r.$destination" tradesknownto="faction.player"><match_use_blacklist group="blacklistgroup.civilian" type="blacklisttype.objectactivity" object="$ship" /></match_buyer></find_buy_offer>
+      </do_if>
+      <do_else>
+        <find_buy_offer buyer="$r.$destination" tradepartner="$ship" wares="$w" result="$homes" multiple="true" />
+        <find_sell_offer space="player.galaxy" tradepartner="$ship" wares="$w" result="$offers" multiple="true"><match_seller excluded="$r.$destination" tradesknownto="faction.player"><match_use_blacklist group="blacklistgroup.civilian" type="blacklisttype.objectactivity" object="$ship" /></match_seller></find_sell_offer>
+      </do_else>
+      <set_value name="$r.$reason" exact="if $homes.count == 0 then 'This station has no usable offer for this ship under the current ware amount and trade rules. EOC has not changed your station rules.' else if $offers.count == 0 then 'No known counterparty has a usable offer for this ship under its current trade rules.' else 'No offer pair passed price, amount, route and docking checks.'" />
+      <set_value name="$r.$nextstep" exact="if $homes.count == 0 then 'Open %1 Logical Overview, select %2 and enable the intended buying or selling offer if you want this route active. Check its amount and permitted factions. EOC found no usable station offer for this ship; it will re-read the actual offer after CHECK PROGRESS.'.[$r.$station.name,$w.name] else 'No currently usable offer pair was established. Make an alternative supplier/buyer available under your chosen trade rules, then CHECK PROGRESS. EOC will search and validate the new route; another ship alone does not create an offer.'" />
+      <do_for_each name="$home" in="$homes"><do_if value="not $r.$routevalid and $home.available">
+        <do_for_each name="$offer" in="$offers"><do_if value="not $r.$routevalid and $offer.available and $offer.owner.exists and $offer.owner.isoperational and not $r.$failedsources.indexof.{$offer.owner}">
+          <set_value name="$from" exact="if $r.$selling then $home else $offer" /><set_value name="$to" exact="if $r.$selling then $offer else $home" />
+          <set_value name="$r.$probeobject" exact="$offer.owner" /><signal_cue_instantly cue="Reach" param="$r" />
+          <set_value name="$rules" exact="true" />
+          <do_if value="@$to.restriction.factions.count and (($to.restriction.factions.indexof.{$from.owner.owner} and $to.restriction.inverted) or (not $to.restriction.factions.indexof.{$from.owner.owner} and not $to.restriction.inverted))"><set_value name="$rules" exact="false" /></do_if>
+          <do_if value="@$from.restriction.factions.count and (($from.restriction.factions.indexof.{$to.owner.owner} and $from.restriction.inverted) or (not $from.restriction.factions.indexof.{$to.owner.owner} and not $from.restriction.inverted))"><set_value name="$rules" exact="false" /></do_if>
+          <do_if value="$ship.hidecargochance lt 100 and (($from.owner.zone.policefaction and $w.illegalto.{$from.owner.zone.policefaction}.{$ship.owner} and $from.owner.zone.policefaction != $ship.owner) or ($to.owner.zone.policefaction and $w.illegalto.{$to.owner.zone.policefaction}.{$ship.owner} and $to.owner.zone.policefaction != $ship.owner))"><set_value name="$rules" exact="false" /></do_if>
+          <do_if value="not $rules"><set_value name="$r.$reason" exact="'This offer pair is excluded by faction trade restrictions or cargo legality. I did not override those restrictions or authorize smuggling.'" /></do_if>
+          <do_elseif value="$r.$reachable and $from.unitprice le $to.unitprice and $from.cantradewith.{$ship} and $to.cantradewith.{$ship}">
+            <do_if value="not $from.owner.dock.{$ship.docksize}.exists or not $to.owner.dock.{$ship.docksize}.exists"><set_value name="$r.$reason" exact="'The source or destination lacks a suitable dock for this ship.'" /></do_if>
+            <do_elseif value="$ship.iscapitalship and not $ship.units.{unitcategory.transport}.count and (not $from.owner.units.{unitcategory.transport}.count or not $to.owner.units.{unitcategory.transport}.count)"><set_value name="$r.$reason" exact="'This capital ship or its trade partners need cargo drones for the transfer.'" /></do_elseif>
+            <do_else>
+              <set_value name="$quantity" exact="[$r.$needed,$ship.cargo.{$w}.free,$from.offeramount.{$ship},$to.offeramount.{$ship}].min" />
+              <clamp_trade_amount trade="$from" amount="$quantity" buyer="if $ship.commander then $ship else $r.$station" seller="$from.seller" result="$quantity" reason="$purchaseclamp" />
+              <clamp_trade_amount trade="$to" amount="$quantity" buyer="$to.buyer" result="$quantity" reason="$deliveryclamp" />
+              <do_if value="$quantity lt $from.minamount or $quantity lt $to.minamount"><set_value name="$quantity" exact="0" /></do_if>
+              <do_if value="$quantity gt 0"><set_value name="$r.$operation" exact="'TRADE'" /><set_value name="$r.$fromoffer" exact="$from" /><set_value name="$r.$tooffer" exact="$to" /><set_value name="$r.$quantity" exact="$quantity" /><set_value name="$r.$routevalid" exact="true" /><set_value name="$r.$sourcebrief" exact="'Usable route for %1: %2 to %3, up to %4 units at current offers. Ship-specific range, trade rules, cargo, price and docking checks passed. Affordability will be rechecked using the actual assigned ship before dispatch.'.[$ship.name,$from.owner.name,$to.owner.name,$quantity]" /></do_if>
+              <do_else>
+                <set_value name="$r.$reason" exact="'The current trade amount is zero after cargo, reservations, minimum-lot and available-money checks. No purchase was made.'" />
+                <do_if value="@$purchaseclamp == 'buyer_money'"><set_value name="$r.$reason" exact="'The account used for %1 cannot afford the purchase from %2. X4 reduced its affordable trade amount to zero.'.[$ship.name,$from.owner.name]" /><set_value name="$r.$nextstep" exact="'Open the account funding %1 at %2 and allocate the credits you want this delivery to use. EOC will not move your money automatically. Then CHECK PROGRESS will recheck the actual affordable amount before placing an order.'.[$ship.name,$r.$station.name]" /></do_if>
+                <do_elseif value="@$purchaseclamp == 'seller_cargo'"><set_value name="$r.$reason" exact="'%1 has no available cargo for this purchase after the native availability check. Another ship cannot collect stock the seller does not have.'.[$from.owner.name]" /></do_elseif>
+                <do_elseif value="@$purchaseclamp == 'buyer_cargo'"><set_value name="$r.$reason" exact="'The purchasing ship or its provisional station storage has no usable space for this trade. I did not invent cargo capacity.'" /></do_elseif>
+                <do_elseif value="@$deliveryclamp == 'buyer_cargo'"><set_value name="$r.$reason" exact="'%1 has no usable storage space for the proposed delivery. The resource would have nowhere to unload.'.[$to.owner.name]" /></do_elseif>
+                <do_elseif value="@$deliveryclamp == 'buyer_money'"><set_value name="$r.$reason" exact="'%1 cannot afford the incoming sale under the native account check. I did not spend or grant credits on its behalf.'.[$to.owner.name]" /></do_elseif>
+              </do_else>
+            </do_else>
+          </do_elseif>
+          <do_elseif value="$r.$reachable and $from.unitprice gt $to.unitprice"><set_value name="$r.$reason" exact="'The supplier price exceeds the destination buy price. I did not override your price limit.'" /></do_elseif>
+        </do_if></do_for_each>
+      </do_if></do_for_each>
+      </do_if>
+      <do_else><set_value name="$r.$reason" exact="'The current target no longer supports a positive trade amount. No trade was requested.'" /><set_value name="$r.$nextstep" exact="'No purchase or sale is needed from this reading. Check again only if the station requirement changes.'" /></do_else>
+    </actions></cue>
+    <cue name="ProbeMining" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$r" exact="event.param" /><remove_value name="$sector" /><remove_value name="$position" />
+      <set_value name="$ship" exact="$r.$actor" />
+      <find_closest_resource ware="$r.$ware" refobject="$r.$station" sector="$sector" position="$position" ignoredangerousregions="true" />
+      <do_if value="$sector? and $sector.exists">
+        <set_value name="$r.$probeobject" exact="$sector" /><signal_cue_instantly cue="Reach" param="$r" />
+        <set_value name="$r.$routevalid" exact="$r.$reachable" />
+        <set_value name="$r.$operation" exact="'MINING'" />
+        <set_value name="$r.$sourcebrief" exact="'Mining source found in %1. The selected miner range and sector restrictions were checked; exact resource pin and delivery will be checked after assignment.'.[$sector.name]" />
+      </do_if>
+      <do_else><set_value name="$r.$reason" exact="'No mining source was returned for this resource. Another miner alone cannot establish supply.'" /></do_else>
+      <do_if value="not $r.$routevalid">
+        <find_cluster_in_range distances="$clusters" multiple="true" object="$r.$station" mindistance="0" maxdistance="$r.$maxrange" />
+        <set_value name="$clusterlist" exact="$clusters.keys.list" /><sort_list list="$clusterlist" sortbyvalue="$clusters.{loop.element}" />
+        <set_value name="$checks" exact="0" />
+        <do_for_each name="$cluster" in="$clusterlist"><do_if value="not $r.$routevalid and $checks lt 16">
+          <find_sector name="$sectors" space="$cluster" multiple="true" />
+          <do_for_each name="$candidate" in="$sectors"><do_if value="not $r.$routevalid and $checks lt 16 and $candidate.isknown">
+            <set_value name="$r.$probeobject" exact="$candidate" /><signal_cue_instantly cue="Reach" param="$r" />
+            <do_if value="$r.$reachable">
+              <set_value name="$checks" operation="add" exact="1" /><remove_value name="$sector" /><remove_value name="$position" />
+              <find_resource ware="$r.$ware" refobject="$candidate" sector="$sector" position="$position" ignoredangerousregions="true" />
+              <do_if value="$sector? and $sector.exists and $sector.isknown">
+                <set_value name="$r.$probeobject" exact="$sector" /><signal_cue_instantly cue="Reach" param="$r" />
+                <do_if value="$r.$reachable"><set_value name="$r.$routevalid" exact="true" /><set_value name="$r.$operation" exact="'MINING'" /><set_value name="$r.$sourcebrief" exact="'An alternative mining source was found in %1 within the selected miner permitted route. Exact resource pin and delivery remain separate checks.'.[$sector.name]" /></do_if>
+              </do_if>
+            </do_if>
+          </do_if></do_for_each>
+        </do_if></do_for_each>
+        <do_if value="not $r.$routevalid and $checks ge 16"><set_value name="$r.$reason" exact="$r.$reason + ' The alternative-source search reached its sixteen-location budget; this is not proof that the galaxy has no supply.'" /></do_if>
+      </do_if>
+      <do_if value="$ship.iscapitalship and (($r.$ware.waretransport == waretransport.solid and not $ship.units.{unitcategory.orecollector}.count) or ($r.$ware.waretransport == waretransport.liquid and not $ship.units.{unitcategory.gascollector}.count))">
+        <set_value name="$r.$routevalid" exact="false" /><set_value name="$r.$reason" exact="'%1 has no collector drones for this resource. Its native mining routine cannot collect the material with that equipment.'.[$ship.name]" />
+        <set_value name="$r.$nextstep" exact="'Equip %1 with the appropriate mining drones through an equipment dock or shipyard, then choose CHECK PROGRESS. EOC will verify the drone count again; it will not grant equipment or place an unapproved equipment purchase.'.[$ship.name]" />
+      </do_if>
+    </actions></cue>
+    <cue name="Apply" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$r" exact="event.param" /><set_value name="$ship" exact="$r.$ship" />
+      <set_value name="$r.$status" exact="'INVESTIGATING'" />
+      <signal_cue_instantly cue="Eligible" param="$r" />
+      <do_if value="$r.$eligible and not @$r.$job">
+        <do_if value="$r.$operation == 'MINING'">
+          <set_value name="$r.$pinpending" exact="true" />
+          <set_value name="$r.$status" exact="'VERIFYING MINING RESOURCE'" /><set_value name="$r.$overview" exact="'I am checking the exact mining assignment and resource pin before watching delivery.'" />
+          <do_if value="$ship.commander == $r.$station and $ship.assignment == assignment.mining and not global.$JKEOC_B298Pending?"><set_value name="$r.$active" exact="true" /><signal_cue_instantly cue="md.JKEOC_Route_Recovery.Verify" param="[$r,$r.$token]" /></do_if>
+          <do_else><signal_cue_instantly cue="md.JKEOC_Route_Recovery.Assign" param="$r" /></do_else>
+          <do_if value="$r.$status == 'PLAYER ACTION NEEDED'"><set_value name="$r.$pinpending" exact="false" /></do_if>
+          <set_value name="$r.$watch" exact="true" /><set_value name="$r.$watchuntil" exact="player.age + 30min" /><signal_cue_instantly cue="Watch" param="[$r,$r.$token]" />
+        </do_if>
+        <do_else>
+          <set_value name="$r.$actor" exact="$ship" /><set_value name="$r.$routevalid" exact="false" /><signal_cue_instantly cue="ProbeTrade" param="$r" />
+          <do_if value="$r.$routevalid and (@$r.$donorvalid or $ship.commander == $r.$station or (not $ship.commander and global.$JKEOC_B76EligibleShips? and global.$JKEOC_B76EligibleShips.indexof.{$ship}))">
+            <set_value name="$r.$assignment" exact="if $r.$role == 'BUILD STORAGE' then assignment.tradeforbuildstorage else if $r.$raw and $ship.primarypurpose == purpose.mine then assignment.mining else assignment.trade" />
+            <set_value name="$r.$job" exact="true" /><set_value name="$r.$jobstart" exact="player.age" /><set_value name="$r.$delivered" exact="0" /><set_value name="$r.$buydone" exact="false" /><set_value name="$r.$selldone" exact="false" />
+            <set_value name="$r.$phase" exact="'ASSIGNMENT READBACK'" />
+            <remove_value name="$r.$buyorder" /><remove_value name="$r.$sellorder" />
+            <remove_value name="$r.$buydeal" /><remove_value name="$r.$selldeal" /><remove_value name="$r.$counterparty" />
+            <set_value name="$r.$originalcommander" exact="$ship.commander" />
+            <set_value name="$r.$assignmentrequested" exact="not $ship.commander or @$r.$donorvalid" />
+            <do_if value="not $ship.commander or @$r.$donorvalid"><set_object_commander object="$ship" commander="$r.$station" assignment="$r.$assignment" /><remove_from_list name="global.$JKEOC_B76EligibleShips" exact="$ship" /><set_value name="$r.$actions" exact="'Requested assignment of %1 to %2 after checking eligibility and donor coverage. Native trade dispatch is still pending.'.[$ship.name,$r.$stationname]" /></do_if>
+            <set_value name="$r.$status" exact="'VERIFYING ASSIGNMENT'" /><set_value name="$r.$overview" exact="'A usable route is selected. I am verifying the ship before reserving its trades.'" />
+            <signal_cue_instantly cue="Dispatch" param="[$r,$r.$token]" />
+          </do_if>
+          <do_else><set_value name="$r.$overview" exact="'The selected trade or ship changed before execution. No trade was queued; check again for a fresh route.'" /></do_else>
+        </do_else>
+      </do_if>
+      <do_else><set_value name="$r.$overview" exact="'The ship, order queue or permission changed. I did not overwrite that work.'" /></do_else>
+      <signal_cue_instantly cue="Finish" param="$r" />
+    </actions></cue>
+    <cue name="Dispatch" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="3s" /><actions>
+      <set_value name="$r" exact="event.param.{1}" />
+      <do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r} and $r.$token == event.param.{2} and $r.$job">
+        <set_value name="$ship" exact="$r.$ship" /><set_value name="$r.$actor" exact="$ship" /><set_value name="$r.$routevalid" exact="false" />
+        <do_if value="@$r.$assignmentrequested and $ship.exists and $ship.commander == $r.$station and $ship.assignment == $r.$assignment"><set_value name="$r.$assignmentownedship" exact="$ship" /><set_value name="$r.$changes" exact="'Native readback confirms that EOC assigned %1 to %2 for this route. Delivery remains a separate result.'.[$ship.name,$r.$stationname]" /></do_if>
+        <signal_cue_instantly cue="Eligible" param="$r" />
+        <do_if value="$r.$eligible and $ship.commander == $r.$station"><signal_cue_instantly cue="ProbeTrade" param="$r" /></do_if>
+        <do_if value="$r.$routevalid and $r.$attempts lt 3">
+          <set_value name="$r.$attempts" operation="add" exact="1" />
+          <set_value name="$r.$phase" exact="'DISPATCHING'" />
+          <set_value name="$r.$endpoint" exact="$r.$tooffer.buyer" />
+          <create_trade_order name="$r.$sellorder" object="$ship" tradeoffer="$r.$tooffer" amount="$r.$quantity" immediate="true" internal="true" />
+          <do_if value="$r.$sellorder? and $r.$sellorder.exists">
+            <create_trade_order name="$r.$buyorder" object="$ship" tradeoffer="$r.$fromoffer" amount="$r.$quantity" immediate="true" internal="true" />
+            <do_if value="$r.$buyorder? and $r.$buyorder.exists">
+              <set_value name="$r.$phase" exact="'ORDERS ACTIVE'" />
+              <set_value name="$r.$counterparty" exact="if $r.$selling then $r.$tooffer.owner else $r.$fromoffer.owner" />
+              <set_value name="$r.$buydeal" exact="$r.$buyorder.trade" /><set_value name="$r.$selldeal" exact="$r.$sellorder.trade" />
+              <set_value name="$r.$status" exact="'AWAITING DELIVERY'" /><set_value name="$r.$overview" exact="'I queued the purchase and delivery for %1. Native trade orders now own the reservations and normal payment. Delivery is not yet confirmed.'.[$ship.name]" />
+              <set_value name="$r.$actions" exact="'Requested up to %1 units using %2. No cargo or credits were granted; no modules were built.'.[$r.$quantity,$ship.name]" />
+              <signal_cue_instantly cue="Track" param="[$r,$r.$token]" />
+            </do_if>
+            <do_else><cancel_order order="$r.$sellorder" /><set_value name="$r.$overview" exact="'The purchase order could not be created. I requested cancellation of only the paired EOC delivery and will check that it has ended.'" /><signal_cue_instantly cue="Track" param="[$r,$r.$token]" /></do_else>
+          </do_if>
+          <do_else><set_value name="$r.$job" exact="false" /><set_value name="$r.$status" exact="'PLAYER ACTION NEEDED'" /><set_value name="$r.$overview" exact="'The native delivery reservation was not created. No purchase was requested. Any confirmed station assignment remains intact.'" /></do_else>
+        </do_if>
+        <do_else><set_value name="$r.$job" exact="false" /><set_value name="$r.$status" exact="'PLAYER ACTION NEEDED'" /><set_value name="$r.$overview" exact="'The route or ship changed during assignment readback, or the retry budget was exhausted. No purchase was queued. Any confirmed station assignment remains intact.'" /></do_else>
+        <signal_cue_instantly cue="Finish" param="$r" />
+      </do_if>
+    </actions></cue>
+    <cue name="Track" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$r" exact="event.param.{1}" /><set_value name="$token" exact="event.param.{2}" />
+      <do_if value="$r.$trackcue? and @$r.$trackcue.exists and $r.$trackcue != this"><cancel_cue cue="$r.$trackcue" /></do_if>
+      <set_value name="$r.$trackcue" exact="this" />
+      <set_value name="$endpoint" exact="if $r.$endpoint? then $r.$endpoint else $r.$destination" />
+    </actions><cues>
+      <cue name="Delivery" instantiate="true"><conditions><event_trade_completed buyer="$endpoint" ware="$r.$ware" /></conditions><actions>
+        <do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r} and $r.$token == $token and @$r.$job and $r.$selldeal? and event.param2 == $r.$selldeal">
+          <set_value name="$r.$selldone" exact="true" /><set_value name="$r.$delivered" exact="if event.param2.exists then event.param2.transferredamount else 0" />
+        </do_if>
+      </actions></cue>
+      <cue name="Purchase" instantiate="true"><conditions><event_trade_completed buyer="$r.$ship" ware="$r.$ware" /></conditions><actions>
+        <do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r} and $r.$token == $token and @$r.$job and $r.$buydeal? and event.param2 == $r.$buydeal"><set_value name="$r.$buydone" exact="true" /><set_value name="$r.$purchased" exact="if event.param2.exists then event.param2.transferredamount else 0" /></do_if>
+      </actions></cue>
+      <cue name="Tick" onfail="cancel"><conditions><check_value value="true" /></conditions><delay exact="if player.age - $r.$jobstart ge 30min then 5min else 30s" /><actions>
+        <do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r} and $r.$token == $token and @$r.$job">
+          <signal_cue_instantly cue="Reconcile" param="$r" />
+          <do_if value="$r.$job"><reset_cue cue="this" /></do_if>
+          <do_else><cancel_cue cue="parent" /></do_else>
+        </do_if>
+        <do_else><cancel_cue cue="parent" /></do_else>
+      </actions></cue>
+    </cues></cue>
+    <cue name="Reconcile" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$r" exact="event.param" />
+      <!-- The completion event carries a trade DEAL, not the AI order. Read the
+           retained deal too when it survives a save/load or delayed callback. -->
+      <do_if value="@$r.$selldeal.exists and $r.$selldeal.transferredamount gt @$r.$delivered"><set_value name="$r.$delivered" exact="$r.$selldeal.transferredamount" /><set_value name="$r.$selldone" exact="true" /></do_if>
+      <do_if value="@$r.$buydeal.exists and $r.$buydeal.transferredamount gt 0"><set_value name="$r.$buydone" exact="true" /><set_value name="$r.$purchased" exact="$r.$buydeal.transferredamount" /></do_if>
+      <do_if value="not $r.$ship.exists or $r.$ship.owner != faction.player"><set_value name="$r.$job" exact="false" /><set_value name="$r.$status" exact="'SHIP UNAVAILABLE'" /><set_value name="$r.$overview" exact="'The delivery ship was lost or changed owner. EOC will not issue further orders to it.'" /></do_if>
+      <do_elseif value="not @$r.$buyorder.exists and not @$r.$sellorder.exists">
+        <set_value name="$r.$job" exact="false" />
+        <do_if value="@$r.$buydone and @$r.$purchased gt 0 and $r.$ship.cargo.{$r.$ware}.count gt 0">
+          <signal_cue_instantly cue="RecoverCargo" param="$r" />
+        </do_if>
+        <do_elseif value="@$r.$selldone and $r.$delivered gt 0">
+          <set_value name="$r.$overview" exact="'X4 confirmed this job transferred %1 units. I am reassessing stock and the remaining requirement.'.[$r.$delivered]" />
+          <set_value name="$r.$status" exact="'DELIVERY OBSERVED'" /><set_value name="$r.$actions" exact="$r.$overview" />
+          <set_value name="$r.$watch" exact="true" /><set_value name="$r.$watchuntil" exact="player.age + 5min" /><signal_cue_instantly cue="Watch" param="[$r,$r.$token]" />
+        </do_elseif>
+        <do_else>
+          <set_value name="$r.$status" exact="'DELIVERY NOT CONFIRMED'" />
+          <set_value name="$r.$overview" exact="'The EOC orders ended without a confirmed transfer. I did not mark the route fixed or overwrite any replacement orders.'" />
+          <do_if value="$r.$counterparty? and $r.$counterparty.exists and not $r.$failedsources.indexof.{$r.$counterparty}"><append_to_list name="$r.$failedsources" exact="$r.$counterparty" /></do_if>
+          <signal_cue_instantly cue="Eligible" param="$r" />
+          <do_if value="$r.$eligible and $r.$attempts lt 3"><set_value name="$r.$active" exact="false" /><signal_cue_instantly cue="Retry" param="[$r,$r.$token]" /></do_if>
+        </do_else>
+      </do_elseif>
+      <do_elseif value="player.age - $r.$jobstart ge 30min"><set_value name="$r.$overview" exact="'The delivery has not completed within thirty minutes. Its native orders are still present. EOC will keep watching this exact job at five-minute intervals; it will not duplicate the purchase or cancel a possible in-progress transfer. CHECK PROGRESS also checks it immediately.'" /><set_value name="$r.$status" exact="'DELIVERY DELAYED'" /></do_elseif>
+      <signal_cue_instantly cue="Finish" param="$r" />
+    </actions></cue>
+    <cue name="RecoverCargo" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$r" exact="event.param" /><set_value name="$ship" exact="$r.$ship" />
+      <!-- Preserve the paid cargo lease: never respond to a failed delivery by buying again. -->
+      <set_value name="$r.$job" exact="true" /><set_value name="$r.$status" exact="'PAID CARGO AWAITING DELIVERY'" />
+      <set_value name="$r.$overview" exact="'The purchase succeeded, but the ship still holds this resource. EOC has retained that cargo job and will not buy the same shipment again.'" />
+      <do_if value="$ship.exists and $ship.owner == faction.player and $ship != player.ship and $ship.isoperational and $ship.commander == $r.$station and $ship.pilot.exists and not $ship.hasorderloop and $ship.orders.count == 0 and $ship.tradeorders.count == 0 and $ship.cargo.list.count == 1 and $ship.cargo.{$r.$ware}.count le $r.$purchased and $r.$attempts lt 3 and $r.$destination.exists and (global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' or (global.$JKEOC_B76AssignmentMode == 'APPROVAL REQUIRED' and @$r.$approvedtoken == $r.$token)) and (not $ship.defaultorder.exists or $ship.defaultorder.id == 'Wait' or $ship.defaultorder.id == 'TradeRoutine') and (not @$ship.defaultorder.$warebasket_override.count or @$ship.defaultorder.$warebasket_override.indexof.{$r.$ware})">
+        <set_value name="$offers" exact="[]" />
+        <do_if value="not $r.$selling"><find_buy_offer buyer="$r.$destination" tradepartner="$ship" wares="$r.$ware" result="$offers" multiple="true" /></do_if>
+        <do_elseif value="$r.$endpoint? and $r.$endpoint.exists"><find_buy_offer buyer="$r.$endpoint" tradepartner="$ship" wares="$r.$ware" result="$offers" multiple="true" /></do_elseif>
+        <set_value name="$restored" exact="false" />
+        <do_for_each name="$offer" in="$offers"><do_if value="not $restored and $offer.available and $offer.cantradewith.{$ship}">
+          <set_value name="$r.$actor" exact="$ship" /><set_value name="$r.$probeobject" exact="$offer.buyer" /><signal_cue_instantly cue="Reach" param="$r" />
+          <do_if value="$r.$reachable and $offer.buyer.dock.{$ship.docksize}.exists">
+            <set_value name="$amount" exact="[$ship.cargo.{$r.$ware}.count,$offer.offeramount.{$ship}].min" />
+            <clamp_trade_amount trade="$offer" amount="$amount" buyer="$offer.buyer" seller="$ship" result="$amount" />
+            <do_if value="$amount gt 0 and $amount ge $offer.minamount">
+              <set_value name="$r.$attempts" operation="add" exact="1" />
+              <create_trade_order name="$r.$sellorder" object="$ship" tradeoffer="$offer" amount="$amount" immediate="true" internal="true" />
+              <do_if value="$r.$sellorder? and $r.$sellorder.exists">
+                <set_value name="$restored" exact="true" /><set_value name="$r.$selldeal" exact="$r.$sellorder.trade" /><set_value name="$r.$endpoint" exact="$offer.buyer" /><set_value name="$r.$selldone" exact="false" /><set_value name="$r.$delivered" exact="0" />
+                <set_value name="$r.$status" exact="'AWAITING DELIVERY'" /><set_value name="$r.$overview" exact="'I restored only the delivery of %1 already-purchased units on %2. No second purchase was made.'.[$amount,$ship.name]" />
+              </do_if>
+            </do_if>
+          </do_if>
+        </do_if></do_for_each>
+        <do_if value="not $restored"><set_value name="$r.$steps.{1}" exact="'The paid shipment is still on %1. The destination has no currently usable delivery offer or route. Check the named destination offer/restriction in supporting evidence, or choose where you want that cargo delivered. EOC will retry delivery, not purchase, when you check your changes.'.[$ship.name]" /></do_if>
+      </do_if>
+      <do_else><set_value name="$r.$steps.{1}" exact="'The paid shipment remains on %1. Its orders, cargo, commander or authority changed, or the three-attempt safety budget was reached. EOC will not overwrite your work or buy more. Complete its intended delivery or explicitly decide what to do with that cargo, then CHECK PROGRESS.'.[$ship.name]" /></do_else>
+    </actions></cue>
+    <cue name="Watch" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="60s" /><actions>
+      <set_value name="$r" exact="event.param.{1}" /><do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r} and $r.$token == event.param.{2} and @$r.$watch">
+        <do_if value="$r.$destination.exists">
+          <set_value name="$stock" exact="$r.$destination.cargo.{$r.$ware}.count" />
+          <set_value name="$target" exact="if $r.$role == 'BUILD STORAGE' then $r.$destination.buildprocessor.neededsequenceresources.{$r.$ware}.count else $r.$destination.cargo.{$r.$ware}.target" />
+          <set_value name="$r.$changes" exact="'Previous stock %1; current stock %2. Previous target %3; current target %4. Target changes are not delivery evidence.'.[$r.$laststock,$stock,$r.$target,$target]" />
+          <set_value name="$r.$laststock" exact="$stock" /><set_value name="$r.$target" exact="$target" />
+          <do_if value="$target le 0"><set_value name="$r.$watch" exact="false" /><set_value name="$r.$status" exact="'REQUIREMENT CHANGED'" /><set_value name="$r.$overview" exact="'There is no longer a positive target for this resource. I stopped this assessment without claiming that a delivery repaired it.'" /><signal_cue_instantly cue="Finish" param="$r" /></do_if>
+          <do_elseif value="(not $r.$selling and $stock ge $target) or ($r.$selling and $stock le (($target * 3 + 3) / 4)i)"><set_value name="$r.$watch" exact="false" /><set_value name="$r.$status" exact="'RESOLVED'" /><set_value name="$r.$overview" exact="'Current stock satisfies the current route threshold. Existing native deliveries were left intact. Future demand can still change; this reading does not prove which action caused recovery.'" /><signal_cue_instantly cue="Finish" param="$r" /></do_elseif>
+          <do_elseif value="player.age lt $r.$watchuntil"><signal_cue_instantly cue="this.static" param="[$r,$r.$token]" /></do_elseif>
+          <do_else>
+            <set_value name="$r.$watch" exact="false" /><set_value name="$r.$active" exact="false" />
+            <set_value name="$r.$watchrounds" exact="if $r.$watchrounds? then $r.$watchrounds + 1 else 1" />
+            <do_if value="$r.$watchrounds lt 2 and $r.$attempts lt 3"><signal_cue_instantly cue="Begin" param="$r" /></do_if>
+            <do_else><set_value name="$r.$status" exact="'DELIVERY REVIEW NEEDED'" /><set_value name="$r.$overview" exact="'The bounded recovery checks have not established sustained recovery. I retained the orders, transfer evidence and previous actions. No additional ship or purchase will be added blindly.'" /><signal_cue_instantly cue="Finish" param="$r" /></do_else>
+          </do_else>
+        </do_if>
+        <do_else><set_value name="$r.$watch" exact="false" /></do_else>
+      </do_if>
+    </actions></cue>
+    <cue name="Load" instantiate="true"><conditions><event_game_loaded /></conditions><actions>
+      <do_if value="global.$JKEOC_B371Routes?"><do_for_each name="$r" in="global.$JKEOC_B371Routes"><do_if value="$r.$token?">
+        <set_value name="$approvedjob" exact="(@$r.$job or @$r.$pinpending) and @$r.$approvedtoken == $r.$token" />
+        <set_value name="$r.$token" operation="add" exact="1" /><set_value name="$r.$active" exact="false" /><set_value name="$r.$probewait" exact="false" />
+        <do_if value="$approvedjob"><set_value name="$r.$approvedtoken" exact="$r.$token" /></do_if>
+        <do_if value="@$r.$pinpending">
+          <do_if value="global.$JKEOC_B298Pending? and @$global.$JKEOC_B298Pending.$recovery == $r">
+            <set_value name="global.$JKEOC_B298Pending.$recoverytoken" exact="$r.$token" /><set_value name="$r.$active" exact="true" />
+            <do_if value="@$r.$watch"><signal_cue_instantly cue="Watch" param="[$r,$r.$token]" /></do_if>
+          </do_if>
+          <do_else><set_value name="$r.$pinpending" exact="false" /><set_value name="$r.$status" exact="'INVESTIGATING'" /><signal_cue_instantly cue="Begin" param="$r" /></do_else>
+        </do_if>
+        <do_elseif value="@$r.$job and @$r.$phase == 'ASSIGNMENT READBACK' and not $r.$buyorder? and not $r.$sellorder?">
+          <signal_cue_instantly cue="Dispatch" param="[$r,$r.$token]" />
+        </do_elseif>
+        <do_elseif value="@$r.$job"><signal_cue_instantly cue="Track" param="[$r,$r.$token]" /></do_elseif>
+        <do_elseif value="@$r.$watch"><signal_cue_instantly cue="Watch" param="[$r,$r.$token]" /></do_elseif>
+        <do_elseif value="@$r.$queued or $r.$status == 'QUEUED' or $r.$status == 'INVESTIGATING'"><set_value name="$r.$queued" exact="false" /><signal_cue_instantly cue="Begin" param="$r" /></do_elseif>
+        <do_elseif value="$r.$status == 'APPROVAL NEEDED'"><set_value name="$r.$status" exact="'PLAYER ACTION NEEDED'" /><set_value name="$r.$overview" exact="'The saved approval preview needs a fresh route check. No saved preview was executed automatically.'" /><signal_cue_instantly cue="Finish" param="$r" /></do_elseif>
+      </do_if><do_elseif value="@$r.$queued"><set_value name="$r.$queued" exact="false" /><signal_cue_instantly cue="Begin" param="$r" /></do_elseif><do_elseif value="@$r.$active">
+        <!-- Do not launch a new executor on top of an inherited mining/assignment transaction. -->
+        <set_value name="$r.$status" exact="'INHERITED ASSIGNMENT PENDING'" />
+        <set_value name="$r.$report" exact="'An earlier recovery build left an assignment pending. EOC has preserved that transaction and will not duplicate it. Its existing readback must finish before a new recovery assessment.'" />
+        <do_if value="not global.$JKEOC_B298Pending? or @$global.$JKEOC_B298Pending.$ship != @$r.$ship">
+          <set_value name="$r.$active" exact="false" /><set_value name="$r.$status" exact="'RECHECK AVAILABLE'" />
+          <set_value name="$r.$report" exact="'The old investigation no longer has a matching pending mining transaction. Its history and any native orders are preserved. CHECK PROGRESS will inspect current commitments before starting new work.'" />
+        </do_if>
+        <signal_cue_instantly cue="md.JKEOC_Route_Recovery.Publish" param="$r" />
+      </do_elseif></do_for_each></do_if>
+    </actions></cue>
+    <cue name="Retry" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="10s" /><actions>
+      <set_value name="$r" exact="event.param.{1}" /><do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r} and $r.$token == event.param.{2} and not @$r.$job"><signal_cue_instantly cue="Begin" param="$r" /></do_if>
+    </actions></cue>
+    <cue name="Eligible" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$r" exact="event.param" /><set_value name="$ship" exact="$r.$ship" /><set_value name="$r.$eligible" exact="false" />
+      <set_value name="$r.$donorvalid" exact="false" /><do_if value="$r.$donor? and $ship.commander != $r.$station"><signal_cue_instantly cue="md.JKEOC_Route_Recovery.CheckDonor" param="$r" /></do_if>
+      <do_if value="global.$JKEOC_B371Routes? and global.$JKEOC_B371Routes.indexof.{$r} and $ship.exists and $ship.owner == faction.player and $ship != player.ship and $ship.isoperational and $ship.isclass.ship and not $ship.isunit and not $ship.isclass.ship_xs and $ship.pilot.exists and not $ship.subordinates.count and not $ship.hasorderloop and $ship.orders.count == 0 and $ship.tradeorders.count == 0 and $ship.cargo.list.count == 0 and $r.$station.exists and $r.$station.owner == faction.player and $r.$destination.exists and $ship.waretransport.indexof.{$r.$ware.waretransport} and (global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED' or (global.$JKEOC_B76AssignmentMode == 'APPROVAL REQUIRED' and @$r.$approvedtoken == $r.$token)) and (@$r.$donorvalid or ($ship.commander == $r.$station and $ship.assignment == (if $r.$role == 'BUILD STORAGE' then assignment.tradeforbuildstorage else if $r.$raw and $ship.primarypurpose == purpose.mine then assignment.mining else assignment.trade)) or (not $ship.commander and global.$JKEOC_B76EligibleShips? and global.$JKEOC_B76EligibleShips.indexof.{$ship}))">
+        <set_value name="$r.$eligible" exact="not $ship.defaultorder.exists or $ship.defaultorder.id == 'Wait' or (($ship.commander == $r.$station or @$r.$donorvalid) and ($ship.defaultorder.id == 'TradeRoutine' or $ship.defaultorder.id == 'MiningRoutine'))" />
+        <do_if value="($r.$raw and $ship.primarypurpose != purpose.mine and $ship.primarypurpose != purpose.trade) or (not $r.$raw and $ship.primarypurpose != purpose.trade)"><set_value name="$r.$eligible" exact="false" /></do_if>
+        <do_if value="@$ship.defaultorder.$warebasket_override.count and not @$ship.defaultorder.$warebasket_override.indexof.{$r.$ware}"><set_value name="$r.$eligible" exact="false" /></do_if>
+        <do_for_each name="$other" in="global.$JKEOC_B371Routes"><do_if value="$other != $r and (($other.$actor? and $other.$actor == $ship and $other.$active) or ($other.$ship? and $other.$ship == $ship and ($other.$active or @$other.$job or $other.$status == 'APPROVAL NEEDED')))"><set_value name="$r.$eligible" exact="false" /></do_if></do_for_each>
+        <do_if value="(global.$JKEOC_B74PendingShip? and global.$JKEOC_B74PendingShip == $ship) or (global.$JKEOC_B298Pending? and @$global.$JKEOC_B298Pending.$ship == $ship) or (global.$JKEOC_B219MinimumPending? and @$global.$JKEOC_B219MinimumPending.$ship == $ship)"><set_value name="$r.$eligible" exact="false" /></do_if>
+      </do_if>
+    </actions></cue>
+    <cue name="Finish" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$r" exact="event.param" /><set_value name="$r.$active" exact="@$r.$pinpending" />
+      <do_if value="$r.$status == 'INVESTIGATING'"><set_value name="$r.$status" exact="'PLAYER ACTION NEEDED'" /></do_if>
+      <do_if value="$r.$oldsteps? and $r.$oldacks?"><do_all exact="3" counter="$i"><do_if value="$r.$steps.{$i} == $r.$oldsteps.{$i}"><set_value name="$r.$acks.{$i}" exact="$r.$oldacks.{$i}" /></do_if><do_elseif value="$r.$oldsteps.{$i} != ''"><set_value name="$r.$changes" exact="$r.$changes + ' Instruction %1 changed or is no longer needed; its old checkmark remains in the previous round, not on a different task.'.[$i]" /></do_elseif></do_all></do_if>
+      <remove_value name="$r.$oldsteps" /><remove_value name="$r.$oldacks" />
+      <set_value name="$r.$report" exact="$r.$overview + ' ' + $r.$sourcebrief + ' ' + $r.$changes + ' ' + $r.$actions + ' Other candidates: ' + $r.$rejections + ' Native order evidence (historical failures are not automatically the current cause): ' + $r.$faults" />
+      <do_if value="not $r.$archivedreport? or $r.$archivedreport != $r.$report">
+        <signal_cue_instantly cue="md.JKEOC_Route_Recovery.ArchiveRound" param="$r" />
+        <set_value name="$r.$archivedreport" exact="$r.$report" />
+      </do_if>
+      <set_value name="$snapshot" exact="'%1|%2|%3|%4|%5|%6|%7|%8'.[$r.$status,$r.$report,$r.$steps.{1},$r.$steps.{2},$r.$steps.{3},$r.$acks.{1},$r.$acks.{2},$r.$acks.{3}]" />
+      <do_if value="not $r.$publishedsnapshot? or $r.$publishedsnapshot != $snapshot">
+        <signal_cue_instantly cue="md.JKEOC_Route_Recovery.Publish" param="$r" />
+        <set_value name="$r.$publishedsnapshot" exact="$snapshot" />
+      </do_if>
+    </actions></cue>
+  </cues>
+</mdscript>
