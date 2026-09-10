@@ -1,0 +1,9 @@
+EOC 3.9 TEST Build379 / version479
+
+History: bounded report-list and separate measured text pages; summary, supporting evidence and original retained report. History identifies its all-stations scope and keeps selection attached to the retained record. Empty numbered instruction slots are omitted without remapping checkmarks.
+
+Saved Plans: All stations or exact-station browsing filter, independent of the working plan. Filter changes and paging do not run analysis or change plan entries.
+
+Recovery diagnostics: first evidenced eligibility blocker, candidate-number correlation, native ship identity in order diagnostics, current behavior separated from historical records. No assignment, order, payment, delivery watcher or shipping-authority change.
+
+Small viewport/row-budget exhaustion is handled before list population. Existing original report bodies and permanent Logbook copies remain intact. Static checks do not prove X4 geometry or native behavior: RUNTIME ACCEPTANCE REQUIRED.

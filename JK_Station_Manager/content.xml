@@ -2,12 +2,12 @@
 <content
   id="ws_3788882957"
   name="EOC - Executive Operations Center"
-  description="EOC 3.9 - Build 378. Background recovery progress, delivery follow-up and independent what-if planning."
+  description="EOC 3.9 - Build 379. Background recovery progress, delivery follow-up and independent what-if planning."
   author="RazorEQX"
-  version="478"
-  date="2026-09-06"
+  version="479"
+  date="2026-09-10"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 GA Build 378" description="Background recovery progress, delivery follow-up and independent what-if planning." />
+  <text language="44" name="EOC 3.9 TEST Build 379" description="Background recovery progress, delivery follow-up and independent what-if planning." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

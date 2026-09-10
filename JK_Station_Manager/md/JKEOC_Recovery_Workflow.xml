@@ -101,7 +101,7 @@
       <do_if value="global.$JKEOC_B371Routes? and event.param3.$id? and event.param3.$token? and event.param3.$ok? and event.param3.$text?">
         <do_for_each name="$r" in="global.$JKEOC_B371Routes"><do_if value="$r.$token? and $r.$cursor? and $r.$probewait? and $r.$probewait and $r.$active and $r.$id == event.param3.$id and $r.$token * 1000 + $r.$cursor == event.param3.$token">
           <set_value name="$r.$probewait" exact="false" /><set_value name="$r.$fault" exact="event.param3.$text" />
-          <do_if value="$r.$cursor le 8"><set_value name="$r.$faults" exact="$r.$faults + ' ' + $r.$actor.name + ': ' + $r.$fault" /></do_if>
+          <do_if value="$r.$cursor le 8"><set_value name="$r.$faults" exact="$r.$faults + '\nCandidate %1: '.[$r.$cursor] + $r.$fault" /></do_if>
           <signal_cue_instantly cue="ProbeRoute" param="$r" />
         </do_if></do_for_each>
       </do_if>
@@ -118,12 +118,12 @@
       <remove_value name="$r.$donor" /><set_value name="$r.$donorvalid" exact="false" />
       <do_if value="$r.$donors.{$ship}?"><set_value name="$r.$ship" exact="$ship" /><set_value name="$r.$donor" exact="$r.$donors.{$ship}" /><signal_cue_instantly cue="md.JKEOC_Route_Recovery.CheckDonor" param="$r" /></do_if>
       <do_if value="$ship.exists and $s.exists and $r.$destination.exists and $ship.owner == faction.player and $ship.isoperational and $ship != player.ship and not $ship.subordinates.count and not $ship.isunit and $ship.pilot.exists and not $ship.hasorderloop and $ship.cargo.list.count == 0 and $ship.tradeorders.count == 0 and $ship.orders.count == 0 and ($r.$donorvalid or ($ship.commander == $s and $ship.assignment == (if $r.$role == 'BUILD STORAGE' then assignment.tradeforbuildstorage else if $r.$raw and $ship.primarypurpose == purpose.mine then assignment.mining else assignment.trade)) or (not $ship.commander and global.$JKEOC_B76EligibleShips? and global.$JKEOC_B76EligibleShips.indexof.{$ship}))">
-        <set_value name="$reserved" exact="false" />
-        <do_for_each name="$other" in="global.$JKEOC_B371Routes"><do_if value="$other != $r and (($other.$actor? and $other.$actor == $ship and $other.$active) or ($other.$ship? and $other.$ship == $ship and ($other.$active or @$other.$job or $other.$status == 'APPROVAL NEEDED')))"><set_value name="$reserved" exact="true" /></do_if></do_for_each>
-        <do_if value="(global.$JKEOC_B74PendingShip? and global.$JKEOC_B74PendingShip == $ship) or (global.$JKEOC_B298Pending? and @$global.$JKEOC_B298Pending.$ship == $ship) or (global.$JKEOC_B219MinimumPending? and @$global.$JKEOC_B219MinimumPending.$ship == $ship)"><set_value name="$reserved" exact="true" /></do_if>
-        <do_if value="$ship.defaultorder? and $ship.defaultorder.exists and $ship.defaultorder.id != 'Wait' and not (($ship.commander == $s or $r.$donorvalid) and ($ship.defaultorder.id == 'TradeRoutine' or $ship.defaultorder.id == 'MiningRoutine'))"><set_value name="$reserved" exact="true" /></do_if>
-        <do_if value="@$ship.defaultorder.$warebasket_override.count and not @$ship.defaultorder.$warebasket_override.indexof.{$w}"><set_value name="$reserved" exact="true" /></do_if>
-        <do_if value="$reserved"><set_value name="$r.$reason" exact="'Another transaction or a nonstandard default behavior owns this ship. I will not replace it.'" /></do_if>
+        <set_value name="$reserved" exact="false" /><set_value name="$reservedreason" exact="'Another transaction owns this ship; it was left intact.'" />
+        <do_for_each name="$other" in="global.$JKEOC_B371Routes"><do_if value="$other != $r and (($other.$actor? and $other.$actor == $ship and $other.$active) or ($other.$ship? and $other.$ship == $ship and ($other.$active or @$other.$job or $other.$status == 'APPROVAL NEEDED')))"><do_if value="not $reserved"><set_value name="$reservedreason" exact="'Another recovery transaction owns this ship; it was left intact.'" /></do_if><set_value name="$reserved" exact="true" /></do_if></do_for_each>
+        <do_if value="(global.$JKEOC_B74PendingShip? and global.$JKEOC_B74PendingShip == $ship) or (global.$JKEOC_B298Pending? and @$global.$JKEOC_B298Pending.$ship == $ship) or (global.$JKEOC_B219MinimumPending? and @$global.$JKEOC_B219MinimumPending.$ship == $ship)"><do_if value="not $reserved"><set_value name="$reservedreason" exact="'A pending assignment transaction owns this ship; it was left intact.'" /></do_if><set_value name="$reserved" exact="true" /></do_if>
+        <do_if value="$ship.defaultorder? and $ship.defaultorder.exists and $ship.defaultorder.id != 'Wait' and not (($ship.commander == $s or $r.$donorvalid) and ($ship.defaultorder.id == 'TradeRoutine' or $ship.defaultorder.id == 'MiningRoutine'))"><do_if value="not $reserved"><set_value name="$reservedreason" exact="'The ship has protected nonstandard default behavior; it was left intact.'" /></do_if><set_value name="$reserved" exact="true" /></do_if>
+        <do_if value="@$ship.defaultorder.$warebasket_override.count and not @$ship.defaultorder.$warebasket_override.indexof.{$w}"><do_if value="not $reserved"><set_value name="$reservedreason" exact="'The ship has a resource override for different wares; it was left intact.'" /></do_if><set_value name="$reserved" exact="true" /></do_if>
+        <do_if value="$reserved"><set_value name="$r.$reason" exact="$reservedreason" /></do_if>
         <do_elseif value="($r.$raw and $ship.primarypurpose != purpose.mine and $ship.primarypurpose != purpose.trade) or (not $r.$raw and $ship.primarypurpose != purpose.trade)"><set_value name="$r.$reason" exact="'The ship has the wrong operating role for this resource.'" /></do_elseif>
         <do_else>
           <set_value name="$r.$maxrange" exact="[@$s.tradenpc.skill.management,@$ship.pilot.skill.piloting].max / 3" />
@@ -131,7 +131,22 @@
           <do_else><signal_cue_instantly cue="ProbeTrade" param="$r" /></do_else>
         </do_else>
       </do_if>
-      <do_else><set_value name="$r.$reason" exact="'This ship is busy, carries cargo, has queued/manual work, lacks a pilot, or is not eligible for EOC reassignment. Its work was left intact.'" /></do_else>
+      <do_else>
+        <!-- Explain the first failed check only; the eligibility/action guard above is unchanged. -->
+        <set_value name="$r.$reason" exact="'First blocking check: unsupported assignment or registration. Existing work was left intact.'" />
+        <do_if value="not $ship.exists"><set_value name="$r.$reason" exact="'First blocking check: ship is unavailable.'" /></do_if>
+        <do_elseif value="not $s.exists or not $r.$destination.exists"><set_value name="$r.$reason" exact="'First blocking check: station or destination is unavailable.'" /></do_elseif>
+        <do_elseif value="$ship.owner != faction.player"><set_value name="$r.$reason" exact="'First blocking check: ship is not player-owned.'" /></do_elseif>
+        <do_elseif value="not $ship.isoperational"><set_value name="$r.$reason" exact="'First blocking check: ship is not operational.'" /></do_elseif>
+        <do_elseif value="$ship == player.ship"><set_value name="$r.$reason" exact="'First blocking check: this is the player ship.'" /></do_elseif>
+        <do_elseif value="$ship.subordinates.count"><set_value name="$r.$reason" exact="'First blocking check: ship commands subordinates.'" /></do_elseif>
+        <do_elseif value="$ship.isunit"><set_value name="$r.$reason" exact="'First blocking check: this unit is not an eligible ship.'" /></do_elseif>
+        <do_elseif value="not $ship.pilot.exists"><set_value name="$r.$reason" exact="'First blocking check: ship has no pilot.'" /></do_elseif>
+        <do_elseif value="$ship.hasorderloop"><set_value name="$r.$reason" exact="'First blocking check: ship has an order loop; it was left intact.'" /></do_elseif>
+        <do_elseif value="$ship.cargo.list.count != 0"><set_value name="$r.$reason" exact="'First blocking check: ship carries cargo; it was left intact.'" /></do_elseif>
+        <do_elseif value="$ship.tradeorders.count != 0"><set_value name="$r.$reason" exact="'First blocking check: ship has queued trade orders; they were left intact.'" /></do_elseif>
+        <do_elseif value="$ship.orders.count != 0"><set_value name="$r.$reason" exact="'First blocking check: ship has queued orders; they were left intact.'" /></do_elseif>
+      </do_else>
       <do_if value="$r.$routevalid">
         <set_value name="$r.$ship" exact="$ship" /><set_value name="$r.$active" exact="false" />
         <do_if value="global.$JKEOC_B76AssignmentMode == 'AUTO-ASSIGN REGISTERED'"><signal_cue_instantly cue="Apply" param="$r" /></do_if>
@@ -139,8 +154,8 @@
         <do_else><set_value name="$r.$overview" exact="'A usable route was found, but shipping is disabled in EOC settings. I did not override your choice.'" /><set_value name="$r.$steps.{1}" exact="'If you want EOC to operate this route, change shipping authority to approval-required or automatic registered ships, then check again.'" /><signal_cue_instantly cue="Finish" param="$r" /></do_else>
       </do_if>
       <do_else>
-        <do_if value="$r.$bestblocked == '' or $r.$nextstep != 'If you want EOC to use another ship, open its Registered Ships tool and register a genuinely idle compatible ship. EOC will then check the source and arrange supported work; do not remove a busy ship from another service.'"><set_value name="$r.$bestblocked" exact="$ship.name + ': ' + $r.$reason" /><set_value name="$r.$beststep" exact="$r.$nextstep" /></do_if>
-        <do_if value="$r.$cursor le 8"><set_value name="$r.$rejections" exact="$r.$rejections + ' ' + $ship.name + ': ' + $r.$reason" /></do_if>
+        <do_if value="$r.$bestblocked == '' or $r.$nextstep != 'If you want EOC to use another ship, open its Registered Ships tool and register a genuinely idle compatible ship. EOC will then check the source and arrange supported work; do not remove a busy ship from another service.'"><set_value name="$r.$bestblocked" exact="(if $ship.exists then $ship.name else 'Unavailable ship') + ': ' + $r.$reason" /><set_value name="$r.$beststep" exact="$r.$nextstep" /></do_if>
+        <do_if value="$r.$cursor le 8"><set_value name="$r.$rejections" exact="$r.$rejections + '\nCandidate %1: '.[$r.$cursor] + (if $ship.exists then $ship.name else 'Unavailable ship') + ': ' + $r.$reason" /></do_if>
         <signal_cue_instantly cue="NextShip" param="[$r,$r.$token]" />
       </do_else>
     </actions></cue>
@@ -464,10 +479,11 @@
       <do_if value="$r.$status == 'INVESTIGATING'"><set_value name="$r.$status" exact="'PLAYER ACTION NEEDED'" /></do_if>
       <do_if value="$r.$oldsteps? and $r.$oldacks?"><do_all exact="3" counter="$i"><do_if value="$r.$steps.{$i} == $r.$oldsteps.{$i}"><set_value name="$r.$acks.{$i}" exact="$r.$oldacks.{$i}" /></do_if><do_elseif value="$r.$oldsteps.{$i} != ''"><set_value name="$r.$changes" exact="$r.$changes + ' Instruction %1 changed or is no longer needed; its old checkmark remains in the previous round, not on a different task.'.[$i]" /></do_elseif></do_all></do_if>
       <remove_value name="$r.$oldsteps" /><remove_value name="$r.$oldacks" />
-      <set_value name="$r.$report" exact="$r.$overview + ' ' + $r.$sourcebrief + ' ' + $r.$changes + ' ' + $r.$actions + ' Other candidates: ' + $r.$rejections + ' Native order evidence (historical failures are not automatically the current cause): ' + $r.$faults" />
-      <do_if value="not $r.$archivedreport? or $r.$archivedreport != $r.$report">
+      <set_value name="$r.$report" exact="'RECORDED OUTCOME: ' + $r.$status + '\n' + $r.$overview + '\n\nSOURCE / BLOCKER\n' + $r.$sourcebrief + '\n\nCHANGES\n' + $r.$changes + '\n\nEOC ACTION\n' + $r.$actions + '\nSUPPORTING EVIDENCE\nCandidate details (first eight candidates only; not the entire fleet): ' + $r.$rejections + '\nNative order diagnostics (relevance to this route unverified; historical failures are not automatically the current cause): ' + $r.$faults" />
+      <set_value name="$archivekey" exact="'%1|%2|%3|%4'.[$r.$report,$r.$steps.{1},$r.$steps.{2},$r.$steps.{3}]" />
+      <do_if value="not $r.$archivedreport? or $r.$archivedreport != $archivekey">
         <signal_cue_instantly cue="md.JKEOC_Route_Recovery.ArchiveRound" param="$r" />
-        <set_value name="$r.$archivedreport" exact="$r.$report" />
+        <set_value name="$r.$archivedreport" exact="$archivekey" />
       </do_if>
       <set_value name="$snapshot" exact="'%1|%2|%3|%4|%5|%6|%7|%8'.[$r.$status,$r.$report,$r.$steps.{1},$r.$steps.{2},$r.$steps.{3},$r.$acks.{1},$r.$acks.{2},$r.$acks.{3}]" />
       <do_if value="not $r.$publishedsnapshot? or $r.$publishedsnapshot != $snapshot">

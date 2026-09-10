@@ -87,7 +87,11 @@
     </actions></cue>
     <cue name="ArchiveRound" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
       <set_value name="$r" exact="event.param" />
-      <set_value name="$reporttext" exact="'%1\n\n1. %2\n\n2. %3\n\n3. %4\n\nPlayer checkmarks are reports, not EOC verification. The next assessment retains the prior instructions and compares current native evidence.'.[$r.$report, $r.$steps.{1}, $r.$steps.{2}, $r.$steps.{3}]" />
+      <set_value name="$reporttext" exact="$r.$report" />
+      <set_value name="$hassteps" exact="false" />
+      <do_all exact="3" counter="$i"><do_if value="$r.$steps.{$i} != ''"><set_value name="$reporttext" exact="$reporttext + '\n\n%1. %2'.[$i,$r.$steps.{$i}]" /><set_value name="$hassteps" exact="true" /></do_if></do_all>
+      <do_if value="$hassteps"><set_value name="$reporttext" exact="$reporttext + '\n\nPlayer checkmarks are reports, not EOC verification. Instructions describe this recorded assessment, not current completion.'" /></do_if>
+      <do_else><set_value name="$reporttext" exact="$reporttext + '\n\nNo player instruction was recorded at this time. This does not prove recovery or that monitoring is still running now.'" /></do_else>
       <signal_cue_instantly cue="md.JKEOC_Settings_Interface.JKEOC_Settings_RecordReport" param="['ROUTE RECOVERY: %1 - %2 - ROUND %3'.[$r.$stationname, $r.$warename, $r.$revision], $reporttext]" />
     </actions></cue>
     <cue name="SelectShip" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>

@@ -1294,6 +1294,8 @@ local function reportTimeReceived(_, value)
 end
 
 local function reportSaved()
+    local requested = menu.reportRunning == true and (menu.page == "reports" or (menu.reportOrigin and menu.reportOrigin.page == menu.page))
+    local previous = menu.reportAnchor or (menu.reports or {})[menu.selectedReport or 1]
     menu.reportRunning = false
     menu.lastReport = text(menu.pendingReportTitle or menu.pendingReport or "EOC REPORT")
     menu.reportOutput = text(menu.pendingReportText or "Report saved to Tips.")
@@ -1312,9 +1314,18 @@ local function reportSaved()
     while #menu.reports > 20 do
         table.remove(menu.reports)
     end
-    menu.selectedReport = 1
-    menu.page = "reports"
-    menu.activeTab = "reports"
+    if requested then
+        menu.selectedReport = 1
+        menu.reportAnchor = menu.reports[1]
+        menu.reportReading = true
+        menu.reportMode = "summary"
+        menu.reportTextOffset = 1
+        menu.reportTextBack = {}
+        menu.page = "reports"
+        menu.activeTab = "reports"
+    else
+        menu.reportAnchor = previous or menu.reports[1]
+    end
     menu.pendingReportTitle = nil
     menu.pendingReportText = nil
     menu.pendingReportTime = nil
@@ -3411,6 +3422,11 @@ local function selectedStation()
 end
 
 local function addWorkingStationBanner(tableWidget)
+    if menu.page == "reports" or (menu.page == "plans" and menu.goalShowingSaved) then
+        local row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText(menu.page == "reports" and "HISTORY — ALL STATIONS" or "SAVED PLANS — HISTORICAL SNAPSHOTS", { wordwrap = false, color = navigationStoryColor })
+        return
+    end
     local station = selectedStation()
     if not station then return end
     local stationName = text(v(station, 1, "SELECTED STATION"))
@@ -5037,7 +5053,107 @@ function menu.goalSelectStation(_, value)
     end
 end
 
+-- Build379: these bounds apply only to History and saved-plan browsing.
+-- Actual populated sibling rows share X4's pool; scrolling does not virtualize it.
+function menu.readingBudget(tableWidget, reserveRows)
+    local fontHeight=math.ceil(C.GetTextHeight("Ag",Helper.standardFont,math.floor(Helper.scaleFont(Helper.standardFont,Helper.standardFontSize)),0))
+    local pitch = math.max(Helper.scaleY(Helper.standardButtonHeight), Helper.scaleY(Helper.standardTextHeight), fontHeight) + Helper.borderSize * 2
+    local rows = 0
+    for _, widget in ipairs(tableWidget.frame.content or {}) do
+        if widget.type == "table" then rows = rows + #(widget.rows or {}) end
+    end
+    local remaining = math.max(0, (menu.listContentHeight or 0) - tableWidget:getFullHeight() - pitch * reserveRows - Helper.borderSize * 2)
+    return remaining, math.max(0, 164 - rows - reserveRows), pitch
+end
+
+function menu.readingWindow(tableWidget, count, requested, reserveRows)
+    local pixels, pool, pitch = menu.readingBudget(tableWidget, reserveRows)
+    local capacity = math.max(0, math.min(8, pool, math.floor(pixels / pitch)))
+    if capacity == 0 then return 1, 0, 1, 0, 0 end
+    local pages = math.max(1, math.ceil(count / capacity))
+    local page = math.max(1, math.min(pages, math.floor(tonumber(requested) or 1)))
+    return (page - 1) * capacity + 1, math.min(count, page * capacity), page, pages, capacity
+end
+
+function menu.readingNotice(tableWidget, message)
+    local pixels, rows, pitch = menu.readingBudget(tableWidget, 0)
+    if rows > 0 and pixels >= pitch then
+        local row = tableWidget:addRow(false)
+        row[1]:setColSpan(4):createText(message, { wordwrap = false })
+    end
+end
+
+function menu.readingToken(tableWidget)
+    menu.readingGeneration = (menu.readingGeneration or 0) + 1
+    local generation, page = menu.readingGeneration, menu.page
+    return function() return menu.readingGeneration == generation and menu.page == page and menu.mainTable == tableWidget end
+end
+
+function menu.savedPlanRows()
+    local rows = {}
+    for _, record in ipairs(menu.goalSaved or {}) do
+        if menu.goalSavedStation == nil or menu.goalSavedStation == "__all__" or tostring(record[2]) == menu.goalSavedStation then rows[#rows + 1] = record end
+    end
+    return rows
+end
+
+function menu.savedPlansCenter(tableWidget)
+    local current = menu.readingToken(tableWidget)
+    local pixels, pool, pitch = menu.readingBudget(tableWidget, 0)
+    if pool < 4 or pixels < pitch * 4 then menu.readingNotice(tableWidget, "Not enough display space. Enlarge the window or reduce UI scale."); return end
+    local options = {{id="__all__",text="All stations",icon="",displayremoveoption=false}}
+    local seen = {}
+    for _, station in ipairs(menu.stations or {}) do
+        local id = tostring(v(station,24,""))
+        if id ~= "" and not seen[id] then seen[id]=true; options[#options+1]={id=id,text=text(v(station,1,"Station")),icon="",displayremoveoption=false} end
+    end
+    for _, record in ipairs(menu.goalSaved or {}) do
+        local id=tostring(record[2])
+        if not seen[id] then seen[id]=true; options[#options+1]={id=id,text=record[3] .. " (saved station)",icon="",displayremoveoption=false} end
+    end
+    menu.goalSavedStation = menu.goalSavedStation or "__all__"
+    local row=tableWidget:addRow(true)
+    row[1]:createText("SHOW SAVED PLANS FOR")
+    row[2]:setColSpan(3):createDropDown(options,{active=true,startOption=menu.goalSavedStation,height=Helper.standardButtonHeight}):setTextProperties({fontsize=Helper.standardFontSize})
+    row[2].handlers.onDropDownActivated=function() if current() then menu.savedDropdownOwner=tableWidget end end
+    row[2].handlers.onDropDownDeactivated=function()
+        if menu.savedDropdownOwner~=tableWidget then return end
+        menu.savedDropdownOwner=nil
+    end
+    row[2].handlers.onDropDownConfirmed=function(_, value)
+        if not current() or not menu.goalShowingSaved then return end
+        menu.savedDropdownOwner=nil
+        local id=tostring(value or "")
+        if id ~= "__all__" and not seen[id] then return end
+        menu.goalSavedStation=id; menu.goalSavedPage=1; menu.refresh()
+    end
+    local saved=menu.savedPlanRows()
+    local first,last,page,pages,capacity=menu.readingWindow(tableWidget,#saved,menu.goalSavedPage,1)
+    menu.goalSavedPage=page
+    if capacity == 0 then menu.readingNotice(tableWidget,"Not enough display space for saved plans."); return end
+    row=tableWidget:addRow(true)
+    addButton(row,1,"PREVIOUS",function() if current() and menu.goalShowingSaved and page>1 then menu.goalSavedPage=page-1; menu.refresh() end end,page>1)
+    row[2]:setColSpan(2):createText("PAGE "..page.." / "..pages.." | "..#saved.." PLANS",{wordwrap=false})
+    addButton(row,4,"NEXT",function() if current() and menu.goalShowingSaved and page<pages then menu.goalSavedPage=page+1; menu.refresh() end end,page<pages)
+    if #saved==0 then menu.readingNotice(tableWidget,"No saved plans for this station.") end
+    for index=first,last do
+        local record=saved[index]
+        row=tableWidget:addRow(true); row[1]:setColSpan(4)
+        addButton(row,1,record[3].." / "..record[4].." / "..tostring(record[9]),function()
+            if not current() or not menu.goalShowingSaved then return end
+            local found=false
+            for _, retained in ipairs(menu.savedPlanRows()) do if retained==record then found=true end end
+            if not found then return end
+            if not menu.goalSavedPreview then menu.goalWorkingResult=menu.goalResult end
+            menu.goalResult=record; menu.goalSavedPreview=true; menu.goalShowingSaved=false
+            menu.goalNotice="Saved snapshot only. Back returns to your unsaved plan; no current construction or supply guarantee."
+            menu.refresh()
+        end,true)
+    end
+end
+
 function menu.playerPlans(tableWidget)
+    if menu.goalShowingSaved then menu.savedPlansCenter(tableWidget); return end
     section(tableWidget,"PLAN MORE PRODUCTION")
     local row=tableWidget:addRow(false)
     row[1]:setColSpan(4):createText("Choose where and what you want to produce, set your target, then check the plan.",{wordwrap=true})
@@ -5090,19 +5206,6 @@ function menu.playerPlans(tableWidget)
             addButton(row,column,recipe.ware .. " - " .. recipe.name,function()
                 menu.goalDraft={ware=recipe.ware,macro=recipe.macro,quantity="1",mode="modules",policy="local"}
                 menu.goalChoosing=false; menu.goalShowingSaved=false; menu.goalResult=nil; menu.refresh()
-            end,true)
-        end
-        return
-    end
-    if menu.goalShowingSaved then
-        local saved=menu.goalSaved or {}
-        local first,last=menu.adaptiveListNavigation(tableWidget,"goal.saved",#saved,{fixedRows=18,rowUnits=1,maximum=8})
-        for index=first,last do
-            local record=saved[index]
-            row=tableWidget:addRow(true); row[1]:setColSpan(4)
-            addButton(row,1,record[3] .. " / " .. record[4] .. " / " .. tostring(record[9]),function()
-                if not menu.goalSavedPreview then menu.goalWorkingResult=menu.goalResult end
-                menu.goalResult=record; menu.goalSavedPreview=true; menu.goalShowingSaved=false; menu.goalNotice="Saved snapshot only. Back returns to your unsaved plan; no current construction or supply guarantee."; menu.refresh()
             end,true)
         end
         return
@@ -6507,7 +6610,7 @@ function menu.recoveryReadFailures(_,value)
             local stamp=tonumber(failure.timestamp)
             if not stamp or stamp<0 or failure.message==nil then return end
             local definition=failure.orderdef~=nil and ffi.string(failure.orderdef) or "unknown behavior"
-            findings[#findings+1]={time=stamp,text=label..ffi.string(failure.message),order=tostring(failure.orderid),id=tonumber(failure.id),definition=definition}
+            findings[#findings+1]={time=stamp,current=label=="Current behavior: ",text=label..ffi.string(failure.message),order=tostring(failure.orderid),id=tonumber(failure.id),definition=definition}
         end
         local current=ffi.new("OrderFailure[1]")
         if C.GetDefaultOrderFailure(current,ship) then add(current[0],"Current behavior: ") end
@@ -6520,7 +6623,9 @@ function menu.recoveryReadFailures(_,value)
             if not actual or actual<0 or actual>count then error("Incomplete native failure response") end
             for i=0,actual-1 do add(rows[i],"Recorded order "..tostring(rows[i].orderid)..": ") end
         end
-        table.sort(findings,function(a,b) return a.time>b.time end)
+        local latest=0
+        for _,finding in ipairs(findings) do latest=math.max(latest,finding.time) end
+        table.sort(findings,function(a,b) if a.current~=b.current then return a.current end; return a.time>b.time end)
         local lines={}
         for i=1,math.min(3,#findings) do
             local finding=findings[i]
@@ -6544,8 +6649,9 @@ function menu.recoveryReadFailures(_,value)
             end
             lines[#lines+1]=finding.text.." ["..finding.definition.."; recorded at game time "..tostring(finding.time).."]"..(#details>0 and (" ("..table.concat(details,"; ")..")") or "")
         end
-        reply.ok=1; reply.latest=findings[1] and findings[1].time or 0
+        reply.ok=1; reply.latest=latest
         reply.text=#lines>0 and table.concat(lines," | ") or "X4 reports no recorded order failure for this ship."
+        reply.text="Ship native ID "..raw.." (route relevance unverified): "..reply.text
     end)
     if not ok then reply.text="EOC could not read this ship's native failure record: "..tostring(err) end
     raise("recovery.probe.result",reply)
@@ -9311,71 +9417,143 @@ local function addReportsControls(tableWidget)
     )
 end
 
-local function reportsCenter(tableWidget)
-    section(tableWidget, "EOC REPORT CENTER")
-    local brief = tableWidget:addRow(false)
-    brief[1]:setColSpan(4):createText("PURPOSE: Read EOC's completed finding, then use Return to continue exactly where you left off. Logbook archiving happens automatically.", { wordwrap = true })
-    pair(
-        tableWidget,
-        "INFO",
-        "Newest completed report is selected automatically.",
-        "ARCHIVE",
-        "Permanent copies remain in Logbook > Tips."
-    )
-
-    if menu.reportOrigin then
-        local row = tableWidget:addRow(true)
-        row[1]:setColSpan(4)
-        addButton(row, 1, "RETURN TO " .. text(menu.reportOrigin.label), function()
-            local origin = menu.reportOrigin
-            menu.selected = origin.selected or menu.selected
-            menu.selectedCase = origin.selectedCase or menu.selectedCase
-            menu.caseScope = origin.caseScope or menu.caseScope
-            menu.caseSeverity = origin.caseSeverity or menu.caseSeverity
-            menu.casePage = origin.casePage or menu.casePage
-            menu.fleetScope = origin.fleetScope or menu.fleetScope
-            menu.fleetView = origin.fleetView or menu.fleetView
-            menu.fleetPage = origin.fleetPage or menu.fleetPage
-            menu.reportOrigin = nil
-            menu.page = origin.page
-            menu.activeTab = origin.page
-            menu.refresh()
-        end, true)
-    end
-
-    if #menu.reports == 0 then
-        local row = tableWidget:addRow(false)
-        row[1]:setColSpan(4):createText(
-            "NO REPORTS GENERATED THIS SESSION\n\nGenerate a report from the Stations or Overview tab. " ..
-            "EOC will open the completed report here automatically.",
-            { wordwrap = true }
-        )
-        return
-    end
-
-    section(tableWidget, "RECENT REPORTS  |  " .. #menu.reports .. " OF 20")
-    local firstReport, lastReport = menu.adaptiveListNavigation(tableWidget, "reports.recent", #menu.reports, { fixedRows = 16, rowUnits = 1, maximum = 8 })
-    for index = firstReport, lastReport do
-        local report = menu.reports[index]
-        local reportIndex = index
-        local row = tableWidget:addRow(true)
-        row[1]:setColSpan(3)
-        addButton(row, 1, text(v(report, 1, "EOC REPORT")), function()
-            menu.selectedReport = reportIndex
-            menu.refresh()
-        end, true)
-        row[4]:createText(text(v(report, 3, "THIS SESSION")), { halign = "right" })
-    end
-
-    local selected = menu.reports[menu.selectedReport] or menu.reports[1]
-    section(tableWidget, text(v(selected, 1, "EOC REPORT")))
-    local row = tableWidget:addRow(false)
-    row[1]:setColSpan(4):createText(text(v(selected, 2, "No report text was returned.")), {
-        wordwrap = true,
-        x = Helper.borderSize,
-        y = Helper.borderSize,
-    })
+function menu.reportSame(a,b)
+    return a and b and a[1]==b[1] and a[2]==b[2] and a[4]==b[4]
 end
+
+function menu.reportSelection()
+    local index=math.max(1,math.min(#menu.reports,menu.selectedReport or 1))
+    if menu.reportAnchor then
+        index=nil
+        for i,record in ipairs(menu.reports) do if menu.reportSame(record,menu.reportAnchor) then index=i; break end end
+        if not index then index=1; menu.reportReading=false; menu.reportTextOffset=1; menu.reportSelectionNotice="Previous report left the retained window; newest selected." end
+    end
+    menu.selectedReport=index
+    menu.reportAnchor=menu.reports[index]
+    return index,menu.reportAnchor
+end
+
+function menu.reportPresentation(record)
+    local original=text(v(record,2,"No report text was returned."))
+    if string.sub(text(v(record,1,"")),1,15) ~= "ROUTE RECOVERY:" then return original,"",original end
+    local cleaned={}
+    for line in (original.."\n"):gmatch("([^\n]*)\n") do
+        if not line:match("^%s*[123]%.%s*$") then cleaned[#cleaned+1]=line end
+    end
+    local body=table.concat(cleaned,"\n")
+    local start=body:find(" Other candidates:",1,true) or body:find("\nSUPPORTING EVIDENCE\n",1,true)
+    if not start then return body,"",original end
+    local tail=body:sub(start)
+    local steps=tail:find("\n\n[123]%. ") or tail:find("\n\nNo player instruction",1,true)
+    local summary=body:sub(1,start-1)
+    if steps then summary=summary..tail:sub(steps); tail=tail:sub(1,steps-1) end
+    return summary, "Recorded diagnostics; relevance of native order failures to this route is unverified. Legacy generic reasons do not identify a particular failed check.\n"..tail,original
+end
+
+-- Find a measured UTF-8-safe slice. Retain offsets, not copied/truncated reports.
+function menu.reportTextSlice(body, offset, width, height)
+    offset=math.max(1,math.min(#body+1,tonumber(offset) or 1))
+    local font=Helper.standardFont
+    local size=math.floor(Helper.scaleFont(font,Helper.standardFontSize))
+    local function measured(s) return math.ceil(C.GetTextHeight(s,font,size,width)) end
+    local function boundary(last)
+        while last>=offset and body:byte(last+1) and body:byte(last+1)>=128 and body:byte(last+1)<192 do last=last-1 end
+        return last
+    end
+    if height < measured("Ag") then return "",offset end
+    local low,high,best=offset,#body,offset-1
+    while low<=high do
+        local mid=math.floor((low+high)/2)
+        local safe=boundary(mid)
+        if measured(body:sub(offset,safe))<=height then best=safe; low=mid+1 else high=mid-1 end
+    end
+    if best<offset then return "",offset end
+    if best<#body then
+        local space=body:sub(offset,best):match(".*()%s")
+        if space and space>(best-offset+1)*0.6 then best=offset+space-1 end
+    end
+    return body:sub(offset,best),best+1
+end
+
+function menu.reportReader(tableWidget,record,current)
+    local pixels,pool,pitch=menu.readingBudget(tableWidget,4)
+    if pool<1 or pixels<pitch then menu.readingNotice(tableWidget,"Not enough display space. Enlarge the window or reduce UI scale."); return end
+    local summary,evidence,original=menu.reportPresentation(record)
+    local mode=menu.reportMode or "summary"
+    local body=text(record[1]).."\n"..text(record[3]).."\n\n"..(mode=="original" and original or (mode=="evidence" and evidence or summary))
+    local row=tableWidget:addRow(true)
+    addButton(row,1,"REPORT LIST",function() if current() then menu.reportReading=false; menu.refresh() end end,true)
+    addButton(row,2,"SUMMARY",function() if current() then menu.reportMode="summary"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.refresh() end end,true)
+    addButton(row,3,"SUPPORTING EVIDENCE",function() if current() then menu.reportMode="evidence"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.refresh() end end,evidence~="")
+    addButton(row,4,"ORIGINAL REPORT",function() if current() then menu.reportMode="original"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.refresh() end end,true)
+    row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(text(record[1]),{wordwrap=false})
+    row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(text(record[3]).." | "..string.upper(mode).." | Recorded state, not a fresh assessment",{wordwrap=false})
+    pixels,pool,pitch=menu.readingBudget(tableWidget,1)
+    -- Scrollbar and padding are subtracted conservatively from the text width.
+    local width=math.max(1,math.floor((menu.listContentWidth or 0)-Helper.scaleX(60)))
+    local offset=menu.reportTextOffset or 1
+    local chunk,nextOffset=menu.reportTextSlice(body,offset,width,pixels-pitch)
+    if chunk=="" then menu.readingNotice(tableWidget,"Not enough display space for report text."); return end
+    local back=menu.reportTextBack or {}; menu.reportTextBack=back
+    row=tableWidget:addRow(true)
+    addButton(row,1,"PREVIOUS TEXT PAGE",function() if current() and #back>0 then menu.reportTextOffset=table.remove(back); menu.refresh() end end,#back>0)
+    row[2]:setColSpan(2):createText("TEXT PAGE "..(#back+1),{wordwrap=false})
+    addButton(row,4,"NEXT TEXT PAGE",function() if current() and nextOffset>offset and nextOffset<=#body then back[#back+1]=offset; menu.reportTextOffset=nextOffset; menu.refresh() end end,nextOffset>offset and nextOffset<=#body)
+    row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(chunk,{wordwrap=true})
+end
+
+function menu.reportCenterBody(tableWidget)
+    local current=menu.readingToken(tableWidget)
+    local pixels,pool,pitch=menu.readingBudget(tableWidget,0)
+    if pool<4 or pixels<pitch*4 then menu.readingNotice(tableWidget,"Not enough display space. Enlarge the window or reduce UI scale."); return end
+    if #menu.reports==0 then menu.readingNotice(tableWidget,"No retained reports. Permanent copies remain in Logbook > Tips."); return end
+    local selected,record=menu.reportSelection()
+    if menu.reportReading then menu.reportReader(tableWidget,record,current); return end
+    menu.readingNotice(tableWidget,menu.reportSelectionNotice or "Choose a report to read. Paging selects the first report on that page; your working station is unchanged.")
+    local first,last,page,pages,capacity=menu.readingWindow(tableWidget,#menu.reports,1,1)
+    if capacity==0 then menu.readingNotice(tableWidget,"Not enough display space for reports."); return end
+    page=math.ceil(selected/capacity)
+    first,last,page,pages=menu.readingWindow(tableWidget,#menu.reports,page,1)
+    local function selectPage(target)
+        if not current() then return end
+        -- Rebuild remeasures geometry; never use the shared unrelated paginator.
+        if target<1 or target>pages or not menu.reportSame(menu.reports[selected],record) then return end
+        local index=(target-1)*capacity+1
+        if not menu.reports[index] then return end
+        menu.selectedReport=index; menu.reportAnchor=menu.reports[index]; menu.reportTextOffset=1; menu.reportTextBack={}; menu.reportMode="summary"; menu.reportSelectionNotice=nil
+        menu.refresh()
+    end
+    local row=tableWidget:addRow(true)
+    addButton(row,1,"FIRST REPORT PAGE",function() selectPage(1) end,page>1)
+    addButton(row,2,"PREVIOUS REPORT PAGE",function() selectPage(page-1) end,page>1)
+    row[3]:createText("PAGE "..page.." / "..pages,{wordwrap=false})
+    addButton(row,4,"NEXT REPORT PAGE",function() selectPage(page+1) end,page<pages)
+    for index=first,last do
+        local item=menu.reports[index]
+        row=tableWidget:addRow(true); row[1]:setColSpan(3)
+        addButton(row,1,(index==selected and "SELECTED — " or "")..text(item[1]),function()
+            if not current() then return end
+            if not menu.reportSame((menu.reports or {})[index],item) then return end
+            menu.selectedReport=index; menu.reportAnchor=item; menu.reportReading=true; menu.reportMode="summary"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.reportSelectionNotice=nil; menu.refresh()
+        end,true)
+        row[4]:createText(text(item[3]),{wordwrap=false,halign="right"})
+    end
+end
+
+local function reportsCenter(tableWidget)
+    local pixels,pool,pitch=menu.readingBudget(tableWidget,0)
+    if menu.reportOrigin and pool>4 and pixels>pitch*5 then
+        local origin=menu.reportOrigin
+        local row=tableWidget:addRow(true); row[1]:setColSpan(4)
+        addButton(row,1,"RETURN TO "..text(origin.label),function()
+            if menu.page~="reports" or menu.reportOrigin~=origin then return end
+            for _,key in ipairs({"selected","selectedCase","caseScope","caseSeverity","casePage","fleetScope","fleetView","fleetPage"}) do if origin[key]~=nil then menu[key]=origin[key] end end
+            menu.reportOrigin=nil; menu.page=origin.page; menu.activeTab=origin.page; menu.refresh()
+        end,true)
+    end
+    menu.reportCenterBody(tableWidget)
+end
+
 
 local function stationWorkspace(tableWidget)
     local station = selectedStation()
@@ -10025,6 +10203,9 @@ end
 function menu.refresh(preserveScroll)
     -- Native Helper owns shown/minimized; retained page names do not own a UI layer.
     if not menu.shown or menu.minimized or menu.closeInProgress then return end
+    if menu.page=="plans" and menu.goalShowingSaved and menu.savedDropdownOwner==menu.mainTable and menu.savedDropdownOwner then
+        return
+    end
     local samePage = menu.renderedPage == nil or menu.renderedPage == menu.page
     local shouldPreserve = preserveScroll ~= false and samePage
     if shouldPreserve and menu.mainTable then

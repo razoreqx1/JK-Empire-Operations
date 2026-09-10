@@ -2,16 +2,16 @@
 
 Transform your X4 empire from reactive management into intelligent operations.
 
-## Current GA release
+## Current update
 
-- Version: 3.9 GA
-- Engineering build: 378
-- Extension version: 4.78
-- Status: **GENERAL AVAILABILITY** — GitHub contains the exact governed GA runtime; Steam upload is handled separately by the maintainer
+- Version: 3.9
+- Engineering build: 379
+- Extension version: 4.79
+- Status: GitHub contains the exact Build 379 runtime; Steam upload is handled separately by the maintainer. The archived build retains its original TEST identity; this update is not a new GA promotion.
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 378 retains the existing EOC features and adds guided route recovery, recovery-ship map access and independent production planning. It is an identity-only GA promotion of Build377, accepted by the maintainer with partial runtime coverage.
+Build 379 improves retained-report readability and safe page boundaries, and adds All stations browsing to Saved Plans. Existing recovery, trade and planning permissions remain unchanged. See [Build 379 release notes](docs/RELEASE_NOTES_BUILD379.md). Runtime coverage remains partial; static verification does not certify every native outcome.
 
 ## What is new in EOC 3.9 GA Build 378
 
