@@ -1,0 +1,6 @@
+EOC 3.9 TEST Build382 / version482
+Native station-reference conversion for Home, Fix All and money selectors.
+Shared How to Use This Page / Back to Home Page buttons.
+Correct multi-digit placeholder corruption in fleet diagnostics and reports.
+No new scheduler, scans or gameplay authority; existing jobs/orders preserved.
+RUNTIME ACCEPTANCE REQUIRED. Not installed or published by the assistant.

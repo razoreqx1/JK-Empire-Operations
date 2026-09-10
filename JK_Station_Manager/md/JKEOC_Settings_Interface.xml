@@ -389,6 +389,7 @@
         <do_if value="event.param3.$view == 'cash' or event.param3.$view == 'earners' or event.param3.$view == 'drains'">
           <do_for_each name="$profile" in="global.$JKEOC_B67Profiles">
             <do_if value="$profile.$station? and $profile.$station.exists and $profile.$station.owner == faction.player">
+              <raise_lua_event name="'JKEOC_SettingsMenu.kpi.station.id'" param="$profile.$station" />
               <raise_lua_event name="'JKEOC_SettingsMenu.kpi.station.name'" param="$profile.$station.name" />
               <raise_lua_event name="'JKEOC_SettingsMenu.kpi.station.money'" param="($profile.$station.money / 1Cr)i" />
               <raise_lua_event name="'JKEOC_SettingsMenu.kpi.station.commit'" />
@@ -1294,7 +1295,12 @@
         <do_if value="not global.$JKEOC_LuaReports?">
           <set_value name="global.$JKEOC_LuaReports" exact="[]" />
         </do_if>
-        <do_if value="not global.$JKEOC_B334LastRecordedReportTitle? or global.$JKEOC_B334LastRecordedReportTitle != event.param.{1} or global.$JKEOC_B334LastRecordedReportText != event.param.{2}"><append_to_list name="global.$JKEOC_LuaReports" exact="[event.param.{1}, event.param.{2}, player.age]" /><set_value name="global.$JKEOC_B334LastRecordedReportTitle" exact="event.param.{1}" /><set_value name="global.$JKEOC_B334LastRecordedReportText" exact="event.param.{2}" /></do_if>
+        <do_if value="not global.$JKEOC_B380ReportNextId?"><set_value name="global.$JKEOC_B380ReportNextId" exact="1" /></do_if>
+        <do_if value="not global.$JKEOC_B334LastRecordedReportTitle? or global.$JKEOC_B334LastRecordedReportTitle != event.param.{1} or global.$JKEOC_B334LastRecordedReportText != event.param.{2}">
+          <append_to_list name="global.$JKEOC_LuaReports" exact="[event.param.{1}, event.param.{2}, player.age, global.$JKEOC_B380ReportNextId, if event.param.count ge 4 then event.param.{3} else 0, if event.param.count ge 4 then event.param.{4} else 0, 0]" />
+          <set_value name="global.$JKEOC_B380ReportNextId" operation="add" exact="1" />
+          <set_value name="global.$JKEOC_B334LastRecordedReportTitle" exact="event.param.{1}" /><set_value name="global.$JKEOC_B334LastRecordedReportText" exact="event.param.{2}" />
+        </do_if>
         <do_while value="global.$JKEOC_LuaReports.count gt 20">
           <remove_from_list name="global.$JKEOC_LuaReports" exact="global.$JKEOC_LuaReports.{1}" />
         </do_while>

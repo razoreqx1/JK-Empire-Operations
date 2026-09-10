@@ -987,6 +987,10 @@ local function importReports(source)
             text(v(report, 2, "No report text was returned.")),
             formatGameTime(v(report, 3, 0)),
             tonumber(v(report, 3, 0)) or 0,
+            tonumber(v(report, 4, 0)) or 0,
+            tonumber(v(report, 7, 0)) or 0,
+            tonumber(v(report, 5, 0)) or 0,
+            tonumber(v(report, 6, 0)) or 0,
         })
     end
     return imported
@@ -1522,7 +1526,8 @@ end
 function menu.kpiPlayerCredits(_, value) menu.kpiRefreshState().credits = tonumber(value) or 0 end
 function menu.kpiGameTime(_, value) menu.kpiRefreshState().time = tonumber(value) or 0 end
 function menu.kpiStationName(_, value) menu.kpiRefreshState().station.name = tostring(value or "Unknown station") end
-function menu.kpiStationMoney(_, value) menu.kpiRefreshState().station.money = tonumber(value) or 0 end
+function menu.kpiStationMoney(_, value) menu.kpiRefreshState().station.money = tonumber(value) end
+function menu.kpiStationId(_, value) menu.kpiRefreshState().station.id = menu.componentIdentity(value) end
 function menu.kpiStationCommit()
     local state = menu.kpiRefreshState()
     table.insert(state.stations, state.station)
@@ -1623,6 +1628,18 @@ local function init()
     RegisterEvent(menu.name .. ".analysis.output", analysisOutputReceived)
     RegisterEvent(menu.name .. ".analysis.time", analysisTimeReceived)
     RegisterEvent(menu.name .. ".report.saved", reportSaved)
+    RegisterEvent(menu.name .. ".report.archived", menu.reportArchived)
+    RegisterEvent(menu.name .. ".report.archive.error", menu.reportArchiveError)
+    RegisterEvent(menu.name .. ".batch.begin", menu.batchBegin)
+    RegisterEvent(menu.name .. ".batch.station", function(_,x) menu.batchField("station",x) end)
+    RegisterEvent(menu.name .. ".batch.state", function(_,x) menu.batchField("state",x) end)
+    RegisterEvent(menu.name .. ".batch.text", function(_,x) menu.batchField("text",x) end)
+    RegisterEvent(menu.name .. ".batch.commit", menu.batchCommit)
+    RegisterEvent(menu.name .. ".batch.error", function(_,message) menu.routeNotice=tostring(message);if menu.page=="fleet" then menu.refresh() end end)
+    RegisterEvent(menu.name .. ".batch.items.begin", function(_,token) menu.batchItemsIncoming={token=tonumber(token),rows={}} end)
+    RegisterEvent(menu.name .. ".batch.items.count", function(_,count) local x=menu.batchItemsIncoming;if x then if x.count then x.invalid=true end;x.count=tonumber(count) end end)
+    RegisterEvent(menu.name .. ".batch.items.row", function(_,value) local x=menu.batchItemsIncoming;if x then if type(value)~="string" or #x.rows>=128 then x.invalid=true else x.rows[#x.rows+1]=value end end end)
+    RegisterEvent(menu.name .. ".batch.items.complete", menu.batchItemsComplete)
     RegisterEvent(menu.name .. ".report.title", reportTitleReceived)
     RegisterEvent(menu.name .. ".report.text", reportTextReceived)
     RegisterEvent(menu.name .. ".report.time", reportTimeReceived)
@@ -1701,6 +1718,7 @@ local function init()
     RegisterEvent(menu.name .. ".kpi.playercredits", menu.kpiPlayerCredits)
     RegisterEvent(menu.name .. ".kpi.station.name", menu.kpiStationName)
     RegisterEvent(menu.name .. ".kpi.station.money", menu.kpiStationMoney)
+    RegisterEvent(menu.name .. ".kpi.station.id", menu.kpiStationId)
     RegisterEvent(menu.name .. ".kpi.station.commit", menu.kpiStationCommit)
     RegisterEvent(menu.name .. ".kpi.shipyard.name", menu.kpiShipyardName)
     RegisterEvent(menu.name .. ".kpi.shipyard.queued", menu.kpiShipyardQueued)
@@ -1748,7 +1766,9 @@ function menu.resetTabToRoot(page)
     menu.restoreNavigatorTopRow = nil
     menu.restoreNavigatorSelectedRow = nil
 
-    if page == "kpi" then
+    if page == "dashboard" then
+        menu.homePick=nil;menu.homeView=nil;menu.homeNotice=nil
+    elseif page == "kpi" then
         menu.kpiView = "cash"
         menu.kpiResultPage = 1
     elseif page == "supply" then
@@ -2126,7 +2146,7 @@ local function section(tableWidget, label)
 end
 
 menu.playerPageGuides = {
-    dashboard = { purpose = "This page shows the most important problems across your stations.", steps = "1. Read WHAT NEEDS ATTENTION. 2. Open the first critical or warning item. 3. Follow the Next Action shown for that item.", finish = "If no station needs attention, keep playing. You do not need to press anything." },
+    dashboard = { purpose = "Ask a question to find the EOC answer or tool you need.", steps = "1. Choose a topic. 2. Click a question. 3. Choose a station if asked. Use Home to return to the questions.", finish = "Opening an answer does not authorize a repair, purchase, construction or settings change." },
     stations = { purpose = "This page lets you choose one station, see its condition, and control only that station.", steps = "1. Choose a station on the left. 2. Read WHAT NEEDS ATTENTION. 3. Use the named button for the action you want. 4. Read the result before pressing another button.", finish = "Stop when the result says COMPLETE or when no action is required." },
     kpi = { purpose = "This page turns your empire data into simple totals and trends. It does not change your game.", steps = "1. Choose a report at the top. 2. Read the newest result below. 3. Open the named station or case only when the result tells you to act.", finish = "If the result shows no warning, there is nothing else to do." },
     supply = { purpose = "This page checks whether your stations make enough resources for your own empire.", steps = "1. Choose the view you want. 2. Press RUN THIS ANALYSIS. 3. Read the result. 4. Open a resource card for the exact shortage and next step.", finish = "Do not keep refreshing. Run it again only after production, demand, storage, or station selection changes." },
@@ -2140,8 +2160,6 @@ menu.playerPageGuides = {
 }
 
 function menu.addPlayerPageGuide(tableWidget, page)
-    if page == "fleet" and (not menu.fleetView or menu.fleetView == "coverage") and not menu.routeAdvanced then return end
-    if page == "solution" and not menu.solutionRepairEvidence then return end
     if page == "plans" and (menu.goalChoosing or menu.goalShowingSaved or menu.goalSavedPreview) then
         local back = tableWidget:addRow(true)
         back[1]:setColSpan(4)
@@ -2150,9 +2168,20 @@ function menu.addPlayerPageGuide(tableWidget, page)
     local guide = menu.playerPageGuides[page]
     if not guide then return end
     local help = tableWidget:addRow(true)
-    help[1]:setColSpan(4)
+    help[1]:setColSpan(2)
+    help[3]:setColSpan(2)
+    local ownerFrame = menu.frame
     addButton(help, 1, menu.playerHelpPage == page and "HIDE PAGE HELP" or "HOW TO USE THIS PAGE", function()
+        if menu.page ~= page or menu.frame ~= ownerFrame then return end
         if menu.playerHelpPage == page then menu.playerHelpPage = nil else menu.playerHelpPage = page end
+        menu.refresh()
+    end, true)
+    addButton(help, 3, "Back to Home Page", function()
+        if menu.page ~= page or menu.frame ~= ownerFrame then return end
+        menu.resetTabToRoot("dashboard")
+        menu.homeCategory = "START HERE"; menu.homePages = {}
+        menu.playerHelpPage = nil; menu.navigationOrigin = nil
+        menu.page = "dashboard"; menu.activeTab = "dashboard"
         menu.refresh()
     end, true)
     if menu.playerHelpPage ~= page then return end
@@ -5245,6 +5274,193 @@ function menu.playerPlans(tableWidget)
     addButton(row,1,"DETAILS: EOC REPAIR EVIDENCE AND OLDER BUILD LISTS",function() menu.goalRememberPosition(); captureNavigation("YOUR PLAN"); menu.solutionRepairEvidence=true; menu.page="solution"; menu.activeTab="solution"; menu.refresh() end,true)
 end
 
+-- Question entries describe navigation only. Record-specific actions keep their own selectors/guards.
+menu.homeCategories={"START HERE","STATIONS & SUPPLY","FIXES & EVIDENCE","MONEY & GRAPHS","PRODUCTION & BUILDING","SHIPS & TRADE","HISTORY & REPORTS","SETTINGS & TOOLS"}
+menu.homeQuestions={
+    {"START HERE","How is my empire doing?","overview"},
+    {"START HERE","What needs my attention first?","attention"},
+    {"START HERE","Can EOC fix this station's supply problems?","fleet",nil,true},
+    {"START HERE","How are my fixes progressing?","fleet",nil,true},
+    {"START HERE","What is finished and ready for my review?","reports"},
+    {"START HERE","Am I gaining or losing money?","kpi","compare"},
+    {"START HERE","How can I produce more?","plans",nil,true},
+    {"START HERE","Where can I find every EOC tool?","tools"},
+    {"STATIONS & SUPPLY","What does this station need?","stations",nil,true},
+    {"STATIONS & SUPPLY","How do I change this station's role or run its status tests?","stations","detail",true},
+    {"STATIONS & SUPPLY","What is my empire short of?","supply","balance"},
+    {"STATIONS & SUPPLY","Which supply bottleneck should I address first?","supply","bottlenecks"},
+    {"STATIONS & SUPPLY","What does this station make and use?","supply","station",true},
+    {"STATIONS & SUPPLY","How do I review this station's prices and storage?","supply","settings",true},
+    {"STATIONS & SUPPLY","Where is a resource produced?","supply","producers"},
+    {"STATIONS & SUPPLY","How much production capacity is actually supported?","supply","capacity"},
+    {"FIXES & EVIDENCE","How do I fix all open issues for one station?","fleet",nil,true},
+    {"FIXES & EVIDENCE","What happened in my last station-wide fix?","fleet","batch",true},
+    {"FIXES & EVIDENCE","Why isn't this station producing?","diagnostics",nil,true},
+    {"FIXES & EVIDENCE","What is EOC doing, and what needs me?","attention"},
+    {"FIXES & EVIDENCE","Where do I inspect cases and retained evidence?","cases"},
+    {"FIXES & EVIDENCE","How do I inspect a fix's evidence or verify its result?","diagnostics",nil,true},
+    {"FIXES & EVIDENCE","How do I review trade tests and recovery choices?","diagnostics",nil,true},
+    {"FIXES & EVIDENCE","How do I clear retained cases?","cases"},
+    {"MONEY & GRAPHS","How is my empire doing?","overview"},
+    {"MONEY & GRAPHS","How has my account balance changed?","kpi","cash"},
+    {"MONEY & GRAPHS","How do gains compare with losses?","kpi","compare"},
+    {"MONEY & GRAPHS","Which stations gained the most credits?","kpi","earners"},
+    {"MONEY & GRAPHS","Which stations are draining cash?","kpi","drains"},
+    {"MONEY & GRAPHS","What trouble might be developing?","kpi","predictive"},
+    {"MONEY & GRAPHS","Which stations need executive attention?","kpi","attention"},
+    {"MONEY & GRAPHS","How full is my storage?","kpi","storage"},
+    {"MONEY & GRAPHS","How are trade offers changing?","kpi","trade"},
+    {"MONEY & GRAPHS","How is construction progressing over time?","kpi","construction"},
+    {"MONEY & GRAPHS","How busy are my shipyards?","kpi","shipyard"},
+    {"PRODUCTION & BUILDING","What if I add more production?","plans",nil,true},
+    {"PRODUCTION & BUILDING","Where are my saved production plans?","plans","saved"},
+    {"PRODUCTION & BUILDING","Should I add production to address a shortage?","supply","expansion",true},
+    {"PRODUCTION & BUILDING","Where are repair recommendations and older build lists?","solution","repair",true},
+    {"PRODUCTION & BUILDING","Which stations are being built or expanded?","construction"},
+    {"PRODUCTION & BUILDING","Does a construction project need resources, funding or a builder?","construction"},
+    {"SHIPS & TRADE","Are this station's deliveries arriving?","fleet",nil,true},
+    {"SHIPS & TRADE","Do my stations have enough assigned ships?","fleet","staffing"},
+    {"SHIPS & TRADE","Where can I inspect logistics coverage?","fleet","coverage"},
+    {"SHIPS & TRADE","Which ships are registered, and how do I register one?","fleet","ships"},
+    {"SHIPS & TRADE","Which assignments need approval?","fleet","pending"},
+    {"SHIPS & TRADE","Does a station need another ship?","fleet","recommendations"},
+    {"SHIPS & TRADE","How do I manage fleet templates and ship building?","fleet","fleetbuild"},
+    {"SHIPS & TRADE","What trade work is taking place across my empire?","fleet","offers"},
+    {"SHIPS & TRADE","Which trade offers belong to EOC?","fleet","eocoffers"},
+    {"SHIPS & TRADE","Where is the station logistics list?","fleet","stations"},
+    {"HISTORY & REPORTS","What changed since my last review?","story"},
+    {"HISTORY & REPORTS","Where are my reports, summaries and supporting evidence?","reports"},
+    {"HISTORY & REPORTS","How do I mark a closed report reviewed and archive it?","reports"},
+    {"HISTORY & REPORTS","Where can I see archived reports?","reports","archived"},
+    {"HISTORY & REPORTS","How do I generate a station report?","stations","detail",true},
+    {"SETTINGS & TOOLS","What is EOC allowed to do automatically?","settings"},
+    {"SETTINGS & TOOLS","How do I set ship minimums and assignment permission?","settings"},
+    {"SETTINGS & TOOLS","How do I control trade offers and construction funding?","settings"},
+    {"SETTINGS & TOOLS","How do I change startup, notifications or EOC's name?","settings"},
+    {"SETTINGS & TOOLS","How do I run a fresh empire analysis?","stations","detail",true},
+    {"SETTINGS & TOOLS","Where is the complete specialist tool menu?","tools"},
+    {"SETTINGS & TOOLS","Where do I choose a station?","stations"},
+    {"SETTINGS & TOOLS","Where is resource supply analysis?","supply"},
+}
+function menu.homeAnswer(entry,station)
+    local present=false
+    for _,question in ipairs(menu.homeQuestions) do if question==entry then present=true;break end end
+    if not present or menu.page~="dashboard" then return end
+    if entry[5] then
+        if not station then menu.homePick=entry;menu.refresh();return end
+        local matched
+        for index,current in ipairs(menu.stations or {}) do if current==station then matched=index;break end end
+        if not matched or not menu.componentIdentity(station[24]) then
+            local reason = "matched="..tostring(matched~=nil).." type="..type(station[24]).." value="..tostring(station[24])
+            if menu.homeIdentityDiagnostic ~= reason then
+                menu.homeIdentityDiagnostic = reason
+                DebugError("[JKEOC][B382][HOME_STATION_UNAVAILABLE] "..reason)
+            end
+            menu.homeNotice="Station data could not be resolved. No fix was submitted. Close and reopen EOC to refresh it."
+            menu.refresh();return
+        end
+        if menu.selected~=matched then
+            menu.goalResult=nil;menu.goalWorkingResult=nil;menu.goalSavedPreview=false
+            menu.supplyDraft=nil;menu.supplyDrafts={};menu.supplyPreview=nil;menu.supplyBatchPreview=nil
+            menu.supplyApplyResult=nil;menu.supplySelectedWare=nil;menu.supplyStationDetailWare=nil
+            menu.supplyProducerDetailWare=nil;menu.supplyCapacityDetailWare=nil
+        end
+        menu.selected=matched
+    end
+    menu.homePick=nil;menu.homeNotice=nil
+    local page,view=entry[3],entry[4]
+    if page=="overview" or page=="attention" then menu.homeView=page;menu.refresh();return end
+    menu.resetTabToRoot(page)
+    menu.page=page;menu.activeTab=page
+    if page=="kpi" then menu.kpiView=view=="compare" and "earners" or view;menu.kpiCompareMoney=view=="compare";menu.kpiMoneyStation="__all__"
+    elseif page=="fleet" then
+        menu.batchItemsOpen=false;menu.batchItemsWanted=nil
+        menu.fleetScope=entry[5] and "station" or "global"
+        if view and view~="batch" then menu.routeAdvanced=true;menu.fleetView=view=="eocoffers" and "offers" or view;menu.tradeActivityView=view=="eocoffers" and "eoc" or "empire" end
+    elseif page=="supply" then menu.supplyView=view or "home"
+    elseif page=="plans" then menu.goalShowingSaved=view=="saved";if view=="saved" then menu.goalSavedStation="__all__";menu.goalSavedPage=1 end
+    elseif page=="solution" then menu.solutionRepairEvidence=true
+    elseif page=="stations" then if view=="detail" and station then menu.playerStationDetail=tostring(station[24]) else menu.playerStationDetail=nil end
+    elseif page=="reports" then menu.reportShowArchived=view=="archived";menu.reportReading=false;menu.reportAnchor=nil end
+    menu.refresh()
+end
+function menu.homeWindow(t,key,count)
+    local pixels,pool,pitch=menu.readingBudget(t,2)
+    local capacity=math.max(0,math.min(6,pool,math.floor(pixels/(pitch*2))))
+    if capacity==0 then menu.readingNotice(t,"Not enough display space. Increase the menu size to see these choices.");return 1,0 end
+    menu.homePages=menu.homePages or {}
+    local pages=math.max(1,math.ceil(count/capacity))
+    local page=math.max(1,math.min(pages,math.floor(tonumber(menu.homePages[key]) or 1)))
+    menu.homePages[key]=page
+    local row=t:addRow(true)
+    addButton(row,1,"PREVIOUS QUESTIONS",function() if menu.page=="dashboard" and menu.mainTable==t then menu.homePages[key]=math.max(1,page-1);menu.refresh() end end,page>1)
+    row[2]:setColSpan(2):createText("PAGE "..page.." / "..pages,{halign="center"})
+    addButton(row,4,"NEXT QUESTIONS",function() if menu.page=="dashboard" and menu.mainTable==t then menu.homePages[key]=math.min(pages,page+1);menu.refresh() end end,page<pages)
+    return (page-1)*capacity+1,math.min(count,page*capacity)
+end
+function menu.homeOverview(t)
+    section(t,"HOW IS MY EMPIRE DOING?")
+    menu.readingNotice(t,"Retained EOC station snapshot — not a fresh scan. Counts are station status, not a profit or recovery guarantee. Open a chart below for its time window and evidence.")
+    local counts={HEALTHY=0,MONITORING=0,ATTENTION=0,UNKNOWN=0}
+    local total=0
+    for _,station in ipairs(menu.stations or {}) do
+        total=total+1
+        local status=tostring(station[3] or "")
+        if status=="HEALTHY" then counts.HEALTHY=counts.HEALTHY+1
+        elseif status=="MONITORING" then counts.MONITORING=counts.MONITORING+1
+        elseif status=="CRITICAL" or status=="WARNING" then counts.ATTENTION=counts.ATTENTION+1
+        else counts.UNKNOWN=counts.UNKNOWN+1 end
+    end
+    if total==0 then menu.readingNotice(t,"No station snapshot is available yet. Unknown does not mean a healthy empire.")
+    elseif select(2,menu.readingBudget(t,5))>=3 and select(1,menu.readingBudget(t,5))>=Helper.scaleY(Helper.standardTextHeight)*3 then
+        menu.supplyBar(t,"Healthy",counts.HEALTHY,total," stations",investigationPassColor)
+        menu.supplyBar(t,"Monitoring",counts.MONITORING,total," stations",navigationStoryColor)
+        menu.supplyBar(t,"Needs attention",counts.ATTENTION,total," stations",investigationUnknownColor)
+        if counts.UNKNOWN>0 then menu.readingNotice(t,tostring(counts.UNKNOWN).." station(s) have an unclassified status.") end
+    end
+    local entries={}
+    for _,entry in ipairs(menu.homeQuestions) do if entry[1]=="MONEY & GRAPHS" and entry[3]~="overview" then entries[#entries+1]=entry end end
+    local first,last=menu.homeWindow(t,"home.graphs",#entries)
+    for index=first,last do
+        local entry=entries[index];local row=t:addRow(true);row[1]:setColSpan(4)
+        addButton(row,1,entry[2],function() if menu.page=="dashboard" and menu.mainTable==t then menu.homeAnswer(entry) end end,true,nil,Helper.standardButtonHeight*2,nil,true,true)
+    end
+end
+function menu.questionHome(t)
+    section(t,"WHAT WOULD YOU LIKE TO KNOW?")
+    local row=t:addRow(true);row[1]:setColSpan(4)
+    addButton(row,1,"ALL HOME QUESTIONS",function() if menu.page=="dashboard" and menu.mainTable==t then menu.homePick=nil;menu.homeView=nil;menu.homeNotice=nil;menu.refresh() end end,true)
+    if menu.homeNotice then menu.readingNotice(t,menu.homeNotice) end
+    if menu.homePick then
+        local entry=menu.homePick
+        menu.readingNotice(t,entry[2].." — choose the station below. This only opens its menu; no fix is submitted.")
+        local first,last=menu.homeWindow(t,"home.stations",#(menu.stations or {}))
+        for index=first,last do
+            local station=menu.stations[index];row=t:addRow(true);row[1]:setColSpan(4)
+            addButton(row,1,text(station[1],"Station"),function() if menu.page=="dashboard" and menu.mainTable==t and menu.homePick==entry then menu.homeAnswer(entry,station) end end,true,nil,Helper.standardButtonHeight*2,nil,true,true)
+        end
+        if #(menu.stations or {})==0 then menu.readingNotice(t,"No stations are available in this snapshot.") end
+        return
+    end
+    if menu.homeView=="overview" then menu.homeOverview(t);return end
+    if menu.homeView=="attention" then menu.playerTaskList(t);return end
+    menu.readingNotice(t,"Choose a topic, then click a question to open its answer or the exact record selector. Navigation alone never authorizes repairs, purchases or settings changes.")
+    local pixels,pool,pitch=menu.readingBudget(t,3)
+    if pool<4 or pixels<pitch*4 then menu.readingNotice(t,"Not enough space for Home topics. Increase the menu size.");return end
+    for index,category in ipairs(menu.homeCategories) do
+        if index%2==1 then row=t:addRow(true) end
+        local column=(index-1)%2*2+1;row[column]:setColSpan(2)
+        addButton(row,column,category,function() if menu.page=="dashboard" and menu.mainTable==t then menu.homeCategory=category;menu.refresh() end end,true,menu.homeCategory==category and selectedModeBackground or nil)
+    end
+    local entries={}
+    for _,entry in ipairs(menu.homeQuestions) do if entry[1]==(menu.homeCategory or "START HERE") then entries[#entries+1]=entry end end
+    local first,last=menu.homeWindow(t,"home.questions."..(menu.homeCategory or "START HERE"),#entries)
+    for index=first,last do
+        local entry=entries[index];row=t:addRow(true);row[1]:setColSpan(4)
+        addButton(row,1,entry[2],function() if menu.page=="dashboard" and menu.mainTable==t then menu.homeAnswer(entry) end end,true,nil,Helper.standardButtonHeight*2,nil,true,true)
+    end
+end
+
 function menu.playerTools(tableWidget)
     section(tableWidget,"ALL TOOLS - NOTHING REMOVED")
     local entries = {
@@ -6671,6 +6887,83 @@ function menu.routeProblem(coverage)
     if assigned and assigned==0 then return "Supply is short, and no compatible assigned ship is reported for this route.",true end
     return "Stock is below its replenishment target. FIX THIS will check actual orders and incoming deliveries before treating this as a failure.",true
 end
+function menu.batchBegin(_,token) menu.batchIncoming={token=tonumber(token),seen={}} end
+function menu.batchField(key,value)
+    local incoming=menu.batchIncoming;if not incoming then return end
+    if incoming.seen[key] then incoming.invalid=true end
+    incoming.seen[key]=true;incoming[key]=value
+end
+function menu.batchCommit(_,token)
+    local b=menu.batchIncoming;menu.batchIncoming=nil
+    if not b or b.invalid or not b.token or b.token<=0 or b.token~=tonumber(token) or not b.seen.station or type(b.state)~="string" or type(b.text)~="string" then return end
+    if menu.stationBatch and menu.stationBatch.token>b.token then return end
+    b.station=menu.componentIdentity(b.station);menu.stationBatch=b
+    if menu.page=="fleet" and not menu.routeAdvanced and not menu.routeSelected then menu.refresh() end
+end
+function menu.routeBatchPanel(t)
+    if menu.page~="fleet" then return end
+    local selected=selectedStation();local id=selected and menu.componentIdentity(selected[24])
+    local pixels,pool,pitch=menu.readingBudget(t,8)
+    if pool<4 or pixels<pitch*4 then menu.readingNotice(t,"Not enough display space for station batch controls.");return end
+    local reason
+    if menu.fleetScope=="global" then reason="Choose one station first. Fix All never changes every station at once."
+    elseif not selected then reason="Choose a station in Stations, then open Deliveries and Ships."
+    elseif not id then reason="Station identity is unavailable. Close and reopen EOC to reload its station data; no batch was started."
+    elseif menu.stationBatch and menu.stationBatch.state=="RUNNING" then reason="A station batch is already running. Review its status below; individual existing jobs are preserved." end
+    if reason then
+        menu.readingNotice(t,"FIX ALL UNAVAILABLE: "..reason)
+        local diagnostic=tostring(selected and selected[24]).."|"..reason
+        if menu.batchDisabledDiagnostic~=diagnostic then
+            menu.batchDisabledDiagnostic=diagnostic
+            DebugError("[JKEOC][B381][BATCH_UNAVAILABLE] identity="..tostring(selected and selected[24]).." type="..type(selected and selected[24]).." reason="..reason)
+        end
+    else menu.batchDisabledDiagnostic=nil end
+    local row=t:addRow(true);row[1]:setColSpan(4)
+    local function sameStation() return menu.page=="fleet" and selectedStation()==selected and id and menu.componentIdentity(selected[24])==id end
+    addButton(row,1,"FIX ALL OPEN ISSUES — THIS STATION (ALL PAGES)",function()
+        if not sameStation() or menu.fleetScope=="global" or (menu.stationBatch and menu.stationBatch.state=="RUNNING") then return end
+        local request={generation=menu.routeGeneration}
+        for _,coverage in ipairs(menu.logisticsCoverage or {}) do
+            if menu.componentIdentity(coverage[17])==id and (tonumber(coverage[19]) or 0)>0 then request.slot=tonumber(coverage[19]);break end
+        end
+        if not request.slot then
+            for _,record in pairs(menu.routeRecords or {}) do if menu.componentIdentity(record[15])==id then request.id=tonumber(record[1]);break end end
+        end
+        if not request.slot and not request.id then menu.routeNotice="No exact station coverage or retained route is available. Reopen EOC before submitting a batch.";menu.refresh();return end
+        raise("route.batch.preview",request)
+    end,reason==nil)
+    local b=menu.stationBatch
+    if b then
+        menu.readingNotice(t,b.text)
+        row=t:addRow(true);row[1]:setColSpan(2)
+        addButton(row,1,"CONFIRM THIS STATION BATCH",function()
+            if not sameStation() or menu.stationBatch~=b or b.state~="PREVIEW" or b.station~=id then return end
+            raise("route.batch.confirm",{token=b.token})
+        end,b.state=="PREVIEW" and b.station==id)
+        row[3]:setColSpan(2);addButton(row,3,"SHOW / REFRESH BATCH ITEMS",function() if menu.page=="fleet" then menu.batchItemsWanted=b.token;menu.batchItemsOwner=t;raise("route.batch.details",{}) end end,true)
+    else
+        row=t:addRow(true);row[1]:setColSpan(4)
+        addButton(row,1,"SHOW LAST BATCH STATUS",function() if menu.page=="fleet" then raise("route.batch.status",{}) end end,true)
+    end
+end
+function menu.batchItemsComplete(_,token)
+    local x=menu.batchItemsIncoming;menu.batchItemsIncoming=nil
+    if not x or x.invalid or not x.token or x.token~=tonumber(token) or x.count~=#x.rows or x.count>128 or not menu.stationBatch or x.token~=menu.stationBatch.token then return end
+    menu.batchItems=x
+    if menu.page=="fleet" and menu.batchItemsWanted==x.token and menu.mainTable==menu.batchItemsOwner and not menu.routeSelected and not menu.routeAdvanced then menu.batchItemsOpen=true;menu.refresh() end
+end
+function menu.batchItemsPage(t)
+    local current=menu.readingToken(t)
+    local pixels,pool,pitch=menu.readingBudget(t,3)
+    if pool<1 or pixels<pitch then menu.readingNotice(t,"Not enough display space for batch details.");return end
+    local row=t:addRow(true);row[1]:setColSpan(2)
+    addButton(row,1,"BACK TO STATION ISSUES",function() if current() then menu.batchItemsOpen=false;menu.batchItemsWanted=nil;menu.refresh() end end,true)
+    row[3]:setColSpan(2);addButton(row,3,"REFRESH BATCH ITEMS",function() if current() then menu.batchItemsOwner=t;raise("route.batch.details",{}) end end,true)
+    menu.readingNotice(t,menu.stationBatch and menu.stationBatch.text or "Retained batch items")
+    local rows=menu.batchItems and menu.batchItems.rows or {}
+    local first,last=menu.adaptiveListNavigation(t,"batch.items",#rows,{fixedRows=12,rowUnits=4,maximum=8})
+    for i=first,last do menu.readingNotice(t,tostring(i)..". "..rows[i]) end
+end
 function menu.routeRequest(action,record,step,done)
     if not menu.routeValid(record) then menu.routeNotice="This recovery record is incomplete. Reopen EOC before acting."; return end
     local current=menu.routeRecords and menu.routeRecords[tonumber(record[1])]
@@ -6756,6 +7049,7 @@ function menu.routeShowShip(id)
     menu.closeInProgress=false
 end
 function menu.routePage(tableWidget)
+    if menu.batchItemsOpen then menu.batchItemsPage(tableWidget);return end
     local function prose(value,color)
         local row=tableWidget:addRow(false)
         row[1]:setColSpan(4):createText(tostring(value),{wordwrap=true,color=color or navigationStoryColor})
@@ -6859,6 +7153,7 @@ function menu.routePage(tableWidget)
             seen[key]=true
         end
     end
+    menu.routeBatchPanel(tableWidget)
     entries=menu.routeGroupEntries(entries)
     table.sort(entries,function(a,b) return a.groupkey<b.groupkey end)
     local row=tableWidget:addRow(true); row[1]:setColSpan(2)
@@ -6868,7 +7163,7 @@ function menu.routePage(tableWidget)
     row[3]:setColSpan(2)
     addButton(row,3,"DETAILS AND OTHER TOOLS",function() menu.routeAdvanced=true; menu.refresh() end,true)
     if #entries==0 then prose("No failing route is present in this view. That is not proof that every delivery is healthy; Details retains the full coverage evidence.") end
-    local first,last=menu.adaptiveListNavigation(tableWidget,"route.list",#entries,{fixedRows=14,rowUnits=5,maximum=4})
+    local first,last=menu.adaptiveListNavigation(tableWidget,"route.list",#entries,{fixedRows=23,rowUnits=5,maximum=4})
     for index=first,last do
         local entry=entries[index]
         prose(tostring(entry.coverage[1]).." - "..tostring(entry.coverage[3])..": "..entry.problem)
@@ -8462,6 +8757,16 @@ local function kpiDashboardControls(tableWidget)
         local names, seen = {}, {}; for _, station in ipairs(menu.stations or {}) do local name=text(v(station,1,"Unknown station")); if not seen[name] then seen[name]=true; table.insert(names,name) end end; table.sort(names)
         for _,name in ipairs(names) do table.insert(options,{id=name,text=name,icon="",displayremoveoption=false}) end
         menu.kpiStation_cash=menu.kpiStation_cash or "__player__"; row=tableWidget:addRow(true); kpiControlLabel(row,"ACCOUNT / STATION FILTER"); kpiProtectedDropdown(row,2,options,menu.kpiStation_cash,function(name) menu.kpiStation_cash=name end)
+    elseif menu.kpiView == "earners" or menu.kpiView == "drains" then
+        local options={{id="__all__",text="ALL STATIONS",icon="",displayremoveoption=false}}
+        local seen={}
+        for _,station in ipairs(menu.stations or {}) do
+            local id=menu.componentIdentity(station[24])
+            if id and not seen[id] then seen[id]=true; options[#options+1]={id=id,text=text(station[1]),icon="",displayremoveoption=false} end
+        end
+        menu.kpiMoneyStation=menu.kpiMoneyStation or "__all__"
+        row=tableWidget:addRow(true); kpiControlLabel(row,"GAINS / LOSSES STATION FILTER")
+        kpiProtectedDropdown(row,2,options,menu.kpiMoneyStation,function(id) menu.kpiMoneyStation=id end)
     elseif menu.kpiView == "construction" then
         local options = { { id = "__all__", text = "ALL CONSTRUCTION STATIONS", icon = "", displayremoveoption = false } }
         local recordById = {}
@@ -8676,19 +8981,90 @@ function menu.kpiShipyardGraph(t)
     if #rows==0 then pair(t,"STATUS","EOC has not retained a live shipyard sample yet.","NEXT","No player refresh is required.") elseif totalYards>#rows then pair(t,"DISPLAY","Eight busiest shipyards shown.","TOTAL SHIPYARDS",tostring(totalYards)) end
 end
 
+function menu.moneyIdentity(value)
+    -- X4 passes both signed and unsigned 64-bit component values. Never round via tonumber.
+    local id=tostring(value or ""):gsub("ULL$",""):gsub("LL$","")
+    if not id:match("^%d+$") or not id:find("[1-9]") then return nil end
+    id=id:gsub("^0+","")
+    if #id>20 or (#id==20 and id>"18446744073709551615") then return nil end
+    return id
+end
+function menu.componentIdentity(value)
+    -- Native MD component fields are not a decimal-string ABI. Match X4's
+    -- station_configuration parameter boundary, then validate its exact result.
+    local id = menu.moneyIdentity(value)
+    if id then return id end
+    local kind = type(value)
+    if (kind ~= "userdata" and kind ~= "string") or value == "" then return nil end
+    if type(ConvertIDTo64Bit) ~= "function" then return nil end
+    local ok, converted = pcall(ConvertIDTo64Bit, value)
+    if not ok or converted == nil then return nil end
+    id = menu.moneyIdentity(converted)
+    if not id then return nil end
+    -- Do not let a permissive native parser turn malformed text into another ID.
+    if kind == "string" then
+        if type(ConvertStringToLuaID) ~= "function" then return nil end
+        local restored, native = pcall(ConvertStringToLuaID, tostring(converted))
+        if not restored or tostring(native) ~= value then return nil end
+    end
+    return id
+end
+function menu.moneyComparison(history, selected)
+    local result={rows={},gains=0,losses=0,net=0,excluded=0,valid=false}
+    if #history<2 then return result end
+    local a,b=history[1],history[#history]
+    local function finite(n) return type(n)=="number" and n==n and math.abs(n)<math.huge end
+    if not finite(a.time) or not finite(b.time) or b.time<=a.time then return result end
+    local function map(sample)
+        local values,seen={},{}
+        for _,station in ipairs(sample.stations or {}) do
+            local id=menu.moneyIdentity(station.id)
+            if not id then result.excluded=result.excluded+1
+            elseif not selected or selected=="__all__" or selected==id then
+                if seen[id] then values[id]=false
+                else values[id]=finite(station.money) and station or false end
+                seen[id]=true
+            end
+        end
+        return values
+    end
+    local first,last=map(a),map(b)
+    local union={}; for id in pairs(first) do union[id]=true end;for id in pairs(last) do union[id]=true end
+    for id in pairs(union) do
+        local start,finish=first[id],last[id]
+        if start and finish and finite(finish.money-start.money) then
+            local delta=finish.money-start.money
+            result.rows[#result.rows+1]={id=id,name=finish.name or id,amount=finish.money,baseline=start.money,delta=delta,change=start.money~=0 and delta*100/start.money or nil}
+            result.gains=result.gains+math.max(0,delta);result.losses=result.losses+math.max(0,-delta)
+        else result.excluded=result.excluded+1 end
+    end
+    result.net=result.gains-result.losses
+    result.valid=finite(result.net) and finite(result.gains) and finite(result.losses) and #result.rows>0
+    result.seconds=b.time-a.time
+    return result
+end
 function menu.kpiEarnersDrainsGraph(t, drains)
-    local history=menu.kpiGraphHistory(); section(t,drains and "CASH DRAINS - FIVE FASTEST DECLINES" or "TOP EARNERS - FIVE FASTEST GAINS")
-    if #history<2 then pair(t,"STATUS","EOC has not retained the second live sample yet.","NEXT","No player action — established collection continues."); return end
-    local first,last=stationMoneyMap(history[1]),stationMoneyMap(history[#history]); local ranked={}
-    for name,amount in pairs(last) do local baseline=first[name]; if baseline and baseline>0 then local delta=amount-baseline; local change=delta*100/baseline; if (drains and delta<0) or (not drains and delta>0) then table.insert(ranked,{name=name,amount=amount,delta=delta,change=change,baseline=baseline}) end end end
-    table.sort(ranked,function(a,b)
-        if drains then return a.delta < b.delta end
-        return a.delta > b.delta
-    end); while #ranked>5 do table.remove(ranked) end
-    local help=t:addRow(false); help[1]:setColSpan(4):createText("Ranked by actual credit movement in the selected window. The percentage is change from that station's starting account, not a score; a large percentage can come from a small starting balance.",{wordwrap=true,color=navigationStoryColor})
+    section(t,menu.kpiCompareMoney and "COMPARE GAINS VS LOSSES" or (drains and "CASH DRAINS - FIVE FASTEST DECLINES" or "TOP EARNERS - FIVE FASTEST GAINS"))
+    local row=t:addRow(true);row[1]:setColSpan(4)
+    addButton(row,1,menu.kpiCompareMoney and "RETURN TO RANKED STATIONS" or "COMPARE GAINS VS LOSSES",function()
+        if menu.page~="kpi" or (menu.kpiView~="earners" and menu.kpiView~="drains") then return end
+        menu.kpiCompareMoney=not menu.kpiCompareMoney;menu.refresh()
+    end,true)
+    menu.kpiGraphRangeButtons(t)
+    local totals=menu.moneyComparison(menu.kpiGraphHistory(),menu.kpiMoneyStation or "__all__")
+    if not totals.valid then pair(t,"COMPARISON","Not enough matching identified station samples.","NEXT","Keep this view live for two samples; old unnamed-ID history is not treated as zero.");return end
+    local help=t:addRow(false);help[1]:setColSpan(4):createText("Account movement, not trading profit: transfers and purchases affect balances. Same "..tostring(totals.seconds).."s sampled interval; "..#totals.rows.." matched stations; "..totals.excluded.." unmatched/invalid endpoint records excluded. Totals include all matched stations, not only the top five.",{wordwrap=true,color=navigationStoryColor})
+    if menu.kpiCompareMoney then
+        pair(t,"GAINS",formatNumber(totals.gains).." Cr","DECLINES",formatNumber(totals.losses).." Cr")
+        pair(t,"NET CHANGE",string.format("%+.0f Cr",totals.net),"COVERAGE",totals.excluded>0 and "PARTIAL — excluded records are unknown" or "All endpoint identities matched")
+        return
+    end
+    local ranked={};for _,item in ipairs(totals.rows) do if (drains and item.delta<0) or (not drains and item.delta>0) then ranked[#ranked+1]=item end end
+    table.sort(ranked,function(a,b) if a.delta==b.delta then return a.id<b.id end;if drains then return a.delta<b.delta end;return a.delta>b.delta end)
     kpiHeader(t,{"STATION","CURRENT ACCOUNT","CREDIT CHANGE","CHANGE FROM START"})
-    for _,item in ipairs(ranked) do local color=item.delta<0 and investigationFailColor or investigationPassColor; local row=t:addRow(false); row[1]:createText(item.name,{wordwrap=true}); row[2]:createText(formatNumber(item.amount).." Cr"); row[3]:createText(string.format("%+.0f Cr",item.delta),{color=color}); row[4]:createText(string.format("%+.1f%% (start %s Cr)",item.change,formatNumber(item.baseline)),{color=color,wordwrap=true}) end
-    if #ranked==0 then pair(t,"STATUS",drains and "No station account declined in this window." or "No station account increased in this window.","WINDOW","Select another range or continue playing.") end
+    local first,last=menu.adaptiveListNavigation(t,"kpi.money.rank",math.min(5,#ranked),{fixedRows=18,rowUnits=2,maximum=5})
+    for i=first,last do local item=ranked[i];local color=item.delta<0 and investigationFailColor or investigationPassColor;row=t:addRow(false);row[1]:createText(item.name,{wordwrap=true});row[2]:createText(formatNumber(item.amount).." Cr");row[3]:createText(string.format("%+.0f Cr",item.delta),{color=color});row[4]:createText(item.change and string.format("%+.1f%%",item.change) or "N/A — zero starting balance",{wordwrap=true,color=color}) end
+    if #ranked==0 then pair(t,"MATCHED STATIONS",drains and "No declines in matched samples." or "No gains in matched samples.","EXCLUDED",tostring(totals.excluded)) end
 end
 
 function menu.kpiAttentionSummary(t)
@@ -9421,15 +9797,32 @@ function menu.reportSame(a,b)
     return a and b and a[1]==b[1] and a[2]==b[2] and a[4]==b[4]
 end
 
-function menu.reportSelection()
-    local index=math.max(1,math.min(#menu.reports,menu.selectedReport or 1))
+function menu.reportArchived(_,id)
+    for _,report in ipairs(menu.reports or {}) do if tonumber(report[5])==tonumber(id) and tonumber(id)>0 then report[6]=1 end end
+    menu.reportArchiveNotice="Reviewed report archived. Retained copy remains in ALL RETAINED REPORTS and Logbook > Tips."
+    local pending=menu.reportArchivePending;menu.reportArchivePending=nil
+    if menu.page=="reports" and pending and pending.id==tonumber(id) and menu.reportSame(menu.reportAnchor,pending.record) then menu.reportReading=false;menu.reportAnchor=nil;menu.refresh() end
+end
+function menu.reportArchiveError(_,message)
+    menu.reportArchiveNotice=tostring(message)
+    if menu.page=="reports" then menu.refresh() end
+end
+function menu.reportVisible()
+    local reports={}
+    for _,report in ipairs(menu.reports or {}) do if menu.reportShowArchived or tonumber(report[6])~=1 then reports[#reports+1]=report end end
+    return reports
+end
+
+function menu.reportSelection(reports)
+    reports=reports or menu.reportVisible()
+    local index=math.max(1,math.min(#reports,menu.selectedReport or 1))
     if menu.reportAnchor then
         index=nil
-        for i,record in ipairs(menu.reports) do if menu.reportSame(record,menu.reportAnchor) then index=i; break end end
+        for i,record in ipairs(reports) do if menu.reportSame(record,menu.reportAnchor) then index=i; break end end
         if not index then index=1; menu.reportReading=false; menu.reportTextOffset=1; menu.reportSelectionNotice="Previous report left the retained window; newest selected." end
     end
     menu.selectedReport=index
-    menu.reportAnchor=menu.reports[index]
+    menu.reportAnchor=reports[index]
     return index,menu.reportAnchor
 end
 
@@ -9476,7 +9869,7 @@ function menu.reportTextSlice(body, offset, width, height)
 end
 
 function menu.reportReader(tableWidget,record,current)
-    local pixels,pool,pitch=menu.readingBudget(tableWidget,4)
+    local pixels,pool,pitch=menu.readingBudget(tableWidget,6)
     if pool<1 or pixels<pitch then menu.readingNotice(tableWidget,"Not enough display space. Enlarge the window or reduce UI scale."); return end
     local summary,evidence,original=menu.reportPresentation(record)
     local mode=menu.reportMode or "summary"
@@ -9486,6 +9879,15 @@ function menu.reportReader(tableWidget,record,current)
     addButton(row,2,"SUMMARY",function() if current() then menu.reportMode="summary"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.refresh() end end,true)
     addButton(row,3,"SUPPORTING EVIDENCE",function() if current() then menu.reportMode="evidence"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.refresh() end end,evidence~="")
     addButton(row,4,"ORIGINAL REPORT",function() if current() then menu.reportMode="original"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.refresh() end end,true)
+    local linked=(tonumber(record[5]) or 0)>0 and (tonumber(record[7]) or 0)>0
+    row=tableWidget:addRow(true);row[1]:setColSpan(4)
+    addButton(row,1,tonumber(record[6])==1 and "REVIEWED — ARCHIVED" or "REVIEWED — ARCHIVE CLOSED REPORT",function()
+        if not current() or not menu.reportSame(menu.reportAnchor,record) or not linked or tonumber(record[6])==1 then return end
+        menu.reportArchiveNotice="Checking current closure before archiving; no work will be cancelled."
+        menu.reportArchivePending={id=tonumber(record[5]),record=record}
+        raise("report.archive",{id=record[5]})
+    end,linked and tonumber(record[6])~=1)
+    menu.readingNotice(tableWidget,menu.reportArchiveNotice or (linked and "Archive checks exact recovery closure and current stock. Merely reading does not acknowledge this report." or "Legacy report has no exact recovery link; closure cannot be inferred. Original evidence remains available."))
     row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(text(record[1]),{wordwrap=false})
     row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(text(record[3]).." | "..string.upper(mode).." | Recorded state, not a fresh assessment",{wordwrap=false})
     pixels,pool,pitch=menu.readingBudget(tableWidget,1)
@@ -9505,22 +9907,28 @@ end
 function menu.reportCenterBody(tableWidget)
     local current=menu.readingToken(tableWidget)
     local pixels,pool,pitch=menu.readingBudget(tableWidget,0)
-    if pool<4 or pixels<pitch*4 then menu.readingNotice(tableWidget,"Not enough display space. Enlarge the window or reduce UI scale."); return end
-    if #menu.reports==0 then menu.readingNotice(tableWidget,"No retained reports. Permanent copies remain in Logbook > Tips."); return end
-    local selected,record=menu.reportSelection()
+    if pool<6 or pixels<pitch*6 then menu.readingNotice(tableWidget,"Not enough display space. Enlarge the window or reduce UI scale."); return end
+    local filter=tableWidget:addRow(true);filter[1]:setColSpan(4)
+    addButton(filter,1,menu.reportShowArchived and "SHOW NEEDS REVIEW" or "SHOW ALL RETAINED REPORTS (INCLUDING ARCHIVED)",function()
+        if not current() then return end
+        menu.reportShowArchived=not menu.reportShowArchived;menu.reportAnchor=nil;menu.selectedReport=1;menu.reportReading=false;menu.refresh()
+    end,true)
+    local reports=menu.reportVisible()
+    if #reports==0 then menu.readingNotice(tableWidget,"No reports in this filter. Archived copies remain under All retained reports and Logbook > Tips."); return end
+    local selected,record=menu.reportSelection(reports)
     if menu.reportReading then menu.reportReader(tableWidget,record,current); return end
     menu.readingNotice(tableWidget,menu.reportSelectionNotice or "Choose a report to read. Paging selects the first report on that page; your working station is unchanged.")
-    local first,last,page,pages,capacity=menu.readingWindow(tableWidget,#menu.reports,1,1)
+    local first,last,page,pages,capacity=menu.readingWindow(tableWidget,#reports,1,1)
     if capacity==0 then menu.readingNotice(tableWidget,"Not enough display space for reports."); return end
     page=math.ceil(selected/capacity)
-    first,last,page,pages=menu.readingWindow(tableWidget,#menu.reports,page,1)
+    first,last,page,pages=menu.readingWindow(tableWidget,#reports,page,1)
     local function selectPage(target)
         if not current() then return end
         -- Rebuild remeasures geometry; never use the shared unrelated paginator.
-        if target<1 or target>pages or not menu.reportSame(menu.reports[selected],record) then return end
+        if target<1 or target>pages or not menu.reportSame(menu.reportVisible()[selected],record) then return end
         local index=(target-1)*capacity+1
-        if not menu.reports[index] then return end
-        menu.selectedReport=index; menu.reportAnchor=menu.reports[index]; menu.reportTextOffset=1; menu.reportTextBack={}; menu.reportMode="summary"; menu.reportSelectionNotice=nil
+        if not reports[index] then return end
+        menu.selectedReport=index; menu.reportAnchor=reports[index]; menu.reportTextOffset=1; menu.reportTextBack={}; menu.reportMode="summary"; menu.reportSelectionNotice=nil
         menu.refresh()
     end
     local row=tableWidget:addRow(true)
@@ -9529,11 +9937,11 @@ function menu.reportCenterBody(tableWidget)
     row[3]:createText("PAGE "..page.." / "..pages,{wordwrap=false})
     addButton(row,4,"NEXT REPORT PAGE",function() selectPage(page+1) end,page<pages)
     for index=first,last do
-        local item=menu.reports[index]
+        local item=reports[index]
         row=tableWidget:addRow(true); row[1]:setColSpan(3)
         addButton(row,1,(index==selected and "SELECTED — " or "")..text(item[1]),function()
             if not current() then return end
-            if not menu.reportSame((menu.reports or {})[index],item) then return end
+            if not menu.reportSame(menu.reportVisible()[index],item) then return end
             menu.selectedReport=index; menu.reportAnchor=item; menu.reportReading=true; menu.reportMode="summary"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.reportSelectionNotice=nil; menu.refresh()
         end,true)
         row[4]:createText(text(item[3]),{wordwrap=false,halign="right"})
@@ -10149,7 +10557,7 @@ function menu.create()
         elseif menu.page == "boot" then
             commandOSBoot(tableWidget)
         elseif menu.page == "dashboard" then
-            menu.playerTaskList(tableWidget)
+            menu.questionHome(tableWidget)
         elseif menu.page == "tools" then
             menu.playerTools(tableWidget)
         elseif menu.page == "plans" then

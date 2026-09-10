@@ -1,6 +1,9 @@
-# EOC 3.9 GA Player Guide
+# EOC 3.9 Player Guide — Build 382
 
-**Applies to:** EOC 3.9 GA, Build 369, extension version 469
+**Applies to:** EOC 3.9, Build 382, extension version 482
+
+This edition includes new Home and money-view screenshots supplied during live use. Screenshots labeled Build 369 remain historical illustrations of retained tools; they are not relabeled as current screenshots. The established guide URL is retained for existing links.
+
 **Game:** X4: Foundations 8.x / 9.x
 
 EOC turns empire data into three practical answers:
@@ -9,7 +12,7 @@ EOC turns empire data into three practical answers:
 2. What should I do next?
 3. Is EOC advising me, waiting for approval, or allowed to act?
 
-The Build 369 interface is organized around player tasks. The main tabs are **HOME**, **STATIONS**, **PLANS**, **HISTORY**, **SETTINGS**, and **ALL TOOLS**. Specialist tools still exist under **ALL TOOLS**.
+The interface is organized around player tasks. The main tabs are **HOME**, **STATIONS**, **PLANS**, **HISTORY**, **SETTINGS**, and **ALL TOOLS**. Specialist tools still exist under **ALL TOOLS**.
 
 ---
 
@@ -47,18 +50,30 @@ EOC includes its own Dock Interactions access route; a separate UI framework is 
 
 ---
 
-## 3. HOME: start with the task
+## 3. HOME: choose the question you want answered
 
-![Build 369 Home](images/EOC_BUILD369_HOME.png)
+![Question-based Home, first page](images/EOC_BUILD381_HOME_QUESTIONS_1.png)
 
-The Home page intentionally avoids a wall of statistics. It provides four direct routes:
+Choose a topic, then click a question to open its answer or the appropriate station/record selector. Topics are **START HERE**, **STATIONS & SUPPLY**, **FIXES & EVIDENCE**, **MONEY & GRAPHS**, **PRODUCTION & BUILDING**, **SHIPS & TRADE**, **HISTORY & REPORTS**, and **SETTINGS & TOOLS**. **ALL HOME QUESTIONS** returns to the full question catalogue.
 
-- **PLAN MORE PRODUCTION** opens the voluntary production calculator.
-- **CHECK RESOURCE SUPPLY** opens the explicit supply-analysis choices.
-- **CONSTRUCTION PROGRESS** reviews an existing X4 construction plan.
-- **DELIVERIES AND SHIPS** opens logistics coverage and fleet tools.
+Start Here includes these shortcuts:
 
-The **WHAT NEEDS MY ATTENTION?** panel shows retained problems when one exists. “No open problem” means only that this view has no retained problem to present; it does not prove that every station is healthy. Run Supply analysis when you want a fresh resource check.
+- **How is my empire doing?** — retained empire overview and dashboard links.
+- **What needs my attention first?** — the attention view.
+- **Can EOC fix this station's supply problems?** — choose the station and inspect its issues.
+- **How are my fixes progressing?** — retained progress.
+- **What is finished and ready for my review?** — completed work needing review.
+- **Am I gaining or losing money?** — money views.
+- **How can I produce more?** — planning.
+- **Where can I find every EOC tool?** — All Tools.
+
+![Question-based Home, second page](images/EOC_BUILD381_HOME_QUESTIONS_2.png)
+
+These screenshots show the Home layout introduced in Build 381 and retained in 382. Use **NEXT QUESTIONS** and **PREVIOUS QUESTIONS** when a topic spans pages. Page capacity is bounded to fit the menu.
+
+**Back to Home Page** sits beside **HOW TO USE THIS PAGE** throughout the main menus. Returning Home changes navigation, not your jobs or shipping permissions. Opening a question or choosing a station does not authorize a repair or purchase.
+
+The overview uses retained information. An empty or healthy-looking view is not proof of a fresh empire scan; explicitly request Supply analysis when needed.
 
 ---
 
@@ -149,7 +164,7 @@ After reviewing every page, select **> AFTER REVIEW: SAVE ADVISORY CHECKLIST**.
 
 The **SAVED: exact scenario read back** message confirms that EOC persisted the scenario record. It does not mean X4 approved or started construction.
 
-Open **SAVED PLANS** to see retained scenarios.
+Open **SAVED PLANS** to see retained scenarios. **SHOW SAVED PLANS FOR** defaults to **All stations**; choose a station to filter the list. This is a browsing filter, not an instruction to create a production plan at every station.
 
 ![Build 369 Saved Plans list](images/EOC_BUILD369_PLANS_SAVED_LIST.png)
 
@@ -204,11 +219,19 @@ The detail states the plain-language result, what the numbers mean, what the sna
 
 ![Build 369 History](images/EOC_BUILD369_HISTORY.png)
 
+Use **REPORT LIST**, **SUMMARY**, **SUPPORTING EVIDENCE**, and **ORIGINAL REPORT** to separate the conclusion from the full recorded detail. Longer text has bounded text pages. A saved report is a historical snapshot, not a new assessment.
+
 History lists recent EOC reports and selects the newest completed report automatically. Choose another report to read it. Reports explain the station, health, trend, priority, and current recommendation recorded at that time.
 
 The EOC menu retains a bounded recent list. Permanent copies remain in **Player Information > Logbook > Tips**. Use a report’s Return control when available to continue from its originating workflow.
 
 ---
+
+### Review and archive closed reports
+
+After reading an eligible closed report, choose **REVIEWED — ARCHIVE CLOSED REPORT**. Simply opening or reading the report does not remove it. Archiving removes it from the needs-review view, not from retained history.
+
+Use **SHOW ALL RETAINED REPORTS (INCLUDING ARCHIVED)** to find it again; **SHOW NEEDS REVIEW** returns to the review queue. Older reports without an exact closure link remain readable but cannot be safely treated as eligible closed reports. An open or still-active repair is not completed by archiving a report.
 
 ## 8. SETTINGS: define EOC’s authority
 
@@ -289,6 +312,23 @@ Use the size filters or name search, then select **ADD ONE** beside a blueprint.
 
 These specialist tools remain under **ALL TOOLS**.
 
+### Fix every open issue at one station
+
+From **HOME → FIXES & EVIDENCE**, choose **How do I fix all open issues for one station?**, then select the station. You can also reach its issue list through Stations and the delivery/supply-problem controls.
+
+1. Choose **FIX ALL OPEN ISSUES — THIS STATION (ALL PAGES)**.
+2. Review the station and batch preview. It covers eligible open issues across all pages, not just the visible rows.
+3. Select **CONFIRM THIS STATION BATCH** once.
+4. Use **SHOW / REFRESH BATCH ITEMS** to inspect progress and individual outcomes.
+
+Submission is bounded: at most 128 issues, one submission per five seconds subject to available investigation capacity, and a 30-minute submission window. Game time must advance. Existing work is preserved rather than restarted. Shipping permissions, ownership and ship eligibility still apply.
+
+A disabled Fix All button can mean a station batch is already running; read the displayed reason and review its status. **Processed**, **submitted**, **preserved**, and **skipped** describe batch handling, not successful delivery. Follow the individual route's evidence to see what actually happened. For one issue, use **FIX THIS** or **CONTINUE FIX**.
+
+### Follow a recovery job
+
+Read the route's summary, supporting evidence and retained progress. **CHECK PROGRESS** requests the supported reassessment; **SHOW SHIP ON MAP**, when available, opens the native map for that job's ship. Awaiting delivery, observed transfer and recovered stock are different outcomes. Do not repeat a request merely because a ship is still travelling.
+
 ### Cases and retained evidence
 
 A case keeps an exact station/subject problem, its evidence, responsibility, and next action together. Open an existing case instead of creating a duplicate. A first Supply snapshot does not prove persistence; EOC requires retained evidence before it can support stronger conclusions.
@@ -307,7 +347,30 @@ Construction reviews an X4 plan that already exists. Refresh it to inspect the q
 
 ---
 
-## 12. Troubleshooting and support
+## 12. Money: compare gains and losses
+
+![Top Earners with station filter](images/EOC_BUILD382_TOP_EARNERS.png)
+
+Open **HOME → MONEY & GRAPHS → How do gains compare with losses?** to go directly to comparison. Alternatively, use **ALL TOOLS → Money, storage and other statistics**, then choose **TOP EARNERS** or **CASH DRAINS** in Live KPI Dashboards.
+
+Choose **All stations** or a station in the gains/losses filter. Select **5 MIN**, **10 MIN**, **30 MIN**, or **1 HOUR**, then **COMPARE GAINS VS LOSSES**.
+
+![Gains versus losses comparison](images/EOC_BUILD382_COMPARE_GAINS_LOSSES.png)
+
+- **GAINS** totals positive account changes.
+- **DECLINES** totals the magnitude of negative account changes.
+- **NET CHANGE** is gains minus declines.
+- **COVERAGE** identifies matched station records and excluded endpoints.
+
+Totals include all matched stations, not just the five leaders. In this example, 178,455 Cr gained minus 3,587 Cr declined equals +174,868 Cr across 26 matched stations.
+
+These are **account movements, not trading profit**. Purchases and transfers also change balances. Read the actual sampled interval: the screenshot has 15 seconds of history even though 30 MIN is selected. A selected window does not manufacture missing history.
+
+Use **RETURN TO RANKED STATIONS** for the leaders list. Live sampling stops when the KPI Center closes or another page opens; use the displayed live/refresh controls to manage the current view.
+
+---
+
+## 13. Troubleshooting and support
 
 ### The EOC button is missing
 
@@ -345,7 +408,7 @@ An `[=ERROR=]` prefix alone does not prove an EOC failure; some EOC diagnostics 
 
 ---
 
-## 13. One-page operating rule
+## 14. One-page operating rule
 
 **Choose the task → read the conclusion → follow the single NEXT action → commit edited values with TAB → preview any gameplay change → confirm only the exact scope → wait for X4 readback.**
 

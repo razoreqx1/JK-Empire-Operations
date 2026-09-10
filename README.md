@@ -5,13 +5,13 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current update
 
 - Version: 3.9
-- Engineering build: 379
-- Extension version: 4.79
-- Status: GitHub contains the exact Build 379 runtime; Steam upload is handled separately by the maintainer. The archived build retains its original TEST identity; this update is not a new GA promotion.
+- Engineering build: 382
+- Extension version: 4.82
+- Status: GitHub contains the exact Build 382 runtime; Steam upload is handled separately by the maintainer. The archived build retains its original TEST identity; this update is not a new GA promotion.
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 379 improves retained-report readability and safe page boundaries, and adds All stations browsing to Saved Plans. Existing recovery, trade and planning permissions remain unchanged. See [Build 379 release notes](docs/RELEASE_NOTES_BUILD379.md). Runtime coverage remains partial; static verification does not certify every native outcome.
+Build 382 adds question-based Home navigation, station-wide Fix All, explicit reviewed-report archiving, gains-versus-losses comparison and Home return buttons, with native station-reference and report-formatting corrections. Existing recovery, trade and planning permissions remain unchanged. See [Build 382 release notes](docs/RELEASE_NOTES_BUILD382.md) and the [updated illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md). Runtime coverage remains partial; static verification does not certify every native outcome.
 
 ## What is new in EOC 3.9 GA Build 378
 
@@ -24,7 +24,7 @@ Build 379 improves retained-report readability and safe page boundaries, and add
 - Voluntary what-if production scenarios no longer require repair permission; readiness warnings remain.
 - Retained Build370 fleet-staffing result-text correction.
 
-Release coverage is partial: automatic final recovery, rapid repeated-request duplicate-order safety and other untested native paths remain unverified. See [release notes](docs/RELEASE_NOTES_3.9_GA.md). The illustrated guide remains the Build369 edition; its screenshots have not been relabeled as Build378.
+Release coverage is partial: automatic final recovery, rapid repeated-request duplicate-order safety and other untested native paths remain unverified. See [release notes](docs/RELEASE_NOTES_3.9_GA.md). The current guide documents Build382 while preserving clearly labeled older screenshots for retained workflows.
 
 ## What is new in EOC 3.9 GA Build 369
 
@@ -37,7 +37,7 @@ Release coverage is partial: automatic final recovery, rapid repeated-request du
 
 Scenarios do not place modules, spend credits or order ships. External supply is an assumption, not proof of delivery. Supporting production is recipe-dependent; raw resources still need mining or trade. Workforce, storage, throughput, cost and placement require review. Saved player scenarios are snapshots, not live construction progress.
 
-The illustrated Player Guide now documents the Build 369 task-first menus with verified screenshots of Home, Stations, Plans, Supply, History, Settings, All Tools, and fleet building.
+The Build369 screenshots of retained workflows remain in the current guide alongside new question-based Home and money-comparison images.
 
 ## Build 366 improvements retained
 

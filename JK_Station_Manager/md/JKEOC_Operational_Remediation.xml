@@ -49,7 +49,7 @@
               </do_if>
               <do_if value="$remediation?">
                 <set_value name="$remediation.$priorstate" exact="$remediation.$state" /><set_value name="$remediation.$updated" exact="player.age" />
-                <set_value name="$remediation.$evidence" exact="'%1 of the last %2 bounded observations matched; total hits=%3 samples=%4; amount=%5 target=%6; suppliers=%7 suitable ships=%8 relevant activity=%9 idle/unknown=%10; confidence=%11.'.[$windowhits, $evidence.$window.count, $evidence.$hits, $evidence.$samples, $evidence.$amount, $evidence.$target, $evidence.$suppliers, $evidence.$suitable, $evidence.$relevant, $evidence.$idle, $evidence.$confidence]" />
+                <set_value name="$remediation.$evidence" exact="('%1 of the last %2 bounded observations matched; total hits=%3 samples=%4; amount=%5 target=%6; suppliers=%7 suitable ships=%8 relevant activity=%9 idle/unknown='.[$windowhits, $evidence.$window.count, $evidence.$hits, $evidence.$samples, $evidence.$amount, $evidence.$target, $evidence.$suppliers, $evidence.$suitable, $evidence.$relevant] + '%1; confidence=%2.'.[$evidence.$idle, $evidence.$confidence])" />
                 <set_value name="$remediation.$diagnosis" exact="'%1: %2 remained %3 under repeated observation. Verified cause evidence: %4'.[$evidence.$category, $evidence.$subject, $evidence.$state, $evidence.$cause]" />
                 <set_value name="$remediation.$shipcapability" exact="'NONE'" /><set_value name="$remediation.$assignment" exact="'NONE'" /><set_value name="$remediation.$policy" exact="'NONE'" />
                 <do_if value="$evidence.$category == 'LOGISTICS COVERAGE'">

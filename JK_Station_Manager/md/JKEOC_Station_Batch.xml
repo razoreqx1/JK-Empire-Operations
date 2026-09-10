@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Station_Batch" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- Explicit finite station batch. No new ship, order, payment or approval authority. -->
+  <cues>
+    <cue name="Request" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" /></conditions>
+      <actions>
+        <do_if value="event.param2 == 'route.batch.preview'">
+          <do_if value="not global.$JKEOC_B380Batch? or global.$JKEOC_B380Batch.$state != 'RUNNING'">
+            <set_value name="$created" exact="false" />
+            <do_if value="event.param3.$generation? and global.$JKEOC_B371RouteGeneration? and event.param3.$generation == global.$JKEOC_B371RouteGeneration">
+              <remove_value name="$s" />
+              <do_if value="event.param3.$slot? and event.param3.$slot == (event.param3.$slot)i and event.param3.$slot ge 1 and global.$JKEOC_B371RouteSlots? and event.param3.$slot le global.$JKEOC_B371RouteSlots.count">
+                <set_value name="$s" exact="global.$JKEOC_B371RouteSlots.{event.param3.$slot}.{17}" />
+              </do_if>
+              <do_elseif value="event.param3.$id? and global.$JKEOC_B371Routes?"><do_for_each name="$r" in="global.$JKEOC_B371Routes"><do_if value="$r.$id == event.param3.$id"><set_value name="$s" exact="$r.$station" /></do_if></do_for_each></do_elseif>
+              <do_if value="$s? and $s.exists and $s.owner == faction.player">
+                <set_value name="global.$JKEOC_B380BatchToken" exact="if global.$JKEOC_B380BatchToken? then global.$JKEOC_B380BatchToken + 1 else 1" />
+                <set_value name="$b" exact="table[$token=global.$JKEOC_B380BatchToken,$station=$s,$name=$s.name,$generation=global.$JKEOC_B371RouteGeneration,$time=player.age,$state='PREVIEW',$items=[],$cursor=0,$preserved=0,$submitted=0,$skipped=0,$message='Review this station and count, then confirm. Existing active work and shipping permissions are preserved.',$worker=0]" />
+                <set_value name="global.$JKEOC_B380Batch" exact="$b" />
+                <set_value name="$created" exact="true" />
+                <do_if value="global.$JKEOC_B371RouteSlots? and global.$JKEOC_B371RouteSlots.count le 4096">
+                  <do_for_each name="$slot" in="global.$JKEOC_B371RouteSlots">
+                    <do_if value="$slot.count ge 19 and $slot.{17} == $s and $slot.{18}? and $slot.{18} != null">
+                      <set_value name="$route" exact="null" />
+                      <do_if value="global.$JKEOC_B371Routes?"><do_for_each name="$r" in="global.$JKEOC_B371Routes"><do_if value="$r.$station == $s and $r.$ware == $slot.{18} and $r.$role == $slot.{4}"><set_value name="$route" exact="$r" /></do_if></do_for_each></do_if>
+                      <set_value name="$open" exact="$slot.{10} gt 0 or $slot.{6} le 0 or (if $slot.{4} == 'EOC EMERGENCY SELL' then $slot.{5} gt (($slot.{6} * 3 + 3) / 4)i else $slot.{5} lt $slot.{6}) or ($route != null and $route.$status != 'RESOLVED' and $route.$status != 'NOT CURRENTLY FAILING')" />
+                      <do_if value="$open"><signal_cue_instantly cue="AddItem" param="[$b,$slot,$route]" /></do_if>
+                    </do_if>
+                  </do_for_each>
+                  <do_if value="global.$JKEOC_B371Routes?"><do_for_each name="$r" in="global.$JKEOC_B371Routes"><do_if value="$r.$station == $s and $r.$status != 'RESOLVED' and $r.$status != 'NOT CURRENTLY FAILING'"><signal_cue_instantly cue="AddItem" param="[$b,null,$r]" /></do_if></do_for_each></do_if>
+                  <set_value name="$new" exact="0" /><do_for_each name="$item" in="$b.$items"><do_if value="$item.$route == null"><set_value name="$new" operation="add" exact="1" /></do_if></do_for_each>
+                  <do_if value="$new + (if global.$JKEOC_B371Routes? then global.$JKEOC_B371Routes.count else 0) gt 128"><set_value name="$b.$state" exact="'BLOCKED'" /><set_value name="$b.$message" exact="'The complete station set cannot fit the retained recovery limit. Nothing was submitted; no partial first-page batch was substituted.'" /></do_if>
+                </do_if>
+                <do_else><set_value name="$b.$state" exact="'BLOCKED'" /><set_value name="$b.$message" exact="'Coverage is absent or exceeds the bounded review size. Complete station scope cannot be proven. Nothing submitted.'" /></do_else>
+                <do_if value="$b.$items.count == 0 and $b.$state == 'PREVIEW'"><set_value name="$b.$state" exact="'EMPTY'" /><set_value name="$b.$message" exact="'No open issues in the retained station coverage. This is not a new empire scan.'" /></do_if>
+              </do_if>
+            </do_if>
+            <do_if value="not $created"><raise_lua_event name="'JKEOC_SettingsMenu.batch.error'" param="'Batch preview refused: current station coverage could not be matched. Reopen EOC and retry. No issues were submitted.'" /></do_if>
+          </do_if>
+          <signal_cue_instantly cue="Publish" param="true" />
+        </do_if>
+        <do_elseif value="event.param2 == 'route.batch.confirm'">
+          <do_if value="global.$JKEOC_B380Batch?">
+            <set_value name="$b" exact="global.$JKEOC_B380Batch" />
+            <do_if value="event.param3.$token? and event.param3.$token == $b.$token and $b.$state == 'PREVIEW' and player.age - $b.$time le 5min and $b.$generation == global.$JKEOC_B371RouteGeneration and $b.$station.exists and $b.$station.owner == faction.player">
+              <set_value name="$b.$state" exact="'RUNNING'" /><set_value name="$b.$worker" operation="add" exact="1" /><set_value name="$b.$deadline" exact="player.age + 30min" />
+              <set_value name="$b.$message" exact="'Batch accepted. One issue is submitted per five seconds; outcomes remain in each route. Existing work is not restarted.'" />
+              <signal_cue_instantly cue="Tick" param="[$b,$b.$worker]" />
+            </do_if>
+            <do_elseif value="$b.$state == 'PREVIEW'"><set_value name="$b.$state" exact="'EXPIRED'" /><set_value name="$b.$message" exact="'Review expired or station/coverage changed. Preview again; nothing submitted.'" /></do_elseif>
+          </do_if>
+          <signal_cue_instantly cue="Publish" param="true" />
+        </do_elseif>
+        <do_elseif value="event.param2 == 'route.batch.status'"><do_if value="not global.$JKEOC_B380Batch?"><raise_lua_event name="'JKEOC_SettingsMenu.batch.error'" param="'No station batch has been retained yet. Select a station and use Fix All to preview its issues.'" /></do_if><signal_cue_instantly cue="Publish" param="true" /></do_elseif>
+        <do_elseif value="event.param2 == 'route.batch.details' and global.$JKEOC_B380Batch?">
+          <set_value name="$b" exact="global.$JKEOC_B380Batch" />
+          <raise_lua_event name="'JKEOC_SettingsMenu.batch.items.begin'" param="$b.$token" />
+          <raise_lua_event name="'JKEOC_SettingsMenu.batch.items.count'" param="$b.$items.count" />
+          <do_for_each name="$item" in="$b.$items">
+            <raise_lua_event name="'JKEOC_SettingsMenu.batch.items.row'" param="'%1 / %2: %3'.[$item.$ware.id,$item.$role,$item.$outcome] + (if $item.$route != null then ' | Current route: ' + $item.$route.$status else '')" />
+          </do_for_each>
+          <raise_lua_event name="'JKEOC_SettingsMenu.batch.items.complete'" param="$b.$token" />
+        </do_elseif>
+        <do_elseif value="event.param2 == 'case.clearall' and global.$JKEOC_B380Batch?">
+          <set_value name="global.$JKEOC_B380Batch.$state" exact="'CANCELLED'" /><set_value name="global.$JKEOC_B380Batch.$worker" operation="add" exact="1" />
+          <set_value name="global.$JKEOC_B380Batch.$items" exact="[]" /><set_value name="global.$JKEOC_B380Batch.$cursor" exact="0" />
+          <set_value name="global.$JKEOC_B380Batch.$message" exact="'Remaining batch submissions cancelled by Clear Cases. Native orders were not cancelled.'" /><signal_cue_instantly cue="Publish" param="true" />
+        </do_elseif>
+      </actions>
+    </cue>
+    <cue name="AddItem" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <set_value name="$b" exact="event.param.{1}" /><set_value name="$slot" exact="event.param.{2}" /><set_value name="$r" exact="event.param.{3}" />
+      <set_value name="$ware" exact="if $r != null then $r.$ware else $slot.{18}" /><set_value name="$role" exact="if $r != null then $r.$role else $slot.{4}" />
+      <set_value name="$seen" exact="false" /><do_for_each name="$old" in="$b.$items"><do_if value="$old.$ware == $ware and $old.$role == $role"><set_value name="$seen" exact="true" /></do_if></do_for_each>
+      <do_if value="not $seen and $b.$state == 'PREVIEW'">
+        <do_if value="$b.$items.count lt 128"><append_to_list name="$b.$items" exact="table[$slot=$slot,$route=$r,$ware=$ware,$role=$role,$revision=if $r != null then $r.$revision else 0,$wasclosed=if $r != null then ($r.$status == 'RESOLVED' or $r.$status == 'NOT CURRENTLY FAILING') else false,$outcome='NOT SUBMITTED']" /></do_if>
+        <do_else><set_value name="$b.$state" exact="'BLOCKED'" /><set_value name="$b.$message" exact="'More than128 distinct issues. Complete set exceeds safety limit; nothing submitted.'" /></do_else>
+      </do_if>
+    </actions></cue>
+    <cue name="Tick" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="5s" /><actions>
+      <set_value name="$b" exact="event.param.{1}" />
+      <do_if value="global.$JKEOC_B380Batch? and global.$JKEOC_B380Batch == $b and $b.$state == 'RUNNING' and $b.$worker == event.param.{2}">
+        <set_value name="$running" exact="0" /><do_if value="global.$JKEOC_B371Routes?"><do_for_each name="$r" in="global.$JKEOC_B371Routes"><do_if value="@$r.$active"><set_value name="$running" operation="add" exact="1" /></do_if></do_for_each></do_if>
+        <do_if value="not $b.$station.exists or $b.$station.owner != faction.player"><set_value name="$b.$state" exact="'STOPPED'" /><set_value name="$b.$message" exact="'Station ownership or availability changed. Remaining issues were not submitted.'" /></do_if>
+        <do_elseif value="player.age gt $b.$deadline"><set_value name="$b.$state" exact="'STOPPED'" /><set_value name="$b.$message" exact="'The30-minute submission window ended. Unsubmitted items remain open; existing jobs were preserved. Review remaining issues before another batch.'" /></do_elseif>
+        <do_elseif value="$running lt 4 and $b.$cursor lt $b.$items.count">
+          <!-- Consume before shared request/native work; reload resumes only the remainder. -->
+          <set_value name="$b.$cursor" operation="add" exact="1" /><set_value name="$item" exact="$b.$items.{$b.$cursor}" />
+          <set_value name="$r" exact="null" />
+          <do_if value="global.$JKEOC_B371Routes?"><do_for_each name="$old" in="global.$JKEOC_B371Routes"><do_if value="$old.$station == $b.$station and $old.$ware == $item.$ware and $old.$role == $item.$role"><set_value name="$r" exact="$old" /></do_if></do_for_each></do_if>
+          <do_if value="$r != null and (@$r.$active or @$r.$job or @$r.$queued or @$r.$watch or @$r.$pinpending or $r.$status == 'APPROVAL NEEDED')">
+            <set_value name="$item.$outcome" exact="'EXISTING WORK / APPROVAL PRESERVED'" /><set_value name="$b.$preserved" operation="add" exact="1" />
+          </do_if>
+          <do_elseif value="$r != null and ($r.$status == 'RESOLVED' or $r.$status == 'NOT CURRENTLY FAILING') and (not $item.$wasclosed or $r.$revision != $item.$revision)">
+            <set_value name="$item.$outcome" exact="'CLOSED SINCE REVIEW — SKIPPED'" /><set_value name="$b.$skipped" operation="add" exact="1" />
+          </do_elseif>
+          <do_else>
+            <set_value name="$result" exact="table[]" />
+            <do_if value="$r != null"><signal_cue_instantly cue="md.JKEOC_Route_Recovery.B380RequestHandler" param="['route.check',table[$id=$r.$id,$revision=$r.$revision],null,$result]" /></do_if>
+            <do_elseif value="$item.$slot != null"><signal_cue_instantly cue="md.JKEOC_Route_Recovery.B380RequestHandler" param="['route.fix',table[],$item.$slot,$result]" /></do_elseif>
+            <do_if value="$result.$route?"><set_value name="$item.$route" exact="$result.$route" /><set_value name="$item.$outcome" exact="'SUBMITTED — ' + $result.$route.$status" /><set_value name="$b.$submitted" operation="add" exact="1" /></do_if>
+            <do_else><set_value name="$item.$outcome" exact="'NOT SUBMITTED — IDENTITY OR CAPACITY CHANGED'" /><set_value name="$b.$skipped" operation="add" exact="1" /></do_else>
+          </do_else>
+          <do_if value="$r != null"><set_value name="$item.$route" exact="$r" /></do_if>
+        </do_elseif>
+        <do_if value="$b.$state == 'RUNNING' and $b.$cursor ge $b.$items.count"><set_value name="$b.$state" exact="'SUBMISSION COMPLETE'" /><set_value name="$b.$message" exact="'All reviewed items processed, not all repairs completed. Open each route for current outcomes; pending deliveries and approvals remain pending.'" /></do_if>
+        <signal_cue_instantly cue="Publish" />
+        <do_if value="$b.$state == 'RUNNING'"><signal_cue_instantly cue="this.static" param="[$b,$b.$worker]" /></do_if>
+      </do_if>
+    </actions></cue>
+    <cue name="Load" instantiate="true"><conditions><event_game_loaded /></conditions><actions>
+      <do_if value="global.$JKEOC_B380Batch?">
+        <set_value name="$b" exact="global.$JKEOC_B380Batch" /><set_value name="$b.$worker" operation="add" exact="1" />
+        <do_if value="$b.$state == 'RUNNING'"><signal_cue_instantly cue="Tick" param="[$b,$b.$worker]" /></do_if>
+        <do_elseif value="$b.$state == 'PREVIEW'"><set_value name="$b.$state" exact="'EXPIRED'" /><set_value name="$b.$message" exact="'Saved preview was not approved. Review again after loading.'" /></do_elseif>
+      </do_if>
+    </actions></cue>
+    <cue name="Publish" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
+      <do_if value="global.$JKEOC_B380Batch?">
+        <set_value name="$b" exact="global.$JKEOC_B380Batch" />
+        <set_value name="$snapshot" exact="'%1|%2|%3|%4|%5|%6'.[$b.$state,$b.$cursor,$b.$submitted,$b.$preserved,$b.$skipped,$b.$message]" />
+        <do_if value="event.param == true or not $b.$published? or $b.$published != $snapshot">
+        <set_value name="$b.$published" exact="$snapshot" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.batch.begin'" param="$b.$token" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.batch.station'" param="if $b.$station.exists then $b.$station else ''" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.batch.state'" param="$b.$state" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.batch.text'" param="'%1: %2 | %3 issues; processed %4, submitted %5, preserved %6, skipped %7. '.[$b.$name,$b.$state,$b.$items.count,$b.$cursor,$b.$submitted,$b.$preserved,$b.$skipped] + $b.$message" />
+        <raise_lua_event name="'JKEOC_SettingsMenu.batch.commit'" param="$b.$token" />
+        </do_if>
+      </do_if>
+    </actions></cue>
+  </cues>
+</mdscript>

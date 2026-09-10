@@ -2,12 +2,12 @@
 <content
   id="ws_3788882957"
   name="EOC - Executive Operations Center"
-  description="EOC 3.9 - Build 379. Background recovery progress, delivery follow-up and independent what-if planning."
+  description="EOC 3.9 - Build 382. Native station navigation, Home return and report formatting corrections."
   author="RazorEQX"
-  version="479"
+  version="482"
   date="2026-09-10"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 TEST Build 379" description="Background recovery progress, delivery follow-up and independent what-if planning." />
+  <text language="44" name="EOC 3.9 TEST Build 382" description="Native station navigation, Home return and report formatting corrections." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

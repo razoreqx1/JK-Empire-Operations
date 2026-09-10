@@ -9,16 +9,21 @@
     </actions></cue>
     <cue name="Request" instantiate="true" namespace="this">
       <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" /></conditions>
+      <actions><do_if value="event.param2 == 'route.fix' or event.param2 == 'route.check' or event.param2 == 'route.ack' or event.param2 == 'route.approve'"><signal_cue_instantly cue="B380RequestHandler" param="[event.param2,event.param3]" /></do_if></actions>
+    </cue>
+    <cue name="B380RequestHandler" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled /></conditions>
       <actions>
-        <do_if value="event.param2 == 'route.fix' or event.param2 == 'route.check' or event.param2 == 'route.ack' or event.param2 == 'route.approve'">
+        <set_value name="$action" exact="event.param.{1}" /><set_value name="$input" exact="event.param.{2}" />
+        <do_if value="$action == 'route.fix' or $action == 'route.check' or $action == 'route.ack' or $action == 'route.approve'">
           <do_if value="not global.$JKEOC_B371Routes?"><set_value name="global.$JKEOC_B371Routes" exact="[]" /></do_if>
           <do_if value="not global.$JKEOC_B371RouteNextId?"><set_value name="global.$JKEOC_B371RouteNextId" exact="1" /></do_if>
           <remove_value name="$r" />
-          <do_if value="event.param3.$id? and event.param3.$id gt 0">
-            <do_for_each name="$old" in="global.$JKEOC_B371Routes"><do_if value="$old.$id == event.param3.$id"><set_value name="$r" exact="$old" /></do_if></do_for_each>
+          <do_if value="$input.$id? and $input.$id gt 0">
+            <do_for_each name="$old" in="global.$JKEOC_B371Routes"><do_if value="$old.$id == $input.$id"><set_value name="$r" exact="$old" /></do_if></do_for_each>
           </do_if>
-          <do_elseif value="event.param2 == 'route.fix' and event.param3.$generation? and global.$JKEOC_B371RouteGeneration? and event.param3.$generation == global.$JKEOC_B371RouteGeneration and event.param3.$slot? and event.param3.$slot ge 1 and event.param3.$slot le global.$JKEOC_B371RouteSlots.count and event.param3.$slot == (event.param3.$slot)i">
-            <set_value name="$slot" exact="global.$JKEOC_B371RouteSlots.{event.param3.$slot}" />
+          <do_elseif value="$action == 'route.fix' and (event.param.count ge 3 or ($input.$generation? and global.$JKEOC_B371RouteGeneration? and $input.$generation == global.$JKEOC_B371RouteGeneration and $input.$slot? and $input.$slot ge 1 and $input.$slot le global.$JKEOC_B371RouteSlots.count and $input.$slot == ($input.$slot)i))">
+            <set_value name="$slot" exact="if event.param.count ge 3 then event.param.{3} else global.$JKEOC_B371RouteSlots.{$input.$slot}" />
             <do_if value="$slot.count ge 19 and $slot.{17}? and $slot.{17}.exists and $slot.{17}.owner == faction.player and $slot.{18}? and $slot.{18} != null and $slot.{2} != '' and $slot.{18}.id == $slot.{2}">
               <do_for_each name="$old" in="global.$JKEOC_B371Routes"><do_if value="$old.$station == $slot.{17} and $old.$ware == $slot.{18} and $old.$role == $slot.{4}"><set_value name="$r" exact="$old" /></do_if></do_for_each>
               <do_if value="not $r? and global.$JKEOC_B371Routes.count lt 128">
@@ -29,15 +34,16 @@
             </do_if>
           </do_elseif>
           <do_if value="$r?">
-            <do_if value="event.param2 == 'route.fix' and event.param3.$slot? and event.param3.$generation?"><set_value name="$r.$uislot" exact="event.param3.$slot" /><set_value name="$r.$uigeneration" exact="event.param3.$generation" /></do_if>
-            <do_if value="event.param2 == 'route.ack' and event.param3.$revision? and event.param3.$revision == $r.$revision and event.param3.$step? and event.param3.$step ge 1 and event.param3.$step le 3 and event.param3.$step == (event.param3.$step)i and (event.param3.$done == 0 or event.param3.$done == 1)">
-              <set_value name="$r.$acks.{event.param3.$step}" exact="event.param3.$done" />
+            <do_if value="event.param.count ge 4"><set_value name="event.param.{4}.$route" exact="$r" /></do_if>
+            <do_if value="$action == 'route.fix' and $input.$slot? and $input.$generation?"><set_value name="$r.$uislot" exact="$input.$slot" /><set_value name="$r.$uigeneration" exact="$input.$generation" /></do_if>
+            <do_if value="$action == 'route.ack' and $input.$revision? and $input.$revision == $r.$revision and $input.$step? and $input.$step ge 1 and $input.$step le 3 and $input.$step == ($input.$step)i and ($input.$done == 0 or $input.$done == 1)">
+              <set_value name="$r.$acks.{$input.$step}" exact="$input.$done" />
             </do_if>
-            <do_elseif value="event.param2 == 'route.approve' and event.param3.$revision? and event.param3.$revision == $r.$revision and $r.$status == 'APPROVAL NEEDED'">
+            <do_elseif value="$action == 'route.approve' and $input.$revision? and $input.$revision == $r.$revision and $r.$status == 'APPROVAL NEEDED'">
               <do_if value="$r.$token?"><set_value name="$r.$approvedtoken" exact="$r.$token" /><signal_cue_instantly cue="md.JKEOC_Recovery_Workflow.Apply" param="$r" /></do_if>
               <do_else><signal_cue_instantly cue="Assign" param="$r" /></do_else>
             </do_elseif>
-            <do_elseif value="event.param2 == 'route.check' and event.param3.$revision? and event.param3.$revision == $r.$revision and not $r.$active">
+            <do_elseif value="$action == 'route.check' and $input.$revision? and $input.$revision == $r.$revision and not $r.$active">
               <!-- An explicit new player review resets only an idle investigation budget.
                    Live native orders retain their token, evidence and reservations. -->
               <do_if value="not @$r.$job and not @$r.$queued">
@@ -46,7 +52,7 @@
               </do_if>
               <signal_cue_instantly cue="Assess" param="$r" />
             </do_elseif>
-            <do_elseif value="event.param2 == 'route.fix' and $r.$revision == 0"><signal_cue_instantly cue="Assess" param="$r" /></do_elseif>
+            <do_elseif value="$action == 'route.fix' and $r.$revision == 0"><signal_cue_instantly cue="Assess" param="$r" /></do_elseif>
             <signal_cue_instantly cue="Publish" param="$r" />
           </do_if>
           <do_else><raise_lua_event name="'JKEOC_SettingsMenu.route.error'" param="'I could not match that request to a current station and resource, or the retained recovery list is full. Nothing changed. Close and reopen EOC to refresh the route list; existing recovery records have been preserved.'" /></do_else>
@@ -92,7 +98,7 @@
       <do_all exact="3" counter="$i"><do_if value="$r.$steps.{$i} != ''"><set_value name="$reporttext" exact="$reporttext + '\n\n%1. %2'.[$i,$r.$steps.{$i}]" /><set_value name="$hassteps" exact="true" /></do_if></do_all>
       <do_if value="$hassteps"><set_value name="$reporttext" exact="$reporttext + '\n\nPlayer checkmarks are reports, not EOC verification. Instructions describe this recorded assessment, not current completion.'" /></do_if>
       <do_else><set_value name="$reporttext" exact="$reporttext + '\n\nNo player instruction was recorded at this time. This does not prove recovery or that monitoring is still running now.'" /></do_else>
-      <signal_cue_instantly cue="md.JKEOC_Settings_Interface.JKEOC_Settings_RecordReport" param="['ROUTE RECOVERY: %1 - %2 - ROUND %3'.[$r.$stationname, $r.$warename, $r.$revision], $reporttext]" />
+      <signal_cue_instantly cue="md.JKEOC_Settings_Interface.JKEOC_Settings_RecordReport" param="['ROUTE RECOVERY: %1 - %2 - ROUND %3'.[$r.$stationname, $r.$warename, $r.$revision], $reporttext, $r.$id, $r.$revision]" />
     </actions></cue>
     <cue name="SelectShip" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
       <set_value name="$r" exact="event.param" /><remove_value name="$candidate" />
@@ -228,5 +234,32 @@
 <raise_lua_event name="'JKEOC_SettingsMenu.route.commit'" param="$r.$id" />
 </do_if>
 </actions></cue>
+    <cue name="B380ArchiveReviewed" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'report.archive'" /></conditions>
+      <actions>
+        <set_value name="$accepted" exact="false" />
+        <do_if value="event.param3.$id? and global.$JKEOC_LuaReports? and global.$JKEOC_B371Routes?">
+          <do_for_each name="$report" in="global.$JKEOC_LuaReports">
+            <do_if value="$report.count ge 7 and $report.{4} == event.param3.$id and $report.{5} gt 0">
+              <do_for_each name="$route" in="global.$JKEOC_B371Routes">
+                <do_if value="$route.$id == $report.{5} and $route.$revision ge $report.{6} and ($route.$status == 'RESOLVED' or $route.$status == 'NOT CURRENTLY FAILING') and not @$route.$active and not @$route.$job and not @$route.$queued and not @$route.$watch and not @$route.$pinpending and $route.$station.exists and $route.$station.owner == faction.player and $route.$ware? and $route.$ware != null">
+                  <set_value name="$destination" exact="if $route.$role == 'BUILD STORAGE' then @$route.$station.buildstorage else $route.$station" />
+                  <do_if value="$destination.exists">
+                    <set_value name="$target" exact="if $route.$role == 'BUILD STORAGE' then $destination.buildprocessor.neededsequenceresources.{$route.$ware}.count else $destination.cargo.{$route.$ware}.target" />
+                    <set_value name="$stock" exact="$destination.cargo.{$route.$ware}.count" />
+                    <do_if value="$target gt 0 and (($route.$role == 'EOC EMERGENCY SELL' and $stock le (($target * 3 + 3) / 4)i) or ($route.$role != 'EOC EMERGENCY SELL' and $stock ge $target))">
+                      <do_if value="$report.{7} != 1"><write_to_logbook category="tips" title="$report.{1}" text="$report.{2} + '\n\nReviewed and archived by the player. Original assessment time: %1. This does not close or cancel any native work.'.[$report.{3}]" /></do_if>
+                      <set_value name="$report.{7}" exact="1" /><set_value name="$accepted" exact="true" />
+                    </do_if>
+                  </do_if>
+                </do_if>
+              </do_for_each>
+            </do_if>
+          </do_for_each>
+        </do_if>
+        <do_if value="$accepted"><raise_lua_event name="'JKEOC_SettingsMenu.report.archived'" param="event.param3.$id" /></do_if>
+        <do_else><raise_lua_event name="'JKEOC_SettingsMenu.report.archive.error'" param="'Not archived: exact closed recovery and current stock could not be verified, or work is still pending. History and all work were preserved.'" /></do_else>
+      </actions>
+    </cue>
   </cues>
 </mdscript>
