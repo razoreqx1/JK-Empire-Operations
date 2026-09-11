@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Autonomy_Queue" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+    <library name="Settle"><actions>
+      <do_if value="typeof @$r.$budgettoken == typeof 1 and typeof @$r.$budgetcost == typeof 1 and not @$r.$buyorder.exists and not @$r.$sellorder.exists and @$r.$budgetclosed != $r.$budgettoken">
+        <set_value name="$settlement" exact="table[$route=$r, $station=$r.$station, $token=$r.$budgettoken, $cost=$r.$budgetcost]"/>
+        <signal_cue_instantly cue="md.JKEOC_Autonomy_Budget.Settle" param="$settlement"/>
+      </do_if>
+    </actions></library>
+    <cue name="Record" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table and typeof @global.$JKEOC_Autonomy == datatype.table">
+          <set_value name="$r" exact="event.param"/><set_value name="$s" exact="global.$JKEOC_Autonomy"/>
+          <do_if value="typeof @$s.$routes == datatype.list and $s.$routes.indexof.{$r} and @$r.$autonomous and typeof @$s.$results == datatype.list and $s.$results.count le 64">
+            <include_actions ref="Settle"/>
+            <set_value name="$text" exact="if $r.$autofullreport? then $r.$autofullreport else $r.$report"/>
+            <do_if value="@$r.$recordedtext != $text or @$r.$recordedrevision != $r.$revision">
+              <append_to_list name="$s.$results" exact="table[$id=$r.$id, $station=$r.$station, $stationname=$r.$stationname, $ware=$r.$ware, $warename=$r.$warename, $revision=$r.$revision, $time=player.age, $status=$r.$status, $report=$text]"/>
+              <do_if value="$s.$results.count gt 64"><remove_value name="$s.$results.{1}"/></do_if>
+              <write_to_logbook category="tips" title="'EOC Automatic Manager: ' + $r.$stationname + ' / ' + $r.$warename" text="$text"/>
+              <set_value name="$r.$recordedtext" exact="$text"/><set_value name="$r.$recordedrevision" exact="$r.$revision"/>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Maintain" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof @global.$JKEOC_Autonomy == datatype.table and typeof @global.$JKEOC_B371Routes == datatype.list">
+          <set_value name="$s" exact="global.$JKEOC_Autonomy"/>
+          <do_if value="typeof @$s.$routes == datatype.list and $s.$routes.count le 16 and typeof @$s.$results == datatype.list and $s.$results.count le 64">
+            <set_value name="$retired" exact="[]"/>
+            <do_for_each name="$r" in="$s.$routes">
+              <do_if value="typeof $r == datatype.table and @$r.$autonomous and global.$JKEOC_B371Routes.indexof.{$r}">
+                <include_actions ref="Settle"/>
+                <do_if value="$r.$recordedtext? and not @$r.$active and not @$r.$job and not @$r.$watch and not @$r.$queued and not @$r.$pinpending and not @$r.$buyorder.exists and not @$r.$sellorder.exists and (not $r.$budgettoken? or @$r.$budgetclosed == $r.$budgettoken)">
+                  <do_if value="typeof @$r.$observation == datatype.table"><set_value name="$r.$observation.$next" exact="player.age + (if $r.$status == 'RESOLVED' or $r.$status == 'NOT CURRENTLY FAILING' then 10min else 30min)"/></do_if>
+                  <set_value name="$r.$token" exact="$r.$token + 1"/><append_to_list name="$retired" exact="$r"/>
+                </do_if>
+              </do_if>
+            </do_for_each>
+            <do_for_each name="$r" in="$retired"><remove_from_list name="global.$JKEOC_B371Routes" exact="$r"/><remove_from_list name="$s.$routes" exact="$r"/></do_for_each>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Admit" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table and typeof @global.$JKEOC_Autonomy == datatype.table">
+          <set_value name="$q" exact="event.param"/><set_value name="$s" exact="global.$JKEOC_Autonomy"/>
+          <set_value name="$q.$admitted" exact="false"/><set_value name="$q.$reason" exact="'NO READY WORK OR AUTOMATION PAUSED'"/>
+          <do_if value="typeof @$s.$schema == typeof 1 and @$s.$schema == 1 and typeof @$s.$enabled == typeof true and @$s.$enabled == true and typeof @$s.$running == typeof true and @$s.$running == true and typeof @$s.$epoch == typeof 1 and @$s.$epoch gt 0 and typeof @$q.$worker == typeof 1 and @$q.$worker == @$s.$worker and typeof @$s.$routes == datatype.list and typeof @$s.$observations == datatype.list and $s.$routes.count lt 16 and $s.$observations.count le 1024">
+            <do_if value="not global.$JKEOC_B371Routes?"><set_value name="global.$JKEOC_B371Routes" exact="[]"/></do_if>
+            <do_if value="not global.$JKEOC_B371RouteNextId?"><set_value name="global.$JKEOC_B371RouteNextId" exact="1"/></do_if>
+            <do_if value="typeof global.$JKEOC_B371Routes == datatype.list and typeof global.$JKEOC_B371RouteNextId == typeof 1 and global.$JKEOC_B371RouteNextId gt 0 and global.$JKEOC_B371Routes.count lt 144">
+              <set_value name="$running" exact="0"/><set_value name="$identitysafe" exact="true"/>
+              <do_for_each name="$old" in="global.$JKEOC_B371Routes">
+                <do_if value="typeof $old != datatype.table"><set_value name="$identitysafe" exact="false"/></do_if>
+                <do_elseif value="typeof @$old.$id != typeof 1 or @$old.$id ge global.$JKEOC_B371RouteNextId"><set_value name="$identitysafe" exact="false"/></do_elseif>
+                <do_elseif value="@$old.$active"><set_value name="$running" exact="$running + 1"/></do_elseif>
+              </do_for_each>
+              <do_if value="$identitysafe and $running lt 4">
+                <set_value name="$selected" exact="null"/>
+                <do_for_each name="$o" in="$s.$observations">
+                  <do_if value="typeof $o == datatype.table and typeof @$o.$ready == typeof true and @$o.$ready == true and typeof @$o.$next == typeof player.age and typeof @$o.$last == typeof player.age and typeof @$o.$selling == typeof true and @$o.$next le player.age and @$o.$last le player.age and player.age - @$o.$last le 10min and @$o.$station.isplayerowned and @$o.$station.isoperational and $o.$ware? and $o.$ware != null and $o.$ware != ware.rawscrap">
+                    <do_if value="$selected == null or $o.$next lt $selected.$next"><set_value name="$selected" exact="$o"/></do_if>
+                  </do_if>
+                </do_for_each>
+                <do_if value="$selected != null">
+                  <set_value name="$o" exact="$selected"/><set_value name="$o.$next" exact="player.age + 10min"/>
+                  <set_value name="$station" exact="$o.$station"/><set_value name="$ware" exact="$o.$ware"/>
+                  <set_value name="$stock" exact="$station.cargo.{$ware}.count"/><set_value name="$target" exact="$station.cargo.{$ware}.target"/>
+                  <set_value name="$duplicate" exact="false"/>
+                  <do_for_each name="$old" in="global.$JKEOC_B371Routes">
+                    <do_if value="@$old.$station == $station and @$old.$ware == $ware and (@$old.$autonomous or @$old.$active or @$old.$job or @$old.$watch or @$old.$queued or @$old.$pinpending or (@$old.$status != 'RESOLVED' and @$old.$status != 'NOT CURRENTLY FAILING'))"><set_value name="$duplicate" exact="true"/></do_if>
+                  </do_for_each>
+                  <do_if value="$duplicate"><set_value name="$q.$reason" exact="'EXISTING ROUTE PRESERVED; NO DUPLICATE JOB'"/></do_if>
+                  <do_elseif value="$target le 0"><remove_from_list name="$s.$observations" exact="$o"/><set_value name="$q.$reason" exact="'NO POSITIVE LIVE TARGET; OBSERVATION RETIRED'"/></do_elseif>
+                  <do_elseif value="$target != @$o.$target"><set_value name="$o.$ready" exact="false"/><set_value name="$o.$first" exact="player.age"/><set_value name="$o.$last" exact="player.age"/><set_value name="$o.$baseline" exact="$stock"/><set_value name="$o.$stock" exact="$stock"/><set_value name="$o.$target" exact="$target"/><set_value name="$q.$reason" exact="'TARGET CHANGED; WAITING FOR NEW EVIDENCE'"/></do_elseif>
+                  <do_elseif value="$target gt 0 and (($o.$selling and $stock gt $target) or (not $o.$selling and $stock * 4 lt $target * 3))">
+                    <set_value name="$r" exact="table[$id=global.$JKEOC_B371RouteNextId, $station=$station, $stationname=$station.name, $ware=$ware, $wareid=$ware.id, $warename=$ware.name, $role=if $o.$selling then 'EOC EMERGENCY SELL' else 'EOC EMERGENCY BUY', $revision=0, $status='REQUESTED', $report='Automatic assessment requested; no repair proven.', $steps=['','',''], $acks=[0,0,0], $history=[], $time=player.age, $target=$target, $laststock=$stock, $assigned=0, $unchanged=0, $active=false, $token=1, $autonomous=true, $autoepoch=$s.$epoch, $observation=$o]"/>
+                    <set_value name="global.$JKEOC_B371RouteNextId" exact="global.$JKEOC_B371RouteNextId + 1"/>
+                    <append_to_list name="global.$JKEOC_B371Routes" exact="$r"/><append_to_list name="$s.$routes" exact="$r"/>
+                    <set_value name="$guard" exact="table[$route=$r, $run=$r.$token, $kind='STATION']"/><signal_cue_instantly cue="md.JKEOC_Autonomy_Guard.Check" param="$guard"/>
+                    <do_if value="$guard.$allowed">
+                      <set_value name="$q.$admitted" exact="true"/><set_value name="$q.$route" exact="$r"/><set_value name="$q.$reason" exact="'ONE AUTOMATIC ASSESSMENT STARTED'"/>
+                      <signal_cue_instantly cue="md.JKEOC_Recovery_Workflow.Begin" param="$r"/>
+                    </do_if>
+                    <do_else><remove_from_list name="global.$JKEOC_B371Routes" exact="$r"/><remove_from_list name="$s.$routes" exact="$r"/><set_value name="$q.$reason" exact="$guard.$reason"/></do_else>
+                  </do_elseif>
+                  <do_else><set_value name="$o.$ready" exact="false"/><set_value name="$q.$reason" exact="'LIVE STOCK DOES NOT REQUIRE THIS ASSESSMENT'"/></do_else>
+                </do_if>
+              </do_if>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

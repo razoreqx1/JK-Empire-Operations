@@ -1,6 +1,8 @@
-# EOC 3.9 Player Guide — Build 382
+# EOC 3.9 Player Guide — Build 383
 
-**Applies to:** EOC 3.9, Build 382, extension version 482
+**Current edition:** EOC 3.9, Build 383, extension version 483. The retained illustrated workflows below document Build 382.
+
+**New optional automatic manager:** Read the [Build 383 companion guide](EOC_AUTOMATIC_MANAGER.md) for enabling background management, Diagnostics B007 requirements, spending limits, reports and stopping. Assisted play remains unchanged. End-to-end automatic outcomes remain **RUNTIME ACCEPTANCE REQUIRED**; older screenshots are not evidence of the new manager's runtime acceptance.
 
 This edition includes new Home and money-view screenshots supplied during live use. Screenshots labeled Build 369 remain historical illustrations of retained tools; they are not relabeled as current screenshots. The established guide URL is retained for existing links.
 

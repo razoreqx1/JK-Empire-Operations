@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Autonomy_Budget" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- Conservative credit ceilings, not payment/profit evidence or gameplay permission. -->
+  <cues>
+    <cue name="Prepare" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table">
+          <set_value name="$r" exact="event.param"/>
+          <set_value name="$r.$budgetready" exact="false"/>
+          <set_value name="$r.$budgetreason" exact="'DISPATCH STATE OR QUOTE UNAVAILABLE'"/>
+          <do_if value="@$r.$phase == 'ASSIGNMENT READBACK' and not @$r.$buyorder.exists and not @$r.$sellorder.exists and typeof @$r.$quantity == typeof 1">
+            <do_if value="$r.$quantity gt 0 and @$r.$ship.commander == @$r.$station and @$r.$fromoffer.available and @$r.$tooffer.available">
+              <set_value name="$permission" exact="table[$route=$r, $run=$r.$token, $kind='SHIP', $ship=$r.$ship]"/>
+              <signal_cue_instantly cue="md.JKEOC_Autonomy_Guard.Check" param="$permission"/>
+              <set_value name="$r.$budgetreason" exact="$permission.$reason"/>
+              <do_if value="$permission.$allowed">
+                <set_value name="$s" exact="global.$JKEOC_Autonomy"/>
+                <set_value name="$r.$budgetreason" exact="'NATIVE MONEY OR BUDGET COUNTER INVALID'"/>
+                <do_if value="typeof @$r.$fromoffer.unitprice == typeof 1Cr and typeof @$r.$tooffer.unitprice == typeof 1Cr and typeof @$r.$station.money == typeof 1Cr and typeof @$s.$nextBudget == typeof 1">
+                  <do_if value="$r.$fromoffer.unitprice ge 0Cr and $r.$fromoffer.unitprice le $r.$tooffer.unitprice and $r.$station.money ge 0Cr and $s.$nextBudget gt 0">
+                    <set_value name="$buyquote" exact="$r.$fromoffer.unitprice"/><set_value name="$sellquote" exact="$r.$tooffer.unitprice"/>
+                    <do_if value="$buyquote gt 0Cr and typeof @$s.$orderCap == typeof 1 and @$s.$orderCap gt 0">
+                      <set_value name="$ceiling" exact="($s.$orderCap * 1Cr / $buyquote)i"/>
+                      <do_if value="$r.$quantity gt $ceiling"><set_value name="$r.$quantity" exact="$ceiling"/></do_if>
+                    </do_if>
+                    <do_if value="$r.$quantity gt 0 and $r.$quantity ge (if $r.$fromoffer.minamount? then $r.$fromoffer.minamount else 0) and $r.$quantity ge (if $r.$tooffer.minamount? then $r.$tooffer.minamount else 0)">
+                    <set_value name="$total" exact="$buyquote * $r.$quantity"/>
+                    <set_value name="$cost" exact="($total / 1Cr)i"/>
+                    <do_if value="$cost * 1Cr lt $total"><set_value name="$cost" exact="$cost + 1"/></do_if>
+                    <do_if value="$cost == 0"><set_value name="$cost" exact="1"/></do_if>
+                    <do_if value="$r.$budgettoken? and @$r.$budgetclosed == $r.$budgettoken and typeof @$r.$budgetrun == typeof 1 and $r.$budgetrun != $r.$token"><remove_value name="$r.$budgettoken" /></do_if>
+                    <do_if value="not $r.$budgettoken?">
+                      <set_value name="$r.$budgettoken" exact="$s.$nextBudget"/>
+                      <set_value name="$r.$budgetrun" exact="$r.$token"/>
+                      <set_value name="$s.$nextBudget" exact="$s.$nextBudget + 1"/>
+                    </do_if>
+                    <set_value name="$reservation" exact="table[$route=$r, $station=$r.$station, $token=$r.$budgettoken, $cost=$cost, $balance=($r.$station.money / 1Cr)i]"/>
+                    <signal_cue_instantly cue="Reserve" param="$reservation"/>
+                    <set_value name="$r.$budgetreason" exact="$reservation.$reason"/>
+                    <do_if value="$reservation.$accepted">
+                      <set_value name="$r.$buyquote" exact="$buyquote"/><set_value name="$r.$sellquote" exact="$sellquote"/>
+                      <set_value name="$r.$budgetcost" exact="$cost"/><set_value name="$r.$budgetready" exact="true"/>
+                    </do_if>
+                    </do_if>
+                    <do_else><set_value name="$r.$budgetreason" exact="'ORDER LIMIT CANNOT FIT A POSITIVE NATIVE MINIMUM LOT'"/></do_else>
+                  </do_if>
+                </do_if>
+              </do_if>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <library name="Validate"><actions>
+      <set_value name="$valid" exact="false"/>
+      <set_value name="$q.$accepted" exact="false"/>
+      <set_value name="$q.$reason" exact="'AUTONOMY BUDGET STATE INVALID'"/>
+      <do_if value="typeof @global.$JKEOC_Autonomy == datatype.table">
+        <set_value name="$s" exact="global.$JKEOC_Autonomy"/>
+        <do_if value="typeof @$s.$schema == typeof 1 and @$s.$schema == 1 and typeof @$s.$epoch == typeof 1 and typeof @$q.$token == typeof 1 and typeof @$q.$cost == typeof 1 and typeof @$q.$route == datatype.table">
+          <do_if value="$q.$token gt 0 and $q.$cost gt 0 and typeof @$q.$route.$autonomous == typeof true and @$q.$route.$autonomous == true and typeof @$q.$route.$budgettoken == typeof 1 and @$q.$route.$budgettoken == $q.$token and @$q.$route.$station == @$q.$station and typeof @$s.$ledger == datatype.list and @$s.$ledger.count le 32">
+            <set_value name="$valid" exact="true"/>
+            <set_value name="$kept" exact="[]"/>
+            <set_value name="$found" exact="null"/>
+            <set_value name="$hour" exact="0"/>
+            <set_value name="$pending" exact="0"/>
+            <do_for_each name="$entry" in="$s.$ledger">
+              <do_if value="typeof @$entry.$token != typeof 1 or typeof @$entry.$cost != typeof 1 or typeof @$entry.$at != typeof player.age or typeof @$entry.$settled != typeof true or typeof @$entry.$route != datatype.table">
+                <set_value name="$valid" exact="false"/>
+              </do_if>
+              <do_elseif value="$entry.$token le 0 or $entry.$cost le 0 or $entry.$at gt player.age or not $entry.$station?">
+                <set_value name="$valid" exact="false"/>
+              </do_elseif>
+              <do_else>
+                <do_if value="not $entry.$settled or player.age - $entry.$at lt 3600s">
+                  <append_to_list name="$kept" exact="$entry"/>
+                  <set_value name="$hour" exact="$hour + $entry.$cost"/>
+                  <do_if value="not $entry.$settled and $entry.$station == @$q.$station"><set_value name="$pending" exact="$pending + $entry.$cost"/></do_if>
+                  <do_if value="$entry.$token == $q.$token">
+                    <do_if value="$found != null"><set_value name="$valid" exact="false"/></do_if>
+                    <set_value name="$found" exact="$entry"/>
+                  </do_if>
+                </do_if>
+              </do_else>
+            </do_for_each>
+          </do_if>
+        </do_if>
+      </do_if>
+    </actions></library>
+    <cue name="Reserve" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table">
+          <set_value name="$q" exact="event.param"/><include_actions ref="Validate"/>
+          <do_if value="$valid">
+            <set_value name="$q.$reason" exact="'AUTOMATION OFF, STALE RUN OR STATION UNAVAILABLE'"/>
+            <do_if value="typeof @$s.$enabled == typeof true and @$s.$enabled == true and @$q.$route.$autoepoch == $s.$epoch and @$q.$route.$budgetclosed != $q.$token and @$q.$station.isplayerowned and @$q.$station.isoperational">
+              <set_value name="$q.$reason" exact="'BUDGET LIMITS OR ACCOUNT READBACK INVALID'"/>
+              <do_if value="typeof @$s.$orderCap == typeof 1 and typeof @$s.$hourCap == typeof 1 and typeof @$s.$reserve == typeof 1 and typeof @$q.$balance == typeof 1">
+                <do_if value="$s.$orderCap gt 0 and $s.$hourCap ge $s.$orderCap and $s.$reserve ge 0 and $q.$balance ge 0">
+                  <do_if value="$found != null">
+                    <set_value name="$q.$reason" exact="'RESERVATION TOKEN CONFLICT OR ALREADY SETTLED'"/>
+                    <do_if value="$found.$route == $q.$route and $found.$station == $q.$station and $found.$cost == $q.$cost and not $found.$settled and $q.$cost le $s.$orderCap and $hour le $s.$hourCap and $q.$balance - $pending ge $s.$reserve">
+                      <set_value name="$q.$reason" exact="'EXISTING RESERVATION; NOT NEW ORDER AUTHORITY'"/>
+                      <set_value name="$q.$accepted" exact="true"/>
+                    </do_if>
+                  </do_if>
+                  <do_else>
+                    <set_value name="$q.$reason" exact="'SPENDING LIMIT, ACCOUNT RESERVE OR LEDGER CAPACITY REACHED'"/>
+                    <do_if value="$q.$cost le $s.$orderCap and $hour + $q.$cost le $s.$hourCap and $q.$balance - $pending - $q.$cost ge $s.$reserve and $kept.count lt 32">
+                      <append_to_list name="$kept" exact="table[$token=$q.$token, $route=$q.$route, $station=$q.$station, $cost=$q.$cost, $at=player.age, $settled=false]"/>
+                      <set_value name="$s.$ledger" exact="$kept"/>
+                      <set_value name="$q.$accepted" exact="true"/>
+                      <set_value name="$q.$reason" exact="'QUOTE RESERVED; PAYMENT AND DELIVERY NOT YET PROVEN'"/>
+                    </do_if>
+                  </do_else>
+                </do_if>
+              </do_if>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Settle" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table">
+          <set_value name="$q" exact="event.param"/><include_actions ref="Validate"/>
+          <do_if value="$valid and $found != null">
+            <set_value name="$q.$reason" exact="'RESERVATION IDENTITY MISMATCH OR NATIVE ORDERS STILL PRESENT'"/>
+            <do_if value="$found.$route == $q.$route and $found.$station == $q.$station and $found.$cost == $q.$cost and not @$q.$route.$buyorder.exists and not @$q.$route.$sellorder.exists">
+              <set_value name="$found.$settled" exact="true"/>
+              <set_value name="$q.$route.$budgetclosed" exact="$q.$token"/>
+              <set_value name="$q.$accepted" exact="true"/>
+              <set_value name="$q.$reason" exact="'ORDERS ENDED; CONSERVATIVE QUOTE RETAINED, NO ASSUMED REFUND'"/>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

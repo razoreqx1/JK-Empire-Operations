@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Autonomy_Collection" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+    <cue name="Collect" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table and typeof @global.$JKEOC_Autonomy == datatype.table">
+          <set_value name="$q" exact="event.param"/><set_value name="$s" exact="global.$JKEOC_Autonomy"/>
+          <set_value name="$q.$checked" exact="0"/><set_value name="$q.$full" exact="false"/>
+          <do_if value="typeof @$s.$schema == typeof 1 and @$s.$schema == 1 and typeof @$s.$enabled == typeof true and @$s.$enabled == true and typeof @$s.$running == typeof true and @$s.$running == true and typeof @$q.$worker == typeof 1 and @$q.$worker == @$s.$worker and typeof @$s.$observations == datatype.list">
+            <set_value name="$valid" exact="typeof @$s.$stationCursor == typeof 1 and @$s.$stationCursor gt 0 and typeof @$s.$wareCursor == typeof 1 and @$s.$wareCursor gt 0 and (not $s.$stations? or typeof $s.$stations == datatype.list) and (not $s.$currentWares? or typeof $s.$currentWares == datatype.list) and (not $s.$stationScan? or (typeof $s.$stationScan == typeof player.age and $s.$stationScan le player.age and typeof @$s.$stations == datatype.list)) and (not @$s.$currentStation.isoperational or typeof @$s.$currentWares == datatype.list)"/>
+            <do_if value="$s.$observations.count le 1024">
+              <do_for_each name="$record" in="$s.$observations">
+                <do_if value="typeof $record != datatype.table"><set_value name="$valid" exact="false"/></do_if>
+                <do_elseif value="not $record.$station? or not $record.$ware? or typeof @$record.$selling != typeof true or typeof @$record.$ready != typeof true or typeof @$record.$first != typeof player.age or typeof @$record.$last != typeof player.age or typeof @$record.$next != typeof player.age or typeof @$record.$stock != typeof 1 or typeof @$record.$target != typeof 1 or typeof @$record.$baseline != typeof 1"><set_value name="$valid" exact="false"/></do_elseif>
+                <do_elseif value="$record.$first gt $record.$last or $record.$last gt player.age or $record.$target le 0 or $record.$stock lt 0"><set_value name="$valid" exact="false"/></do_elseif>
+              </do_for_each>
+            </do_if>
+            <do_else><set_value name="$valid" exact="false"/></do_else>
+            <do_if value="$valid">
+            <do_if value="not $s.$stationScan? or player.age - $s.$stationScan ge 10min">
+              <set_value name="$stations" exact="[]"/>
+              <find_station_by_true_owner name="$stations" faction="faction.player" space="player.galaxy" multiple="true"/>
+              <set_value name="$s.$stations" exact="$stations"/><set_value name="$s.$stationScan" exact="player.age"/>
+            </do_if>
+            <do_all exact="16" counter="$slot">
+              <do_if value="not @$s.$currentStation.isplayerowned or not @$s.$currentStation.isoperational or @$s.$wareCursor gt @$s.$currentWares.count">
+                <set_value name="$s.$currentStation" exact="null"/><set_value name="$s.$currentWares" exact="[]"/><set_value name="$s.$wareCursor" exact="1"/>
+                <do_if value="$s.$stations.count gt 0">
+                  <do_if value="$s.$stationCursor gt $s.$stations.count or $s.$stationCursor lt 1"><set_value name="$s.$stationCursor" exact="1"/></do_if>
+                  <set_value name="$station" exact="$s.$stations.{$s.$stationCursor}"/><set_value name="$s.$stationCursor" exact="$s.$stationCursor + 1"/>
+                  <do_if value="$station.isplayerowned and $station.isoperational">
+                    <set_value name="$s.$currentStation" exact="$station"/>
+                    <do_for_each name="$ware" in="$station.resources.list"><do_if value="$ware != ware.rawscrap"><append_to_list name="$s.$currentWares" exact="$ware"/></do_if></do_for_each>
+                    <do_for_each name="$ware" in="$station.products.list"><do_if value="$ware != ware.rawscrap and not $s.$currentWares.indexof.{$ware}"><append_to_list name="$s.$currentWares" exact="$ware"/></do_if></do_for_each>
+                  </do_if>
+                </do_if>
+              </do_if>
+              <do_if value="@$s.$currentStation.isplayerowned and @$s.$currentStation.isoperational and $s.$wareCursor le $s.$currentWares.count">
+                <set_value name="$station" exact="$s.$currentStation"/><set_value name="$ware" exact="$s.$currentWares.{$s.$wareCursor}"/>
+                <set_value name="$s.$wareCursor" exact="$s.$wareCursor + 1"/><set_value name="$q.$checked" exact="$q.$checked + 1"/>
+                <set_value name="$selling" exact="not $station.resources.list.indexof.{$ware}"/>
+                <set_value name="$stock" exact="$station.cargo.{$ware}.count"/><set_value name="$target" exact="$station.cargo.{$ware}.target"/>
+                <set_value name="$found" exact="null"/>
+                <do_for_each name="$old" in="$s.$observations"><do_if value="$old.$station == $station and $old.$ware == $ware and $old.$selling == $selling"><set_value name="$found" exact="$old"/></do_if></do_for_each>
+                <set_value name="$failing" exact="$target gt 0 and (($selling and $stock gt $target) or (not $selling and $stock * 4 lt $target * 3))"/>
+                <do_if value="$failing">
+                  <do_if value="$found == null and $s.$observations.count lt 1024">
+                    <set_value name="$found" exact="table[$station=$station, $ware=$ware, $selling=$selling, $first=player.age, $last=player.age, $stock=$stock, $target=$target, $baseline=$stock, $ready=false, $next=player.age]"/>
+                    <append_to_list name="$s.$observations" exact="$found"/>
+                  </do_if>
+                  <do_elseif value="$found == null"><set_value name="$q.$full" exact="true"/></do_elseif>
+                  <do_else>
+                    <do_if value="$found.$target != $target"><set_value name="$found.$first" exact="player.age"/><set_value name="$found.$baseline" exact="$stock"/><set_value name="$found.$ready" exact="false"/></do_if>
+                    <set_value name="$found.$stock" exact="$stock"/><set_value name="$found.$target" exact="$target"/><set_value name="$found.$last" exact="player.age"/>
+                    <do_if value="player.age - $found.$first ge 120s"><set_value name="$found.$ready" exact="true"/></do_if>
+                  </do_else>
+                </do_if>
+                <do_elseif value="$found != null"><remove_from_list name="$s.$observations" exact="$found"/></do_elseif>
+              </do_if>
+            </do_all>
+            </do_if>
+            <do_else><set_value name="$q.$full" exact="true"/><set_value name="$q.$invalid" exact="true"/></do_else>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

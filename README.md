@@ -5,13 +5,15 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current update
 
 - Version: 3.9
-- Engineering build: 382
-- Extension version: 4.82
-- Status: GitHub contains the exact Build 382 runtime; Steam upload is handled separately by the maintainer. The archived build retains its original TEST identity; this update is not a new GA promotion.
+- Engineering build: 383
+- Extension version: 4.83
+- Status: GitHub contains the exact Build 383 runtime; Steam distribution is handled separately by the maintainer. The archived build retains its original TEST identity; this update is not a new GA promotion.
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 382 adds question-based Home navigation, station-wide Fix All, explicit reviewed-report archiving, gains-versus-losses comparison and Home return buttons, with native station-reference and report-formatting corrections. Existing recovery, trade and planning permissions remain unchanged. See [Build 382 release notes](docs/RELEASE_NOTES_BUILD382.md) and the [updated illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md). Runtime coverage remains partial; static verification does not certify every native outcome.
+Build 383 adds optional background management of existing stations and eligible ships, requiring compatible, responsive **X4 Diagnostics B007 or later**. It starts OFF, respects saved spending limits and current trade rules, and uses confirmed transfers for bounded partner preferences. It does not buy ships, build modules, rewrite public offers or guarantee profit. Assisted EOC remains available independently of Diagnostics. See [Build 383 release notes](docs/RELEASE_NOTES_BUILD383.md) and the [automatic manager guide](docs/EOC_AUTOMATIC_MANAGER.md). End-to-end automatic delivery, learning and save/reload remain **RUNTIME ACCEPTANCE REQUIRED**.
+
+Retained new features: question-based Home navigation, station-wide Fix All, explicit reviewed-report archiving, gains-versus-losses comparison and Home return buttons, with native station-reference and report-formatting corrections. See [Build 382 release notes](docs/RELEASE_NOTES_BUILD382.md) and the [illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md).
 
 ## What is new in EOC 3.9 GA Build 378
 

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Autonomy_Guard" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- A fresh opt-in/dependency check, never a substitute for native eligibility. -->
+  <cues>
+    <cue name="Check" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table">
+          <set_value name="$q" exact="event.param"/>
+          <set_value name="$q.$allowed" exact="false"/>
+          <set_value name="$q.$reason" exact="'AUTOMATION OFF OR STATE UNAVAILABLE'"/>
+          <do_if value="typeof @global.$JKEOC_Autonomy == datatype.table and typeof @$q.$route == datatype.table and typeof @$q.$run == typeof 1">
+            <set_value name="$s" exact="global.$JKEOC_Autonomy"/><set_value name="$r" exact="$q.$route"/>
+            <do_if value="typeof @$s.$schema == typeof 1 and @$s.$schema == 1 and typeof @$s.$enabled == typeof true and @$s.$enabled == true and typeof @$s.$epoch == typeof 1 and typeof @$s.$routes == datatype.list">
+              <set_value name="$q.$reason" exact="'STALE OR UNOWNED AUTONOMOUS RUN'"/>
+              <do_if value="typeof @$r.$id == typeof 1 and @$r.$id gt 0 and typeof @$r.$autonomous == typeof true and @$r.$autonomous == true and typeof @$r.$autoepoch == typeof 1 and @$r.$autoepoch == $s.$epoch and typeof @$r.$token == typeof 1 and @$r.$token == $q.$run and $q.$run gt 0 and $s.$routes.count le 16 and $s.$routes.indexof.{$r}">
+                <set_value name="$q.$reason" exact="'STATION NO LONGER OWNED OR OPERATIONAL'"/>
+                <do_if value="@$r.$station.isplayerowned and @$r.$station.isoperational">
+                  <set_value name="$station" exact="$r.$station"/>
+                  <set_value name="$tracking" exact="table[$token=$r.$id]"/>
+                  <set_value name="$q.$reason" exact="'INVALID AUTONOMOUS ACTION KIND OR SHIP IDENTITY'"/>
+                  <do_if value="@$q.$kind == 'STATION'">
+                    <signal_cue_instantly cue="md.JKEOC_Autonomy_Tracking.Health" param="$tracking"/>
+                  </do_if>
+                  <do_elseif value="@$q.$kind == 'SHIP' and @$q.$ship == @$r.$ship and @$q.$ship.isclass.ship and @$q.$ship.isplayerowned and @$q.$ship.isoperational">
+                    <set_value name="$tracking.$ship" exact="$q.$ship"/>
+                    <signal_cue_instantly cue="md.JKEOC_Autonomy_Tracking.Observe" param="$tracking"/>
+                  </do_elseif>
+                  <do_if value="typeof @$tracking.$usable == typeof true">
+                    <set_value name="$q.$reason" exact="$tracking.$reason"/>
+                    <do_if value="$tracking.$usable and @global.$JKEOC_Autonomy == $s and typeof @$s.$enabled == typeof true and $s.$enabled and $s.$epoch == $r.$autoepoch and $r.$token == $q.$run and $s.$routes.indexof.{$r} and $r.$station == $station and $r.$station.isplayerowned and $r.$station.isoperational and ($q.$kind == 'STATION' or ($q.$ship == @$r.$ship and $q.$ship.isplayerowned and $q.$ship.isoperational))">
+                      <set_value name="$q.$allowed" exact="true"/>
+                      <set_value name="$q.$reason" exact="'CURRENT AUTONOMOUS RUN VERIFIED; NATIVE SAFETY CHECKS STILL REQUIRED'"/>
+                    </do_if>
+                  </do_if>
+                </do_if>
+              </do_if>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

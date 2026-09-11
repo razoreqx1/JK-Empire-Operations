@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Autonomy_Manager" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- Opt-in state is separate from assisted EOC settings. No acquisition/building. -->
+  <cues>
+    <library name="Init"><actions>
+      <do_if value="not global.$JKEOC_Autonomy?">
+        <set_value name="global.$JKEOC_Autonomy" exact="table[$schema=1, $enabled=false, $epoch=1, $worker=0, $running=false, $nextBudget=1, $orderCap=500000, $hourCap=5000000, $reserve=1000000, $routes=[], $ledger=[], $observations=[], $results=[], $stations=[], $stationCursor=1, $wareCursor=1, $status='OFF - ASSISTED EOC UNCHANGED']"/>
+      </do_if>
+      <set_value name="$statevalid" exact="false"/>
+      <do_if value="typeof @global.$JKEOC_Autonomy == datatype.table">
+        <set_value name="$s" exact="global.$JKEOC_Autonomy"/>
+        <do_if value="typeof @$s.$schema == typeof 1 and @$s.$schema == 1 and typeof @$s.$enabled == typeof true and typeof @$s.$epoch == typeof 1 and typeof @$s.$worker == typeof 1 and typeof @$s.$running == typeof true and typeof @$s.$nextBudget == typeof 1 and typeof @$s.$orderCap == typeof 1 and typeof @$s.$hourCap == typeof 1 and typeof @$s.$reserve == typeof 1 and typeof @$s.$routes == datatype.list and typeof @$s.$ledger == datatype.list and typeof @$s.$observations == datatype.list and typeof @$s.$results == datatype.list">
+          <do_if value="$s.$epoch gt 0 and $s.$worker ge 0 and $s.$nextBudget gt 0 and $s.$routes.count le 16 and $s.$orderCap gt 0 and $s.$hourCap ge $s.$orderCap and $s.$reserve ge 0"><set_value name="$statevalid" exact="true"/></do_if>
+        </do_if>
+      </do_if>
+    </actions></library>
+    <library name="Rebind"><actions>
+      <do_if value="typeof @global.$JKEOC_B371Routes == datatype.list">
+        <do_for_each name="$r" in="$s.$routes">
+          <do_if value="typeof $r == datatype.table and @$r.$autonomous == true and global.$JKEOC_B371Routes.indexof.{$r}">
+            <set_value name="$r.$autoepoch" exact="$s.$epoch"/>
+          </do_if>
+        </do_for_each>
+      </do_if>
+    </actions></library>
+    <cue name="Request" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'"/></conditions><actions>
+        <do_if value="event.param2 == 'autonomy.enable'"><signal_cue_instantly cue="Enable"/></do_if>
+        <do_elseif value="event.param2 == 'autonomy.stop'"><signal_cue_instantly cue="Stop"/></do_elseif>
+        <do_elseif value="event.param2 == 'autonomy.status'"><signal_cue_instantly cue="Publish"/></do_elseif>
+        <do_elseif value="event.param2 == 'autonomy.configure'"><signal_cue_instantly cue="Configure" param="event.param3"/></do_elseif>
+      </actions>
+    </cue>
+    <cue name="Enable" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/>
+        <do_if value="$statevalid">
+          <set_value name="$epoch" exact="$s.$epoch"/><set_value name="$worker" exact="$s.$worker"/>
+          <set_value name="$health" exact="table[$token=1]"/><signal_cue_instantly cue="md.JKEOC_Autonomy_Tracking.Health" param="$health"/>
+          <do_if value="$health.$usable and @global.$JKEOC_Autonomy == $s and $s.$epoch == $epoch and $s.$worker == $worker">
+            <do_if value="not $s.$enabled"><set_value name="$s.$enabled" exact="true"/><set_value name="$s.$epoch" exact="$s.$epoch + 1"/><include_actions ref="Rebind"/></do_if>
+            <do_if value="not $s.$running"><signal_cue_instantly cue="Start"/></do_if>
+          </do_if>
+          <do_elseif value="@global.$JKEOC_Autonomy == $s and $s.$epoch == $epoch and $s.$worker == $worker"><set_value name="$s.$status" exact="'PAUSED - ' + $health.$reason"/></do_elseif>
+        </do_if>
+        <signal_cue_instantly cue="Publish"/>
+      </actions>
+    </cue>
+    <cue name="Stop" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/>
+        <do_if value="typeof @global.$JKEOC_Autonomy == datatype.table">
+          <set_value name="$s.$enabled" exact="false"/><set_value name="$s.$running" exact="false"/>
+          <do_if value="typeof @$s.$epoch == typeof 1"><set_value name="$s.$epoch" exact="$s.$epoch + 1"/></do_if>
+          <do_if value="typeof @$s.$worker == typeof 1"><set_value name="$s.$worker" exact="$s.$worker + 1"/></do_if>
+          <set_value name="$s.$status" exact="'OFF - EXISTING ORDERS AND RESERVATIONS PRESERVED'"/>
+        </do_if>
+        <signal_cue_instantly cue="Publish"/>
+      </actions>
+    </cue>
+    <cue name="Start" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/>
+        <do_if value="$statevalid and $s.$enabled and not $s.$running">
+          <set_value name="$s.$worker" exact="$s.$worker + 1"/><set_value name="$s.$running" exact="true"/>
+          <set_value name="$s.$status" exact="'STARTING - EXISTING ASSETS ONLY'"/>
+          <signal_cue_instantly cue="Pulse" param="$s.$worker"/>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Load" instantiate="true" namespace="this">
+      <conditions><event_game_loaded/></conditions><delay exact="2s"/><actions>
+        <include_actions ref="Init"/>
+        <do_if value="$statevalid">
+          <set_value name="$s.$worker" exact="$s.$worker + 1"/><set_value name="$s.$epoch" exact="$s.$epoch + 1"/>
+          <set_value name="$s.$running" exact="false"/>
+          <do_if value="$s.$enabled"><include_actions ref="Rebind"/><signal_cue_instantly cue="Start"/></do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Pulse" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><delay exact="30s"/><actions>
+        <include_actions ref="Init"/>
+        <do_if value="$statevalid and $s.$enabled and $s.$running and event.param == $s.$worker">
+          <signal_cue_instantly cue="md.JKEOC_Autonomy_Queue.Maintain"/>
+          <set_value name="$health" exact="table[$token=1]"/><signal_cue_instantly cue="md.JKEOC_Autonomy_Tracking.Health" param="$health"/>
+          <do_if value="$health.$usable">
+            <do_for_each name="$r" in="$s.$routes">
+              <do_if value="typeof @$r.$id == typeof 1 and @$r.$id gt 0 and @$r.$ship.isplayerowned and @$r.$ship.isoperational">
+                <set_value name="$observation" exact="table[$token=$r.$id, $ship=$r.$ship]"/>
+                <signal_cue_instantly cue="md.JKEOC_Autonomy_Tracking.Observe" param="$observation"/>
+              </do_if>
+            </do_for_each>
+            <set_value name="$collection" exact="table[$worker=event.param]"/>
+            <signal_cue_instantly cue="md.JKEOC_Autonomy_Collection.Collect" param="$collection"/>
+            <set_value name="$nextstatus" exact="'PAUSED - INVALID COLLECTION STATE; SAVED EVIDENCE PRESERVED'"/>
+            <do_if value="not @$collection.$invalid">
+              <set_value name="$admission" exact="table[$worker=event.param]"/>
+              <signal_cue_instantly cue="md.JKEOC_Autonomy_Queue.Admit" param="$admission"/>
+              <set_value name="$nextstatus" exact="$admission.$reason"/>
+              <do_if value="$collection.$full"><set_value name="$nextstatus" exact="$nextstatus + ' | OBSERVATION CAPACITY REACHED - COVERAGE INCOMPLETE'"/></do_if>
+            </do_if>
+          </do_if>
+          <do_else><set_value name="$nextstatus" exact="'PAUSED - ' + $health.$reason"/></do_else>
+          <do_if value="$s.$enabled and $s.$running and event.param == $s.$worker">
+            <set_value name="$s.$status" exact="$nextstatus"/>
+            <signal_cue_instantly cue="this.static" param="$s.$worker"/>
+            <signal_cue_instantly cue="Publish"/>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Configure" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/>
+        <do_if value="$statevalid">
+          <set_value name="$s.$status" exact="'LIMITS NOT SAVED - ENTER VALID WHOLE CREDIT AMOUNTS'"/>
+          <do_if value="typeof event.param == datatype.table">
+            <set_value name="$q" exact="event.param"/>
+            <do_if value="typeof @$q.$orderCap == typeof 1 and typeof @$q.$hourCap == typeof 1 and typeof @$q.$reserve == typeof 1">
+              <do_if value="$q.$orderCap gt 0 and $q.$hourCap ge $q.$orderCap and $q.$hourCap le 1000000000 and $q.$reserve ge 0 and $q.$reserve le 1000000000">
+                <set_value name="$s.$orderCap" exact="$q.$orderCap"/><set_value name="$s.$hourCap" exact="$q.$hourCap"/><set_value name="$s.$reserve" exact="$q.$reserve"/>
+                <set_value name="$s.$status" exact="'LIMITS SAVED - APPLY TO NEW ORDERS; EXISTING RESERVATIONS PRESERVED'"/>
+              </do_if>
+            </do_if>
+          </do_if>
+        </do_if>
+        <signal_cue_instantly cue="Publish"/>
+      </actions>
+    </cue>
+    <cue name="Publish" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/>
+        <do_if value="$statevalid">
+          <set_value name="$s.$uiSequence" exact="if typeof @$s.$uiSequence == typeof 1 then $s.$uiSequence + 1 else 1"/>
+          <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.begin'" param="$s.$uiSequence"/>
+          <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.status'" param="$s.$status"/>
+          <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.enabled'" param="if $s.$enabled then 1 else 0"/>
+          <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.orderCap'" param="$s.$orderCap"/>
+          <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.hourCap'" param="$s.$hourCap"/>
+          <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.reserve'" param="$s.$reserve"/>
+          <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.jobs'" param="$s.$routes.count"/>
+          <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.learned'" param="if typeof @$s.$learning == datatype.list then $s.$learning.count else 0"/>
+          <set_value name="$latest" exact="'No automatic outcome recorded yet. Full reports appear in Logbook &gt; Tips.'"/>
+          <do_if value="$s.$results.count gt 0"><set_value name="$last" exact="$s.$results.{$s.$results.count}"/><do_if value="typeof @$last.$stationname == typeof '' and typeof @$last.$warename == typeof '' and typeof @$last.$status == typeof ''"><set_value name="$latest" exact="$last.$stationname + ' / ' + $last.$warename + ': ' + $last.$status"/></do_if></do_if>
+          <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.latest'" param="$latest"/>
+          <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.complete'" param="$s.$uiSequence"/>
+        </do_if>
+        <do_else><raise_lua_event name="'JKEOC_SettingsMenu.autonomy.error'" param="'INVALID AUTONOMY SAVE DATA - USE STOP NEW AUTOMATIC ACTIONS. ASSISTED EOC UNCHANGED.'"/></do_else>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

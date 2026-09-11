@@ -2,12 +2,12 @@
 <content
   id="ws_3788882957"
   name="EOC - Executive Operations Center"
-  description="EOC 3.9 - Build 382. Native station navigation, Home return and report formatting corrections."
+  description="EOC 3.9 - Build 383. Optional existing-assets automatic manager; runtime acceptance required."
   author="RazorEQX"
-  version="482"
-  date="2026-09-10"
+  version="483"
+  date="2026-09-11"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 TEST Build 382" description="Native station navigation, Home return and report formatting corrections." />
+  <text language="44" name="EOC 3.9 TEST Build 383" description="Optional existing-assets automatic manager. OFF by default; compatible Diagnostics required for automation." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

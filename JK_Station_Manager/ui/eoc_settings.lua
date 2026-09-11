@@ -1746,6 +1746,17 @@ local function init()
     RegisterEvent(menu.name .. ".recovery.probe.token", function(_,value) if menu.recoveryProbe then menu.recoveryProbe.token=tonumber(value) end end)
     RegisterEvent(menu.name .. ".recovery.probe.ship", function(_,value) if menu.recoveryProbe then menu.recoveryProbe.ship=value end end)
     RegisterEvent(menu.name .. ".recovery.probe.execute", menu.recoveryReadFailures)
+    RegisterEvent(menu.name .. ".autonomy.begin", menu.autonomyBegin)
+    for _,key in ipairs({"status","enabled","orderCap","hourCap","reserve","jobs","learned","latest"}) do
+        local field=key
+        RegisterEvent(menu.name .. ".autonomy."..field,function(_,value) menu.autonomyField(field,value) end)
+    end
+    RegisterEvent(menu.name .. ".autonomy.complete", menu.autonomyComplete)
+    RegisterEvent(menu.name .. ".autonomy.error",function(_,value)
+        if type(value)~="string" then return end
+        menu.autonomyInvalid=true;menu.autonomyNotice=value;menu.autonomyPending=nil
+        if menu.autonomyRequested then menu.autonomyRequested=nil;if menu.page=="autonomy" and not menu.autonomyEditing then menu.refresh(true) end end
+    end)
     for index, field in ipairs(menu.routeFields) do
         local fieldIndex = index
         RegisterEvent(menu.name .. ".route." .. field, function(_, value) menu.routeField(fieldIndex, value) end)
@@ -2157,6 +2168,7 @@ menu.playerPageGuides = {
     cases = { purpose = "This page keeps a list of station problems that still need attention or proof of recovery.", steps = "1. Open a case. 2. Read why it is open. 3. Follow its Next Action. 4. Use Verify Result only after that action is complete.", finish = "Close a player-created case only when you are finished with it. EOC evidence may return if the problem still exists." },
     reports = { purpose = "This page stores completed EOC reports so you can read them again.", steps = "1. Choose a report. 2. Read the full result. 3. Use its named menu or action only if it tells you something needs attention.", finish = "Reports do not need to be generated again until you want newer information." },
     settings = { purpose = "This page controls what EOC is allowed to do automatically across your empire.", steps = "1. Read each authority before changing it. 2. Choose only the access you want EOC to have. 3. Save the settings. 4. Read the confirmation.", finish = "Leave a setting off when you do not want EOC to perform that action." },
+    autonomy = { purpose = "Optional unattended management of eligible existing ships and stations; assisted EOC remains available.", steps = "1. Refresh status. 2. Save the credit limits you want. 3. Enable and confirm. Compatible X4 Diagnostics must respond. Review automatic outcomes in Logbook > Tips.", finish = "Close EOC and play normally. Stop New Automatic Actions prevents new mutations while preserving existing paid deliveries. No ship purchases or station construction." },
 }
 
 function menu.addPlayerPageGuide(tableWidget, page)
@@ -4697,10 +4709,11 @@ end
 -- Player-first presentation only. These routes reuse existing guarded actions;
 -- opening a task or a tool never creates an investigation or starts a scan.
 function menu.playerRoute(page)
+    if page == "autonomy" then menu.autonomyConfirm=nil;menu.autonomyEditing=nil end
     if page == "solution" or page == "plans" then menu.solutionRepairEvidence = nil end
     menu.resetTabToRoot(page)
     menu.page = page
-    menu.activeTab = page
+    menu.activeTab = page == "autonomy" and "settings" or page
     menu.refresh()
 end
 
@@ -5277,6 +5290,7 @@ end
 -- Question entries describe navigation only. Record-specific actions keep their own selectors/guards.
 menu.homeCategories={"START HERE","STATIONS & SUPPLY","FIXES & EVIDENCE","MONEY & GRAPHS","PRODUCTION & BUILDING","SHIPS & TRADE","HISTORY & REPORTS","SETTINGS & TOOLS"}
 menu.homeQuestions={
+    {"START HERE","Can EOC manage my existing stations and ships automatically?","autonomy"},
     {"START HERE","How is my empire doing?","overview"},
     {"START HERE","What needs my attention first?","attention"},
     {"START HERE","Can EOC fix this station's supply problems?","fleet",nil,true},
@@ -5369,9 +5383,10 @@ function menu.homeAnswer(entry,station)
     end
     menu.homePick=nil;menu.homeNotice=nil
     local page,view=entry[3],entry[4]
+    if page=="autonomy" then menu.autonomyConfirm=nil;menu.autonomyEditing=nil end
     if page=="overview" or page=="attention" then menu.homeView=page;menu.refresh();return end
     menu.resetTabToRoot(page)
-    menu.page=page;menu.activeTab=page
+    menu.page=page;menu.activeTab=page=="autonomy" and "settings" or page
     if page=="kpi" then menu.kpiView=view=="compare" and "earners" or view;menu.kpiCompareMoney=view=="compare";menu.kpiMoneyStation="__all__"
     elseif page=="fleet" then
         menu.batchItemsOpen=false;menu.batchItemsWanted=nil
@@ -10208,7 +10223,91 @@ local function commandOSBoot(tableWidget)
     end
 end
 
+function menu.autonomyBegin(_,value)
+    if type(value)~="number" or value~=value or value<=0 or value~=math.floor(value) or value==math.huge or value<=(menu.autonomySequence or 0) then menu.autonomyPending=nil;return end
+    menu.autonomyPending={sequence=value,fields={},count=0}
+end
+function menu.autonomyField(key,value)
+    local pending=menu.autonomyPending
+    if not pending then return end
+    local numeric={enabled=true,orderCap=true,hourCap=true,reserve=true,jobs=true,learned=true}
+    if pending.fields[key]~=nil or (not numeric[key] and key~="status" and key~="latest") then pending.invalid=true;return end
+    if numeric[key] then
+        if type(value)~="number" or value~=value or value<0 or value==math.huge or value~=math.floor(value) then pending.invalid=true;return end
+    elseif type(value)~="string" then pending.invalid=true;return end
+    pending.fields[key]=value;pending.count=pending.count+1
+end
+function menu.autonomyComplete(_,value)
+    local pending=menu.autonomyPending;menu.autonomyPending=nil
+    if not pending or pending.invalid or pending.sequence~=value or pending.count~=8 then return end
+    local s=pending.fields
+    if s.enabled>1 or s.orderCap<=0 or s.hourCap<s.orderCap or s.jobs>16 or s.learned>128 then return end
+    if menu.autonomyInvalid then menu.autonomyNotice=nil end
+    menu.autonomyState=s;menu.autonomySequence=value;menu.autonomyInvalid=nil
+    if not menu.autonomyDraft then menu.autonomyDraft={orderCap=s.orderCap,hourCap=s.hourCap,reserve=s.reserve} end
+    if menu.autonomyRequested then
+        menu.autonomyRequested=nil
+        if menu.page=="autonomy" and not menu.autonomyEditing then menu.refresh(true) end
+    end
+end
+function menu.autonomyRequest(action,payload)
+    menu.autonomyRequested=true
+    raise(action,payload or {})
+end
+function menu.autonomyCenter(tableWidget)
+    section(tableWidget,"OPTIONAL AUTOMATIC MANAGER - EXISTING ASSETS")
+    local frame=menu.frame
+    if menu.autonomyEditFrame~=frame then menu.autonomyEditing=nil;menu.autonomyEditFrame=frame end
+    local function current() return menu.page=="autonomy" and menu.frame==frame end
+    local function note(value)
+        local row=tableWidget:addRow(false);row[1]:setColSpan(4):createText(value,{wordwrap=true})
+    end
+    note("OFF by default. Requires compatible, responsive X4 Diagnostics. Uses eligible assigned/registered ships and current trade rules. No ship purchases, construction, public-offer changes or guaranteed profit.")
+    local s=menu.autonomyState
+    note(s and ((s.enabled==1 and "ENABLED | " or "OFF | ")..s.status) or "Status not loaded. Select REFRESH STATUS; opening this page does not enable automation.")
+    local row=tableWidget:addRow(true);row[1]:setColSpan(2);row[3]:setColSpan(2)
+    addButton(row,1,"REFRESH STATUS",function() if current() then menu.autonomyRequest("autonomy.status") end end,true)
+    addButton(row,3,"STOP NEW AUTOMATIC ACTIONS",function() if current() then menu.autonomyConfirm=nil;menu.autonomyRequest("autonomy.stop") end end,true)
+    note("Stopping preserves paid orders and their delivery checks. Manual EOC settings remain separate. Automatic assessments run without opening EOC; unresolved attempts wait before retrying.")
+    row=tableWidget:addRow(true);row[1]:setColSpan(4)
+    addButton(row,1,menu.autonomyConfirm and "CONFIRM: ENABLE AUTOMATIC MANAGEMENT" or "ENABLE AUTOMATIC MANAGEMENT...",function()
+        if not current() or not menu.autonomyState or menu.autonomyInvalid then return end
+        if menu.autonomyConfirm then menu.autonomyConfirm=nil;menu.autonomyRequest("autonomy.enable")
+        else menu.autonomyConfirm=true;menu.refresh(true) end
+    end,s~=nil and s.enabled==0 and not menu.autonomyInvalid)
+    if menu.autonomyConfirm then note("Confirm authorizes bounded trade and compatible existing-ship assignments across your stations, within the saved limits below. Diagnostics is checked again before new actions.") end
+    section(tableWidget,"SAVED SPENDING LIMITS (CREDITS)")
+    if s then
+        note("Saved: "..tostring(s.orderCap).." per order; "..tostring(s.hourCap).." per hour; keep "..tostring(s.reserve).." in each station account. Outstanding quotes remain counted.")
+        local draft=menu.autonomyDraft or {orderCap=s.orderCap,hourCap=s.hourCap,reserve=s.reserve};menu.autonomyDraft=draft
+        for _,entry in ipairs({{"Per order","orderCap"},{"Per hour","hourCap"},{"Station reserve","reserve"}}) do
+            local key=entry[2];row=tableWidget:addRow(true);row[1]:setColSpan(2):createText(entry[1]);row[3]:setColSpan(2):createEditBox({height=Helper.standardButtonHeight}):setText(tostring(draft[key]))
+            row[3].handlers.onEditBoxActivated=function() if current() then menu.autonomyEditing=true end end
+            row[3].handlers.onEditBoxDeactivated=function(_,value)
+                if menu.autonomyEditFrame==frame then menu.autonomyEditing=nil end
+                if current() then draft[key]=value end
+            end
+        end
+        row=tableWidget:addRow(true);row[1]:setColSpan(4)
+        addButton(row,1,"SAVE LIMITS",function()
+            if not current() then return end
+            local values={}
+            for _,key in ipairs({"orderCap","hourCap","reserve"}) do
+                local value=tonumber(draft[key]);if not value or value~=value or value<0 or value>1000000000 or value~=math.floor(value) then menu.autonomyNotice="Enter whole credit amounts from 0 to 1,000,000,000.";menu.refresh(true);return end
+                values[key]=value
+            end
+            if values.orderCap<=0 or values.hourCap<values.orderCap then menu.autonomyNotice="Per-order limit must be positive; hourly limit must be at least per-order.";menu.refresh(true);return end
+            menu.autonomyDraft=nil;menu.autonomyNotice=nil;menu.autonomyRequest("autonomy.configure",values)
+        end,true)
+        note("Active automatic jobs: "..s.jobs.." / 16 | Learned trade partners: "..s.learned.." / 128. Learning uses actual transfers, not stock rises or player checkmarks.")
+        note("Latest outcome: "..s.latest..". Full automatic reports: Logbook > Tips.")
+    end
+    if menu.autonomyNotice then note(menu.autonomyNotice) end
+end
+
 local function globalSettings(tableWidget)
+    local automatic=tableWidget:addRow(true);automatic[1]:setColSpan(4)
+    addButton(automatic,1,"OPTIONAL AUTOMATIC MANAGER - EXISTING ASSETS",function() menu.playerRoute("autonomy") end,true)
     section(tableWidget,"WHAT MAY EOC CHANGE?")
     pair(tableWidget,"TRADE AUTHORITY",menu.mode,"SHIP ASSIGNMENT",menu.shipmode)
     pair(tableWidget,"CONSTRUCTION FUNDING",menu.constructionAuthority,"FUNDING LIMIT","EXACT VERIFIED SHORTFALL")
@@ -10578,6 +10677,8 @@ function menu.create()
             fleetCenter(tableWidget)
         elseif menu.page == "diagnostics" then
             diagnosticsCenter(tableWidget)
+        elseif menu.page == "autonomy" then
+            menu.autonomyCenter(tableWidget)
         else
             globalSettings(tableWidget)
         end

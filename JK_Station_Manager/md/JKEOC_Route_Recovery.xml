@@ -3,7 +3,9 @@
   <!-- Player-triggered, native-identity scoped recovery. No construction or recurring galaxy scan. -->
   <cues>
     <cue name="ClearHistory" instantiate="true" namespace="this"><conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'case.clearall'" /></conditions><actions>
-      <set_value name="global.$JKEOC_B371Routes" exact="[]" /><set_value name="global.$JKEOC_B371RouteSlots" exact="[]" />
+      <set_value name="$retainedauto" exact="[]" />
+      <do_if value="global.$JKEOC_B371Routes?"><do_for_each name="$r" in="global.$JKEOC_B371Routes"><do_if value="@$r.$autonomous"><append_to_list name="$retainedauto" exact="$r" /></do_if></do_for_each></do_if>
+      <set_value name="global.$JKEOC_B371Routes" exact="$retainedauto" /><set_value name="global.$JKEOC_B371RouteSlots" exact="[]" />
       <set_value name="global.$JKEOC_B371RouteGeneration" exact="if global.$JKEOC_B371RouteGeneration? then global.$JKEOC_B371RouteGeneration + 1 else 1" />
       <raise_lua_event name="'JKEOC_SettingsMenu.route.clear'" />
     </actions></cue>
@@ -26,7 +28,8 @@
             <set_value name="$slot" exact="if event.param.count ge 3 then event.param.{3} else global.$JKEOC_B371RouteSlots.{$input.$slot}" />
             <do_if value="$slot.count ge 19 and $slot.{17}? and $slot.{17}.exists and $slot.{17}.owner == faction.player and $slot.{18}? and $slot.{18} != null and $slot.{2} != '' and $slot.{18}.id == $slot.{2}">
               <do_for_each name="$old" in="global.$JKEOC_B371Routes"><do_if value="$old.$station == $slot.{17} and $old.$ware == $slot.{18} and $old.$role == $slot.{4}"><set_value name="$r" exact="$old" /></do_if></do_for_each>
-              <do_if value="not $r? and global.$JKEOC_B371Routes.count lt 128">
+              <set_value name="$manualcount" exact="0" /><do_for_each name="$counted" in="global.$JKEOC_B371Routes"><do_if value="not @$counted.$autonomous"><set_value name="$manualcount" exact="$manualcount + 1" /></do_if></do_for_each>
+              <do_if value="not $r? and $manualcount lt 128">
                 <set_value name="$r" exact="table[$id=global.$JKEOC_B371RouteNextId, $station=$slot.{17}, $stationname=$slot.{1}, $ware=$slot.{18}, $wareid=$slot.{2}, $warename=$slot.{3}, $role=$slot.{4}, $revision=0, $status='REQUESTED', $report='Request received. EOC has not yet verified a repair.', $steps=['','',''], $acks=[0,0,0], $history=[], $time=player.age, $target=$slot.{6}, $laststock=$slot.{5}, $assigned=0, $unchanged=0, $active=false]" />
                 <set_value name="global.$JKEOC_B371RouteNextId" exact="global.$JKEOC_B371RouteNextId + 1" />
                 <append_to_list name="global.$JKEOC_B371Routes" exact="$r" />
@@ -72,6 +75,7 @@
       <do_if value="not global.$JKEOC_B73Offers?"><set_value name="global.$JKEOC_B73Offers" exact="[]" /></do_if>
       <do_for_each name="$entry" in="global.$JKEOC_B73Offers"><do_if value="$entry.$station == $r.$station and $entry.$ware == $r.$ware and $entry.$type == $direction and $entry.$offer? and $entry.$offer.exists"><set_value name="$liveoffer" exact="$entry.$offer" /></do_if></do_for_each>
       <do_if value="$liveoffer?"><set_value name="$r.$report" exact="$r.$report + ' An exact EOC-owned %1 offer already exists; I did not duplicate it. Its existence does not prove delivery.'.[$direction]" /><set_value name="$r.$actions" exact="(if $r.$actions? then $r.$actions else '') + ' An exact EOC-owned %1 offer already exists; I did not duplicate it. Its existence does not prove delivery.'.[$direction]" /></do_if>
+      <do_elseif value="@$r.$autonomous"><set_value name="$r.$report" exact="$r.$report + ' Autonomous management uses existing native offers and trade rules. It does not create public offers that could spend outside its order budget.'" /><set_value name="$r.$actions" exact="(if $r.$actions? then $r.$actions else '') + ' Autonomous management uses existing native offers and trade rules; no public offer or price override was added.'" /></do_elseif>
       <do_elseif value="global.$JKEOC_B73TradeMode != 'MANAGED'"><set_value name="$r.$report" exact="$r.$report + ' Your trade authority is advisory, so I did not create an offer or change that setting.'" /><set_value name="$r.$actions" exact="(if $r.$actions? then $r.$actions else '') + ' Your trade authority is advisory, so I did not create an offer or change that setting.'" /></do_elseif>
       <do_elseif value="not $support? or $r.$role == 'BUILD STORAGE' or $r.$ware == ware.rawscrap"><set_value name="$r.$report" exact="$r.$report + ' I have no supported ordinary-station case for an automatic offer on this exact route. Existing station and build-storage rules were left unchanged; inspect the buying or selling settings yourself.'" /><set_value name="$r.$actions" exact="(if $r.$actions? then $r.$actions else '') + ' I have no supported ordinary-station case for an automatic offer on this exact route. Existing station and build-storage rules were left unchanged; inspect the buying or selling settings yourself.'" /></do_elseif>
       <do_elseif value="global.$JKEOC_B73Offers.count ge 64"><set_value name="$r.$report" exact="$r.$report + ' The existing EOC offer limit is reached. I did not add another offer.'" /><set_value name="$r.$actions" exact="(if $r.$actions? then $r.$actions else '') + ' The existing EOC offer limit is reached. I did not add another offer.'" /></do_elseif>
@@ -98,7 +102,8 @@
       <do_all exact="3" counter="$i"><do_if value="$r.$steps.{$i} != ''"><set_value name="$reporttext" exact="$reporttext + '\n\n%1. %2'.[$i,$r.$steps.{$i}]" /><set_value name="$hassteps" exact="true" /></do_if></do_all>
       <do_if value="$hassteps"><set_value name="$reporttext" exact="$reporttext + '\n\nPlayer checkmarks are reports, not EOC verification. Instructions describe this recorded assessment, not current completion.'" /></do_if>
       <do_else><set_value name="$reporttext" exact="$reporttext + '\n\nNo player instruction was recorded at this time. This does not prove recovery or that monitoring is still running now.'" /></do_else>
-      <signal_cue_instantly cue="md.JKEOC_Settings_Interface.JKEOC_Settings_RecordReport" param="['ROUTE RECOVERY: %1 - %2 - ROUND %3'.[$r.$stationname, $r.$warename, $r.$revision], $reporttext, $r.$id, $r.$revision]" />
+      <do_if value="@$r.$autonomous"><set_value name="$r.$autofullreport" exact="$reporttext"/><signal_cue_instantly cue="md.JKEOC_Autonomy_Queue.Record" param="$r" /></do_if>
+      <do_else><signal_cue_instantly cue="md.JKEOC_Settings_Interface.JKEOC_Settings_RecordReport" param="['ROUTE RECOVERY: %1 - %2 - ROUND %3'.[$r.$stationname, $r.$warename, $r.$revision], $reporttext, $r.$id, $r.$revision]" /></do_else>
     </actions></cue>
     <cue name="SelectShip" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
       <set_value name="$r" exact="event.param" /><remove_value name="$candidate" />
@@ -145,7 +150,9 @@
     <cue name="Assign" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><actions>
       <set_value name="$r" exact="event.param" /><set_value name="$ship" exact="if $r.$ship? then $r.$ship else null" />
       <set_value name="$valid" exact="false" />
-      <do_if value="not $r.$active and $ship? and $ship.exists and $r.$station.exists and $r.$station.owner == faction.player and global.$JKEOC_B76AssignmentMode != 'DISABLED' and global.$JKEOC_B76EligibleShips?">
+      <set_value name="$modeallowed" exact="global.$JKEOC_B76AssignmentMode != 'DISABLED'" />
+      <do_if value="@$r.$autonomous"><set_value name="$autocheck" exact="table[$route=$r, $run=$r.$token, $kind='SHIP', $ship=$ship]" /><signal_cue_instantly cue="md.JKEOC_Autonomy_Guard.Check" param="$autocheck" /><set_value name="$modeallowed" exact="$autocheck.$allowed" /><set_value name="$r.$autonomyreason" exact="$autocheck.$reason" /></do_if>
+      <do_if value="not $r.$active and $ship? and $ship.exists and $r.$station.exists and $r.$station.owner == faction.player and $modeallowed and global.$JKEOC_B76EligibleShips?">
         <set_value name="$candidateowned" exact="global.$JKEOC_B76EligibleShips.indexof.{$ship} and not $ship.commander" />
         <do_if value="$r.$donor?"><signal_cue_instantly cue="CheckDonor" param="$r" /><set_value name="$candidateowned" exact="$r.$donorvalid" /></do_if>
         <set_value name="$valid" exact="$candidateowned and $ship.owner == faction.player and $ship != player.ship and $ship.isoperational and $ship.isclass.ship and not $ship.isunit and not $ship.isclass.ship_xs and not $ship.subordinates.count and $ship.cargo.list.count == 0 and $ship.tradeorders.count == 0 and @$ship.order.id != 'TradePerform' and @$ship.defaultorder.id != 'ProfitPilotAutoTrade' and $ship.waretransport.indexof.{$r.$ware.waretransport} and (($r.$assignment == assignment.mining and $ship.primarypurpose == purpose.mine) or ($r.$assignment != assignment.mining and $ship.primarypurpose == purpose.trade))" />

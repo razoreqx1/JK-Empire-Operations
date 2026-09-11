@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Autonomy_Tracking" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- Optional observer boundary. This script grants no gameplay authority. -->
+  <cues>
+    <library name="Exchange"><actions>
+      <set_value name="$result.$usable" exact="false"/>
+      <set_value name="$result.$sample" exact="null"/>
+      <set_value name="$result.$reason" exact="'COMPATIBLE DIAGNOSTICS NOT AVAILABLE'"/>
+      <do_if value="typeof @$result.$token == typeof 1">
+        <do_if value="$result.$token gt 0 and typeof @global.$JKXD_AutonomyEndpoint == datatype.table">
+          <set_value name="$endpoint" exact="global.$JKXD_AutonomyEndpoint"/>
+          <do_if value="typeof @$endpoint.$schema == typeof 1 and @$endpoint.$schema == 1 and @$endpoint.$cue.exists and typeof @$endpoint.$epoch == typeof 1">
+            <set_value name="$request" exact="table[$version=1, $consumer='JKEOC', $token=$result.$token, $probe=$probe, $accepted=false]"/>
+            <do_if value="not $probe"><set_value name="$request.$ship" exact="$result.$ship"/></do_if>
+            <signal_cue_instantly cue="$endpoint.$cue" param="$request"/>
+            <set_value name="$result.$reason" exact="'DIAGNOSTICS RESPONSE MISSING OR INCOMPATIBLE'"/>
+            <do_if value="typeof @$request.$accepted == typeof true and @$request.$accepted == true and typeof @$request.$providerVersion == typeof 1 and @$request.$providerVersion == 1 and typeof @$request.$epoch == typeof 1 and @$request.$epoch == $endpoint.$epoch and @$endpoint.$cue.exists">
+              <do_if value="$probe">
+                <do_if value="typeof @$request.$respondedAt == typeof player.age">
+                  <do_if value="$request.$respondedAt == player.age">
+                    <set_value name="$result.$usable" exact="true"/>
+                    <set_value name="$result.$reason" exact="'DIAGNOSTICS RESPONDING; NO SHIP SUBSCRIBED'"/>
+                  </do_if>
+                </do_if>
+              </do_if>
+              <do_elseif value="typeof @$request.$sample == datatype.table">
+                <set_value name="$sample" exact="$request.$sample"/>
+                <set_value name="$result.$reason" exact="'TRACKING SAMPLE INCOMPLETE, STALE OR WRONG IDENTITY'"/>
+                <do_if value="typeof @$sample.$schema == typeof 1 and @$sample.$schema == 1 and typeof @$sample.$epoch == typeof 1 and @$sample.$epoch == $endpoint.$epoch and typeof @$sample.$token == typeof 1 and @$sample.$token == $result.$token and @$sample.$ship == $result.$ship and typeof @$sample.$owned == typeof true and @$sample.$owned == true and typeof @$sample.$operational == typeof true and @$sample.$operational == true and typeof @$sample.$sampledAt == typeof player.age and typeof @$sample.$sequence == typeof 1 and typeof @$sample.$queueCount == typeof 1">
+                  <do_if value="$sample.$sampledAt le player.age and player.age - $sample.$sampledAt le 90s and $sample.$sequence gt 0 and $sample.$queueCount ge 0 and @$result.$ship.isplayerowned and @$result.$ship.isoperational">
+                    <set_value name="$result.$usable" exact="true"/>
+                    <set_value name="$result.$sample" exact="$sample"/>
+                    <set_value name="$result.$reason" exact="'FRESH SHIP OBSERVATION; NOT DELIVERY OR PROFIT PROOF'"/>
+                  </do_if>
+                </do_if>
+              </do_elseif>
+            </do_if>
+          </do_if>
+        </do_if>
+      </do_if>
+    </actions></library>
+    <cue name="Health" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table">
+          <set_value name="$result" exact="event.param"/><set_value name="$probe" exact="true"/>
+          <include_actions ref="Exchange"/>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Observe" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table">
+          <set_value name="$result" exact="event.param"/>
+          <set_value name="$result.$usable" exact="false"/><set_value name="$result.$sample" exact="null"/>
+          <set_value name="$result.$reason" exact="'TRACKING SHIP INVALID OR NOT OWNED'"/>
+          <do_if value="@$result.$ship.isclass.ship and @$result.$ship.isplayerowned and @$result.$ship.isoperational">
+            <set_value name="$probe" exact="false"/><include_actions ref="Exchange"/>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

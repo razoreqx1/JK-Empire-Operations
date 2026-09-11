@@ -1,0 +1,27 @@
+EOC 3.9 TEST Build383 / version483 — Optional Automatic Manager
+
+OFF by default; existing assisted EOC remains available without Diagnostics.
+Home or Settings > Optional Automatic Manager > Refresh Status, save credit
+limits, then Enable and Confirm. Requires responsive X4 Diagnostics B006
+tracking bridge version1. No automatic enable on installation or navigation.
+
+While enabled, rotates through owned stations, checks persistent shortages and
+product overages, and uses eligible assigned/registered existing ships under
+current native trade rules. Rechecks permission and tracking before new actions.
+No ship purchases, station construction, free cargo/credits or public-offer edits.
+Manual open recovery work is preserved, not silently taken over.
+
+Default limits: 500,000 Cr per order, 5,000,000 Cr per rolling hour, retain
+1,000,000 Cr in each station account. Pending quotes remain charged; these are
+conservative EOC order ceilings, not a guarantee against unrelated account spend.
+Stop blocks new automatic actions but preserves already-paid native deliveries.
+
+Retains exact transferred-unit evidence and prefers recently successful trade
+partners after fresh legality/range/price checks. Stock recovery alone is not
+delivery proof or learned profit. Unresolved attempts use bounded cooldowns.
+Automatic outcomes: Logbook > Tips; latest summary on Automatic Manager page.
+Sixteen automatic job slots are separate from manual history capacity.
+
+RUNTIME ACCEPTANCE REQUIRED: native orders, transfers, mining, save/load,
+companion compatibility, actual UI geometry and large-empire performance.
+Not installed, promoted or published by the assistant.

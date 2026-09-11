@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Autonomy_Learning" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+    <library name="Validate"><actions>
+      <set_value name="$valid" exact="false"/>
+      <do_if value="typeof @global.$JKEOC_Autonomy == datatype.table">
+        <set_value name="$s" exact="global.$JKEOC_Autonomy"/>
+        <do_if value="@$s.$schema == 1 and typeof @$s.$routes == datatype.list and $s.$routes.indexof.{$r} and typeof @$r.$autonomous == typeof true and @$r.$autonomous == true">
+          <do_if value="not $s.$learning?"><set_value name="$s.$learning" exact="[]"/></do_if>
+          <do_if value="typeof $s.$learning == datatype.list and $s.$learning.count le 128">
+            <set_value name="$valid" exact="true"/>
+            <do_for_each name="$e" in="$s.$learning">
+              <do_if value="typeof $e != datatype.table"><set_value name="$valid" exact="false"/></do_if>
+              <do_elseif value="not $e.$station? or not $e.$ware? or not $e.$counterparty? or typeof @$e.$selling != typeof true or typeof @$e.$units != typeof 1 or typeof @$e.$time != typeof player.age"><set_value name="$valid" exact="false"/></do_elseif>
+              <do_elseif value="$e.$units le 0 or $e.$time gt player.age"><set_value name="$valid" exact="false"/></do_elseif>
+            </do_for_each>
+          </do_if>
+        </do_if>
+      </do_if>
+    </actions></library>
+    <cue name="Observe" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table">
+          <set_value name="$r" exact="event.param"/><include_actions ref="Validate"/>
+          <do_if value="$valid and @$r.$station.isplayerowned and @$r.$ship.isplayerowned and @$r.$counterparty.exists and @$r.$selldeal.exists and @$r.$buydone and typeof @$r.$purchased == typeof 1 and typeof @$r.$selling == typeof true">
+            <set_value name="$deal" exact="$r.$selldeal"/>
+            <do_if value="$deal.seller == $r.$ship and $deal.buyer == $r.$endpoint and $deal.ware == $r.$ware and $deal.transferredamount gt 0 and $r.$purchased ge $deal.transferredamount and (($r.$selling and $r.$endpoint == $r.$counterparty) or (not $r.$selling and $r.$endpoint == $r.$station))">
+              <set_value name="$previous" exact="if @$r.$learneddeal == $deal then @$r.$learnedunits else 0"/>
+              <do_if value="typeof $previous == typeof 1 and $deal.transferredamount gt $previous">
+                <set_value name="$found" exact="null"/><set_value name="$oldest" exact="null"/>
+                <do_for_each name="$e" in="$s.$learning">
+                  <do_if value="$e.$station == $r.$station and $e.$ware == $r.$ware and $e.$selling == $r.$selling and $e.$counterparty == $r.$counterparty"><set_value name="$found" exact="$e"/></do_if>
+                  <do_if value="$oldest == null or $e.$time lt $oldest.$time"><set_value name="$oldest" exact="$e"/></do_if>
+                </do_for_each>
+                <do_if value="$found == null">
+                  <do_if value="$s.$learning.count == 128"><remove_from_list name="$s.$learning" exact="$oldest"/></do_if>
+                  <set_value name="$found" exact="table[$station=$r.$station, $ware=$r.$ware, $selling=$r.$selling, $counterparty=$r.$counterparty, $units=0, $time=player.age]"/><append_to_list name="$s.$learning" exact="$found"/>
+                </do_if>
+                <do_elseif value="player.age - $found.$time gt 360min"><set_value name="$found.$units" exact="0"/></do_elseif>
+                <set_value name="$found.$units" exact="$found.$units + $deal.transferredamount - $previous"/><set_value name="$found.$time" exact="player.age"/>
+                <set_value name="$r.$learneddeal" exact="$deal"/><set_value name="$r.$learnedunits" exact="$deal.transferredamount"/>
+              </do_if>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Prefer" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table and typeof @event.param.$route == datatype.table and typeof @event.param.$offers == datatype.list">
+          <set_value name="$q" exact="event.param"/><set_value name="$r" exact="$q.$route"/><include_actions ref="Validate"/>
+          <do_if value="$valid">
+            <set_value name="$best" exact="null"/>
+            <do_for_each name="$e" in="$s.$learning">
+              <do_if value="$e.$station == $r.$station and $e.$ware == $r.$ware and $e.$selling == $r.$selling and player.age - $e.$time le 360min and @$e.$counterparty.exists and @$e.$counterparty.isoperational">
+                <do_if value="$best == null or $e.$units gt $best.$units"><set_value name="$best" exact="$e"/></do_if>
+              </do_if>
+            </do_for_each>
+            <do_if value="$best != null">
+              <set_value name="$ordered" exact="[]"/>
+              <do_for_each name="$offer" in="$q.$offers"><do_if value="@$offer.owner == $best.$counterparty"><append_to_list name="$ordered" exact="$offer"/></do_if></do_for_each>
+              <do_for_each name="$offer" in="$q.$offers"><do_if value="@$offer.owner != $best.$counterparty"><append_to_list name="$ordered" exact="$offer"/></do_if></do_for_each>
+              <set_value name="$q.$offers" exact="$ordered"/>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>
