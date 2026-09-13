@@ -1,0 +1,21 @@
+EOC 3.9 TEST Build 390 / version 490 - Automatic Reports State Key
+2026-09-13 - RazorEQX
+
+Build 390 preserves Build 389's event-driven live activity and adds a compact
+explanation directly above it. The dashboard now states that summary bars group
+saved reports while the STATE column describes each individual live row. It
+specifically explains that NEEDS PLAYER includes BLOCKED rows.
+
+The visible key defines RUNNING, WAITING, BLOCKED, COMPLETED and RECORDED in plain
+language using their existing EOC colors. Hovering a state shows its full meaning.
+The Current Action column explicitly retains the full action as hover text when the
+compact row truncates it.
+
+No purchasing, assignment, trading, construction, authority, scheduling, saved
+report, refresh, event-delivery or debug-log behavior changed. No timer, polling,
+countdown, animation or flashing was added.
+
+RUNTIME ACCEPTANCE REQUIRED: native key geometry, state/action hover display and
+small-window row capacity. Build 389's observed automatic refresh success is
+player-reported partial runtime evidence; all other pending native gates remain.
+This package is not an installation, promotion or publication.

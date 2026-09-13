@@ -1,8 +1,8 @@
-# EOC 3.9 Player Guide — Build 383
+# EOC 3.9 Player Guide — Build 390
 
-**Current edition:** EOC 3.9, Build 383, extension version 483. The retained illustrated workflows below document Build 382.
+**Current edition:** EOC 3.9, Build 390, extension version 490. Retained older screenshots below are clearly labeled with the build they document.
 
-**New optional automatic manager:** Read the [Build 383 companion guide](EOC_AUTOMATIC_MANAGER.md) for enabling background management, Diagnostics B007 requirements, spending limits, reports and stopping. Assisted play remains unchanged. End-to-end automatic outcomes remain **RUNTIME ACCEPTANCE REQUIRED**; older screenshots are not evidence of the new manager's runtime acceptance.
+**Optional automatic manager:** Read the [Build 390 companion guide](EOC_AUTOMATIC_MANAGER.md) for background management, Diagnostics B007 requirements, spending limits, live activity, supply-ship consent, reports and stopping. Assisted play remains unchanged. Unexercised native paths remain **RUNTIME ACCEPTANCE REQUIRED**; older screenshots are not evidence for newer runtime behavior.
 
 This edition includes new Home and money-view screenshots supplied during live use. Screenshots labeled Build 369 remain historical illustrations of retained tools; they are not relabeled as current screenshots. The established guide URL is retained for existing links.
 
@@ -219,6 +219,22 @@ The detail states the plain-language result, what the numbers mean, what the sna
 
 ## 7. HISTORY: read retained reports
 
+### Automatic Reports and live activity
+
+![Build 390 live Automatic Activity](images/EOC_BUILD390_LIVE_AUTOMATIC_ACTIVITY.jpg)
+
+Open **History → Automatic Reports** to see the newest saved automatic activity while EOC is open. New outcomes update the live rows and summary bars together. **Refresh Automatic Reports** remains available to resynchronize the complete saved history; the live list does not use polling, flashing, animation, a countdown, or timed redraw.
+
+The bars group saved reports. The **STATE** column describes each individual activity row, so the **Needs player** report group can include rows marked **BLOCKED**.
+
+- **RUNNING:** EOC is actively checking.
+- **WAITING:** EOC is waiting for X4 or a bounded retry.
+- **BLOCKED:** the player must change something before EOC can continue.
+- **COMPLETED:** the recorded work was verified clear or done.
+- **RECORDED:** information was saved; this is not proof that work is active or successful.
+
+Hover a state for its full meaning. Hover shortened text in **Current Action** to read the complete action. Use **Open Latest Activity Report** for the newest report, or select a report category to browse its retained cards, summary, full evidence, and archive controls.
+
 ![Build 369 History](images/EOC_BUILD369_HISTORY.png)
 
 Use **REPORT LIST**, **SUMMARY**, **SUPPORTING EVIDENCE**, and **ORIGINAL REPORT** to separate the conclusion from the full recorded detail. Longer text has bounded text pages. A saved report is a historical snapshot, not a new assessment.
@@ -246,6 +262,12 @@ Opening Settings changes nothing. Read the scope beside every control before cha
 Set floors for miners, traders, construction-storage traders, defence ships, and escorts. Zero disables that category. Select **SAVE GLOBAL SHIP MINIMUMS** after editing.
 
 EOC fills at most one verified shortage per scan using compatible idle registered ships. It never creates free ships or queues an empire-wide build order.
+
+### Automatic Manager and supply expansion
+
+The optional Automatic Manager is off by default and displays a steady **RUNNING** state when active. Other enabled automatic options use steady **ACTIVE** labels. These are status indicators, not animations.
+
+Automatic supply-ship purchases require separate consent. EOC checks eligible existing ships first, then may purchase one suitable miner or freighter within the saved per-ship, per-hour, and player-reserve limits. Normal owned-blueprint, shipyard compatibility, resource, payment, delivery, and assignment rules still apply. Buying a ship does not prove that a route is usable or that supply succeeded. See the [Automatic Manager guide](EOC_AUTOMATIC_MANAGER.md) for the complete limits and stopping behavior.
 
 ### Construction funding
 

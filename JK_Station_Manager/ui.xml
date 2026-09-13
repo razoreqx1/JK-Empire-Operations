@@ -3,6 +3,11 @@
   <environment type="menus">
     <dependency name="ego_detailmonitor" />
     <file name="ui/eoc_settings.lua" />
+    <file name="ui/eoc_supply_receipts.lua" />
+    <file name="ui/eoc_supply_quote.lua" />
+    <file name="ui/eoc_supply_prepare.lua" />
+    <file name="ui/eoc_supply_submit.lua" />
+    <file name="ui/eoc_supply_bridge.lua" />
     <file name="ui/eoc_personal_office.lua" />
   </environment>
 </addon>

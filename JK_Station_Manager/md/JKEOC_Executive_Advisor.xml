@@ -13,7 +13,7 @@
       <conditions><event_game_loaded /></conditions>
       <actions>
         <show_notification text="'EOC INITIALIZING IN BACKGROUND — open EOC whenever you are ready.'" timeout="10s" />
-        <debug_text text="'[JKEOC][B383][INITIALIZING] ga=0 test=1 baseline=366 parent_source=382 optional_autonomy=1 existing_assets_only=1 default_off=1 runtime_coverage=required'" filter="general" />
+        <debug_text text="'[JKEOC][B387][INITIALIZING] ga=0 test=1 baseline=366 parent_source=386 combined_recovery=1 separate_supply_consent=1 default_off=1 runtime_coverage=required'" filter="general" />
       </actions>
     </cue>
     <!-- Persistent, observation-only executive station knowledge. -->
@@ -21,8 +21,8 @@
       <conditions><event_game_loaded /></conditions>
       <delay exact="25s" />
       <actions>
-      <show_notification text="'EOC 3.9 TEST Build 383 | Optional Automatic Manager'" timeout="12s" />
-      <debug_text text="'[JKEOC][B383][STARTUP] version=483 build=383 baseline_build=366 parent_source=382 dock_access_catalog_bootstrap=1 steam_ui_registration_cataloged=1 optional_autonomy=1 existing_assets_only=1 default_off=1 ga=0 test=1 runtime_coverage=required'" filter="general" />
+      <show_notification text="'EOC 3.9 TEST Build 386 | Report Dashboard'" timeout="12s" />
+      <debug_text text="'[JKEOC][B386][STARTUP] version=486 build=386 baseline_build=366 parent_source=385 dock_access_catalog_bootstrap=1 steam_ui_registration_cataloged=1 optional_autonomy=1 existing_assets_only=1 default_off=1 ga=0 test=1 runtime_coverage=required'" filter="general" />
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>
@@ -85,6 +85,7 @@
                   </do_for_each>
                 </do_if>
                 <set_value name="$profile.$overall" exact="if $profile.$critical gt 0 then 'CRITICAL' else if $profile.$chronic gt 0 then 'CHRONIC' else if $profile.$relapsed gt 0 then 'RELAPSED' else if $profile.$recurring gt 0 then 'RECURRING' else if $profile.$recovering gt 0 then 'RECOVERING' else if $profile.$resolved gt 0 then 'RESOLVED' else if $profile.$active gt 0 then 'TRANSIENT' else 'MONITORING'" />
+                <signal_cue_instantly cue="md.JKEOC_Performance_History.Sample" param="$profile" />
                 <set_value name="$profile.$trend" exact="if $profile.$critical gt 0 or $profile.$chronic gt 0 then 'DETERIORATING' else if $profile.$relapsed gt 0 then 'RELAPSED' else if $profile.$recovering gt 0 then 'IMPROVING' else 'STABLE'" />
                 <set_value name="$profile.$confidence" exact="if $profile.$samples ge 12 and $profile.$historyhits ge 18 then 'HIGH' else if $profile.$samples ge 3 then 'MEDIUM' else 'LOW'" />
                 <set_value name="$profile.$priority" exact="if $profile.$critical gt 0 then 'CRITICAL' else if $profile.$chronic gt 0 then 'WARNING' else if $profile.$active gt 0 then 'NOTE' else 'INFO'" />

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <mdscript name="JKEOC_Autonomy_Manager" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <!-- Opt-in state is separate from assisted EOC settings. No acquisition/building. -->
+  <!-- Assisted settings remain separate. Supply acquisition has its own explicit opt-in. -->
   <cues>
     <library name="Init"><actions>
       <do_if value="not global.$JKEOC_Autonomy?">
@@ -28,6 +28,8 @@
         <do_if value="event.param2 == 'autonomy.enable'"><signal_cue_instantly cue="Enable"/></do_if>
         <do_elseif value="event.param2 == 'autonomy.stop'"><signal_cue_instantly cue="Stop"/></do_elseif>
         <do_elseif value="event.param2 == 'autonomy.status'"><signal_cue_instantly cue="Publish"/></do_elseif>
+        <do_elseif value="event.param2 == 'autonomy.reports'"><signal_cue_instantly cue="Reports" param="event.param3"/></do_elseif>
+        <do_elseif value="event.param2 == 'autonomy.archive'"><signal_cue_instantly cue="Archive" param="event.param3"/></do_elseif>
         <do_elseif value="event.param2 == 'autonomy.configure'"><signal_cue_instantly cue="Configure" param="event.param3"/></do_elseif>
       </actions>
     </cue>
@@ -63,7 +65,7 @@
         <include_actions ref="Init"/>
         <do_if value="$statevalid and $s.$enabled and not $s.$running">
           <set_value name="$s.$worker" exact="$s.$worker + 1"/><set_value name="$s.$running" exact="true"/>
-          <set_value name="$s.$status" exact="'STARTING - EXISTING ASSETS ONLY'"/>
+          <set_value name="$s.$status" exact="'STARTING - SAVED AUTOMATIC POLICIES APPLY'"/>
           <signal_cue_instantly cue="Pulse" param="$s.$worker"/>
         </do_if>
       </actions>
@@ -83,6 +85,7 @@
         <include_actions ref="Init"/>
         <do_if value="$statevalid and $s.$enabled and $s.$running and event.param == $s.$worker">
           <signal_cue_instantly cue="md.JKEOC_Autonomy_Queue.Maintain"/>
+          <signal_cue_instantly cue="md.JKEOC_Supply_Procurement.Pulse"/>
           <set_value name="$health" exact="table[$token=1]"/><signal_cue_instantly cue="md.JKEOC_Autonomy_Tracking.Health" param="$health"/>
           <do_if value="$health.$usable">
             <do_for_each name="$r" in="$s.$routes">
@@ -141,12 +144,76 @@
           <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.reserve'" param="$s.$reserve"/>
           <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.jobs'" param="$s.$routes.count"/>
           <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.learned'" param="if typeof @$s.$learning == datatype.list then $s.$learning.count else 0"/>
-          <set_value name="$latest" exact="'No automatic outcome recorded yet. Full reports appear in Logbook &gt; Tips.'"/>
+          <set_value name="$latest" exact="'No automatic outcome recorded yet. Full reports: History &gt; Automatic Reports.'"/>
           <do_if value="$s.$results.count gt 0"><set_value name="$last" exact="$s.$results.{$s.$results.count}"/><do_if value="typeof @$last.$stationname == typeof '' and typeof @$last.$warename == typeof '' and typeof @$last.$status == typeof ''"><set_value name="$latest" exact="$last.$stationname + ' / ' + $last.$warename + ': ' + $last.$status"/></do_if></do_if>
           <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.latest'" param="$latest"/>
           <raise_lua_event name="'JKEOC_SettingsMenu.autonomy.complete'" param="$s.$uiSequence"/>
         </do_if>
         <do_else><raise_lua_event name="'JKEOC_SettingsMenu.autonomy.error'" param="'INVALID AUTONOMY SAVE DATA - USE STOP NEW AUTOMATIC ACTIONS. ASSISTED EOC UNCHANGED.'"/></do_else>
+      </actions>
+    </cue>
+    <cue name="Reports" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <!-- Read-only on-demand snapshot. No Init, collection or manager mutation. -->
+        <!-- Opaque string token avoids assuming Lua numbers arrive as MD integers. -->
+        <do_if value="typeof event.param == typeof '' and event.param != ''">
+          <set_value name="$request" exact="event.param"/>
+          <set_value name="$valid" exact="false"/>
+          <do_if value="typeof @global.$JKEOC_Autonomy.$results == datatype.list">
+            <set_value name="$records" exact="global.$JKEOC_Autonomy.$results"/>
+            <do_if value="$records.count le 64">
+              <set_value name="$valid" exact="true"/>
+              <do_for_each name="$item" in="$records">
+                <do_if value="typeof @$item.$id != typeof 1 or typeof @$item.$revision != typeof 1 or typeof @$item.$stationname != typeof '' or typeof @$item.$warename != typeof '' or typeof @$item.$status != typeof '' or typeof @$item.$report != typeof '' or typeof @$item.$time != typeof player.age"><set_value name="$valid" exact="false"/></do_if>
+                <do_if value="$item.$archived? and typeof $item.$archived != typeof true"><set_value name="$valid" exact="false"/></do_if>
+              </do_for_each>
+            </do_if>
+          </do_if>
+          <do_elseif value="not global.$JKEOC_Autonomy?"><set_value name="$records" exact="[]"/><set_value name="$valid" exact="true"/></do_elseif>
+          <do_if value="$valid">
+            <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.begin'" param="$request"/>
+            <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.count'" param="$records.count"/>
+            <do_all exact="$records.count" counter="$i">
+              <set_value name="$item" exact="$records.{$records.count - $i + 1}"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.id'" param="$item.$id"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.revision'" param="$item.$revision"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.title'" param="$item.$stationname + ' / ' + $item.$warename"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.status'" param="$item.$status"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.text'" param="$item.$report"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.time'" param="$item.$time / 1s"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.archived'" param="if @$item.$archived == true then 1 else 0"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.commit'" param="$i"/>
+            </do_all>
+            <raise_lua_event name="'JKEOC_SettingsMenu.autoReports.complete'" param="$request"/>
+          </do_if>
+          <do_else><raise_lua_event name="'JKEOC_SettingsMenu.autoReports.error'" param="$request"/></do_else>
+        </do_if>
+        <do_else><raise_lua_event name="'JKEOC_SettingsMenu.autoReports.error'" param="event.param"/></do_else>
+      </actions>
+    </cue>
+    <cue name="Archive" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <do_if value="typeof event.param == datatype.table">
+          <set_value name="$q" exact="event.param"/>
+          <do_if value="typeof @$q.$request == typeof '' and @$q.$request != ''">
+            <set_value name="$matches" exact="0"/><set_value name="$selected" exact="null"/>
+            <!-- A route ID alone is not a report ID. Match the complete retained outcome witness. -->
+            <do_if value="(typeof @$q.$id).isnumeric and @$q.$id gt 0 and @$q.$id lt 2147483000 and @$q.$id == (@$q.$id)i and (typeof @$q.$revision).isnumeric and @$q.$revision gt 0 and @$q.$revision lt 2147483000 and @$q.$revision == (@$q.$revision)i and (typeof @$q.$time).isnumeric and @$q.$time ge 0 and typeof @$q.$text == typeof '' and typeof @global.$JKEOC_Autonomy.$results == datatype.list">
+              <do_if value="global.$JKEOC_Autonomy.$results.count le 64">
+                <do_for_each name="$item" in="global.$JKEOC_Autonomy.$results">
+                  <do_if value="typeof $item == datatype.table and (not $item.$archived? or typeof $item.$archived == typeof true) and @$item.$id == $q.$id and @$item.$revision == $q.$revision and @$item.$report == $q.$text and typeof @$item.$time == typeof player.age">
+                    <do_if value="$item.$time / 1s == @$q.$time"><set_value name="$matches" operation="add" exact="1"/><set_value name="$selected" exact="$item"/></do_if>
+                  </do_if>
+                </do_for_each>
+              </do_if>
+            </do_if>
+            <do_if value="$matches == 1">
+              <set_value name="$selected.$archived" exact="true"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.autoArchive.saved'" param="$q.$request"/>
+            </do_if>
+            <do_else><raise_lua_event name="'JKEOC_SettingsMenu.autoArchive.error'" param="$q.$request"/></do_else>
+          </do_if>
+        </do_if>
       </actions>
     </cue>
   </cues>

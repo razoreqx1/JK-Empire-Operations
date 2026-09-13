@@ -1,6 +1,6 @@
-# EOC automatic manager — Build383 companion guide
+# EOC automatic manager — Build 390 companion guide
 
-This is the guide for the optional existing-assets manager in Build383/version483. Game acceptance is still required; it is not a promise that every trade problem can be repaired or that profits will rise.
+This is the guide for the optional manager in Build 390/version 490. Game acceptance is still required; it is not a promise that every trade problem can be repaired or that profits will rise.
 
 ## Two ways to play
 
@@ -10,11 +10,11 @@ This is the guide for the optional existing-assets manager in Build383/version48
 
 ## Turn it on
 
-1. Use Build383 EOC with **X4 Diagnostics B007 or later** and its declared **SirNukes Mod Support APIs (version 1.95 or later)** dependency. Merely having an older Diagnostics version installed is insufficient: the compatible tracking bridge must respond. Do not run duplicate loose and subscribed copies of either mod. Diagnostics does not require a manually started ship recording for this bridge.
+1. Use Build 390 EOC with **X4 Diagnostics B007 or later** and its declared **SirNukes Mod Support APIs (version 1.95 or later)** dependency. Merely having an older Diagnostics version installed is insufficient: the compatible tracking bridge must respond. Do not run duplicate loose and subscribed copies of either mod. Diagnostics does not require a manually started ship recording for this bridge.
 2. Open **Home → Can EOC manage my existing stations and ships automatically?**, or **Settings → Optional Automatic Manager – Existing Assets**.
 3. Select **Refresh Status**. Set the three credit limits and select **Save Limits**. Read the saved values shown above the edit fields.
 4. Select **Enable Automatic Management…**, then **Confirm: Enable Automatic Management**.
-5. Close EOC and continue playing. Simulation time must advance. You may revisit the page and select **Refresh Status** for its latest retained state.
+5. Close EOC and continue playing. Simulation time must advance. Enabled options display a steady **RUNNING** or **ACTIVE** state; these labels do not flash or count down.
 
 Missing or incompatible tracking prevents activation. Losing responsive tracking after activation pauses new dependent actions; existing orders are preserved. EOC retries dependency checks on its bounded background cadence.
 
@@ -26,7 +26,13 @@ Missing or incompatible tracking prevents activation. Losing responsive tracking
 - Prefer a recently successful trade partner when current offers and all safety checks still permit the route.
 - Preserve ongoing work, retain outcomes and retry unresolved conditions after a bounded wait.
 
-It does **not** buy ships, build modules, grant cargo or credits, transfer account funding, rewrite public trade offers, override blacklists, seize busy ships or guarantee profitable operation. A station with no usable offers or no eligible ship may still need a player decision. Unregistered idle ships are not automatically enrolled. Existing open manual recovery work is preserved and blocks a duplicate automatic job for that station/ware; enabling automation does not silently take over those manual records.
+It does **not** build station modules, grant cargo or credits, transfer account funding, rewrite public trade offers, override blacklists, seize busy ships or guarantee profitable operation. A station with no usable offers or no eligible ship may still need a player decision. Unregistered idle ships are not automatically enrolled. Existing open manual recovery work is preserved and blocks a duplicate automatic job for that station/ware; enabling automation does not silently take over those manual records.
+
+## Optional supply-ship expansion
+
+Supply-ship purchasing has its own consent page and saved limits. Automatic Management may run while purchasing remains off. When both are enabled, EOC checks eligible assigned and registered ships first. It may then enroll one genuinely idle compatible miner or freighter, or order one suitable equipped medium supply ship when the route and limits support it.
+
+This does not create a free ship or bypass owned blueprints, compatible shipyards, construction resources, delivery, payment, assignment checks, or the current shortage evidence. A purchase is not proof of a usable route or successful supply. Ice and ore need mineral miners; gases need gas miners; manufactured wares need freighters. Stopping new purchases preserves paid orders and their delivery checks.
 
 ## Credit limits
 
@@ -46,7 +52,21 @@ This is retained evidence and route preference, not a self-training AI or a fore
 
 ## Progress, reports and stopping
 
-**Automatic Manager** shows the current status, active-job count, learned-partner count and latest outcome. Full automatic reports are in **Logbook → Tips**. The manager keeps 64 recent outcome snapshots separately from manual report retention. Finished idle automatic jobs retire only after pending/native work and reservation checks allow it; this is separate from the manual Reviewed / Archive action.
+**Automatic Manager** shows the current status, active-job count, learned-partner count and latest outcome. **History → Automatic Reports** shows a live, newest-first activity list while EOC is open. New saved outcomes update both the activity rows and the summary bars. Manual **Refresh Automatic Reports** resynchronizes the complete retained history; it is not required for each new live row.
+
+The dashboard key separates report groups from individual states. **Needs player** is a broad summary group and can include individual rows whose state is **BLOCKED**.
+
+| State | Meaning |
+|---|---|
+| RUNNING | EOC is actively checking. |
+| WAITING | EOC is waiting for X4 or a bounded retry. |
+| BLOCKED | A player change is needed. |
+| COMPLETED | The recorded work was verified clear or done. |
+| RECORDED | Information was saved; this alone is not proof that work is active or successful. |
+
+Hover a state for its full meaning. Hover a shortened **Current Action** entry to read the complete action. The view is event-driven: there is no polling, animation, countdown, flashing, or timed redraw.
+
+The manager keeps 64 recent outcome snapshots separately from manual report retention. Select a report for its summary and **Full Evidence**, or archive a card while keeping its evidence and work. Finished idle automatic jobs retire only after pending/native work and reservation checks allow it; this is separate from the manual Reviewed / Archive action. Permanent copies are also available in **Logbook → Tips**.
 
 Select **Stop New Automatic Actions** whenever you want to stop. It prevents new automatic mutations and preserves saved evidence, reserved quotes, existing native orders and their reconciliation. It does not cancel a shipment you already paid for. A paid-cargo job may remain pending if completing it would require a new order while automation is off. Manual EOC controls remain separate.
 
@@ -60,7 +80,7 @@ Unresolved completed attempts wait about 30 minutes before another attempt; reso
 
 ## Logic illustration
 
-The retained [autonomy concept animation](eoc-autonomy-logic.gif) is under 2 MB. It illustrates the intended diagnose → act → verify → remember loop, not a live recording. Its original **proposed** label is deliberately preserved until in-game acceptance; this guide's scope and limitations control what Build383 actually implements.
+The retained [autonomy concept animation](eoc-autonomy-logic.gif) is under 2 MB. It illustrates the intended diagnose → act → verify → remember loop, not a live recording. Its original **proposed** label is deliberately preserved until in-game acceptance; this guide's scope and limitations control what Build 390 actually implements.
 
 ## Before considering this build accepted
 

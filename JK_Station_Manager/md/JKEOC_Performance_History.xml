@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Performance_History" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+    <!-- Called only from the existing profile analysis. No independent scheduler. -->
+    <cue name="Sample" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <set_value name="$p" exact="event.param"/>
+        <do_if value="typeof $p == datatype.table and typeof @global.$JKEOC_B67Profiles == datatype.list">
+          <do_if value="global.$JKEOC_B67Profiles.count le 256 and global.$JKEOC_B67Profiles.indexof.{$p} and @$p.$station.isplayerowned and typeof @$p.$overall == typeof '' and typeof @$p.$active == typeof 1 and $p.$active ge 0">
+            <do_if value="not $p.$healthhistory?"><set_value name="$p.$healthhistory" exact="[]"/></do_if>
+            <do_if value="typeof $p.$healthhistory == datatype.list and $p.$healthhistory.count le 72">
+              <set_value name="$historyValid" exact="true"/><set_value name="$previous" exact="0s"/>
+              <do_for_each name="$h" in="$p.$healthhistory">
+                <do_if value="typeof @$h.$time != typeof player.age or typeof @$h.$status != typeof '' or typeof @$h.$active != typeof 1"><set_value name="$historyValid" exact="false"/></do_if>
+                <do_elseif value="$h.$time lt $previous or $h.$time gt player.age or $h.$active lt 0"><set_value name="$historyValid" exact="false"/></do_elseif>
+                <do_else><set_value name="$previous" exact="$h.$time"/></do_else>
+              </do_for_each>
+              <set_value name="$due" exact="$p.$healthhistory.count == 0"/>
+              <do_if value="not $due">
+                <set_value name="$last" exact="$p.$healthhistory.{$p.$healthhistory.count}"/>
+                <do_if value="typeof @$last.$time == typeof player.age and player.age ge $last.$time + 5min"><set_value name="$due" exact="true"/></do_if>
+              </do_if>
+              <do_if value="$due and $historyValid">
+                <append_to_list name="$p.$healthhistory" exact="table[$time=player.age,$status=$p.$overall,$active=$p.$active]"/>
+                <do_if value="$p.$healthhistory.count gt 72"><remove_value name="$p.$healthhistory.{1}"/></do_if>
+              </do_if>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Read" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'insights.read'"/></conditions><actions>
+        <set_value name="$q" exact="event.param3"/>
+        <do_if value="typeof $q == datatype.table and typeof @$q.$request == typeof '' and $q.$request != ''">
+          <set_value name="$rows" exact="[]"/><set_value name="$valid" exact="false"/>
+          <do_if value="@$q.$view == 'health' and typeof @$q.$station == typeof '' and typeof @global.$JKEOC_B67Profiles == datatype.list">
+            <set_value name="$station" exact="@component.{$q.$station}"/>
+            <do_if value="@$station.exists and global.$JKEOC_B67Profiles.count le 256">
+              <set_value name="$matches" exact="0"/>
+              <do_for_each name="$p" in="global.$JKEOC_B67Profiles">
+                <do_if value="@$p.$station == $station">
+                  <set_value name="$matches" operation="add" exact="1"/>
+                  <do_if value="not $p.$healthhistory?"><set_value name="$valid" exact="true"/></do_if>
+                  <do_elseif value="typeof $p.$healthhistory == datatype.list and $p.$healthhistory.count le 72">
+                    <set_value name="$valid" exact="true"/>
+                    <do_for_each name="$h" in="$p.$healthhistory">
+                      <do_if value="typeof @$h.$time == typeof player.age and typeof @$h.$status == typeof '' and typeof @$h.$active == typeof 1 and $h.$active ge 0">
+                        <append_to_list name="$rows" exact="table[$label=$station.name,$status=$h.$status,$units=$h.$active,$time=$h.$time / 1s]"/>
+                      </do_if>
+                      <do_else><set_value name="$valid" exact="false"/></do_else>
+                    </do_for_each>
+                  </do_elseif>
+                </do_if>
+              </do_for_each>
+              <do_if value="$matches != 1"><set_value name="$valid" exact="false"/></do_if>
+            </do_if>
+          </do_if>
+          <do_elseif value="@$q.$view == 'learning'">
+            <do_if value="not global.$JKEOC_Autonomy? or (typeof @global.$JKEOC_Autonomy == datatype.table and not global.$JKEOC_Autonomy.$learning?)"><set_value name="$valid" exact="true"/></do_if>
+            <do_elseif value="typeof @global.$JKEOC_Autonomy.$learning == datatype.list and global.$JKEOC_Autonomy.$learning.count le 128">
+              <set_value name="$valid" exact="true"/>
+              <do_for_each name="$e" in="global.$JKEOC_Autonomy.$learning">
+                <do_if value="typeof @$e.$units == typeof 1 and $e.$units gt 0 and typeof @$e.$time == typeof player.age and typeof @$e.$selling == typeof true">
+                  <set_value name="$label" exact="(if @$e.$station.exists then $e.$station.name else 'Former/unknown station') + ' / ' + (if @$e.$ware != null then $e.$ware.name else 'Unknown ware') + ' / ' + (if @$e.$counterparty.exists then $e.$counterparty.name else 'Former/unknown partner')"/>
+                  <append_to_list name="$rows" exact="table[$label=$label,$status=if $e.$selling then 'CONFIRMED OUTBOUND TRANSFER' else 'CONFIRMED INBOUND TRANSFER',$units=$e.$units,$time=$e.$time / 1s]"/>
+                </do_if>
+                <do_else><set_value name="$valid" exact="false"/></do_else>
+              </do_for_each>
+            </do_elseif>
+          </do_elseif>
+          <do_if value="$valid">
+            <raise_lua_event name="'JKEOC_SettingsMenu.insights.begin'" param="$q.$request"/>
+            <raise_lua_event name="'JKEOC_SettingsMenu.insights.count'" param="$rows.count"/>
+            <do_all exact="$rows.count" counter="$i">
+              <set_value name="$r" exact="$rows.{$i}"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.insights.label'" param="$r.$label"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.insights.status'" param="$r.$status"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.insights.units'" param="$r.$units"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.insights.time'" param="$r.$time"/>
+              <raise_lua_event name="'JKEOC_SettingsMenu.insights.row'" param="$i"/>
+            </do_all>
+            <raise_lua_event name="'JKEOC_SettingsMenu.insights.complete'" param="$q.$request"/>
+          </do_if>
+          <do_else><raise_lua_event name="'JKEOC_SettingsMenu.insights.error'" param="$q.$request"/></do_else>
+        </do_if>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

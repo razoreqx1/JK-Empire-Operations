@@ -1,0 +1,425 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Supply_Procurement" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- Separate opt-in; persistent reservations precede every native purchase permit.
+       No timer: the existing automatic-manager pulse performs bounded work. -->
+  <cues>
+    <library name="Init"><actions>
+      <do_if value="not global.$JKEOC_SupplyProcurement?">
+        <set_value name="global.$JKEOC_SupplyProcurement" exact="table[$schema=1,$enabled=false,$next=1,$jobs=[],$orderCap=5000000,$hourCap=20000000,$reserve=10000000,$status='SUPPLY PURCHASES OFF - SEPARATE CONSENT REQUIRED']"/>
+      </do_if>
+      <set_value name="$p" exact="@global.$JKEOC_SupplyProcurement"/><set_value name="$valid" exact="false"/>
+      <do_if value="typeof $p == datatype.table and typeof @$p.$schema == typeof 1 and @$p.$schema == 1 and typeof @$p.$enabled == typeof true and typeof @$p.$jobs == datatype.list and typeof @$p.$next == typeof 1">
+        <do_if value="$p.$jobs.count le 32 and $p.$next gt 0 and $p.$next lt 2147483000 and typeof @$p.$orderCap == typeof 1 and typeof @$p.$hourCap == typeof 1 and typeof @$p.$reserve == typeof 1">
+          <set_value name="$valid" exact="$p.$orderCap gt 0 and $p.$hourCap ge $p.$orderCap and $p.$hourCap le 1000000000 and $p.$reserve ge 0 and $p.$reserve le 1000000000"/>
+        </do_if>
+      </do_if>
+      <do_if value="$valid">
+        <set_value name="$seen" exact="[]"/>
+        <do_for_each name="$entry" in="$p.$jobs">
+          <do_if value="typeof $entry != datatype.table"><set_value name="$valid" exact="false"/></do_if>
+          <do_elseif value="typeof @$entry.$id != typeof 1 or @$entry.$id le 0 or @$entry.$id ge $p.$next or $seen.indexof.{@$entry.$id} or typeof @$entry.$phase != typeof '' or typeof @$entry.$closed != typeof true or typeof @$entry.$reserved != typeof true or typeof @$entry.$records != datatype.list or typeof @$entry.$route != datatype.table or typeof @$entry.$created != typeof player.age"><set_value name="$valid" exact="false"/></do_elseif>
+          <do_else>
+            <append_to_list name="$seen" exact="$entry.$id"/>
+            <do_if value="not $entry.$station? or not $entry.$ware? or $entry.$ware == null or typeof @$entry.$cargo != typeof '' or not ['solid','liquid','container'].indexof.{$entry.$cargo} or typeof @$entry.$status != typeof '' or typeof @$entry.$reason != typeof '' or typeof @$entry.$sequence != typeof 1 or @$entry.$sequence lt 0 or typeof @$entry.$cursor != typeof 1 or @$entry.$cursor lt 1 or @$entry.$cursor gt 2049 or typeof @$entry.$yardcursor != typeof 1 or @$entry.$yardcursor lt 1"><set_value name="$valid" exact="false"/></do_if>
+            <do_if value="$entry.$phase == 'SELECTING' and (typeof @$entry.$yards != datatype.list or @$entry.$yards.count gt 128)"><set_value name="$valid" exact="false"/></do_if>
+            <do_if value="['QUOTING','ATTEMPTED','QUEUED'].indexof.{$entry.$phase} and (typeof @$entry.$request != typeof '' or @$entry.$request == '' or typeof @$entry.$requested != typeof player.age or not $entry.$yard?)"><set_value name="$valid" exact="false"/></do_if>
+            <do_if value="($entry.$phase == 'ATTEMPTED' or $entry.$phase == 'QUEUED') and (not $entry.$reserved or typeof @$entry.$macro != typeof '' or @$entry.$macro == '' or typeof @$entry.$owned != typeof true)"><set_value name="$valid" exact="false"/></do_if>
+            <do_if value="$entry.$closed and (typeof @$entry.$closedAt != typeof player.age or not ['ENROLLED','BLOCKED'].indexof.{$entry.$phase})"><set_value name="$valid" exact="false"/></do_if>
+            <do_if value="$entry.$phase == 'OBSERVING' and not @$entry.$capacity"><set_value name="$valid" exact="false"/></do_if>
+            <do_if value="$entry.$phase == 'QUEUED' and (typeof @$entry.$linked != datatype.table or not $entry.$records.indexof.{$entry.$linked} or typeof @$entry.$taskkey != typeof '' or @$entry.$taskkey == '')"><set_value name="$valid" exact="false"/></do_if>
+            <do_if value="$entry.$records.count gt 8 or not ['OBSERVING','EXISTING','SELECTING','QUOTING','BLOCKED','ATTEMPTED','QUEUED','ENROLLED'].indexof.{$entry.$phase}"><set_value name="$valid" exact="false"/></do_if>
+            <do_if value="$entry.$reserved and (typeof @$entry.$price != typeof 1 or @$entry.$price lt 0 or @$entry.$price gt 1000000000 or typeof @$entry.$reservedAt != typeof player.age)"><set_value name="$valid" exact="false"/></do_if>
+            <do_if value="$entry.$capacity? and typeof $entry.$capacity != typeof true"><set_value name="$valid" exact="false"/></do_if>
+            <do_elseif value="@$entry.$capacity and (typeof @$entry.$observationAt != typeof player.age or typeof @$entry.$startStock != typeof 1 or @$entry.$startStock lt 0)"><set_value name="$valid" exact="false"/></do_elseif>
+            <do_for_each name="$capture" in="$entry.$records"><do_if value="typeof $capture != datatype.table or typeof @$capture.$delivered != typeof true or not $capture.$task? or not $capture.$yard? or not $capture.$macro? or not $capture.$price?"><set_value name="$valid" exact="false"/></do_if><do_elseif value="$capture.$delivered and (not $capture.$ship? or not $capture.$paid? or not $capture.$oldorder? or not $capture.$olddefault?)"><set_value name="$valid" exact="false"/></do_elseif></do_for_each>
+          </do_else>
+        </do_for_each>
+      </do_if>
+    </actions></library>
+    <library name="Authority"><actions>
+      <set_value name="$allowed" exact="false"/>
+      <do_if value="$valid and $p.$enabled and typeof @$j.$route == datatype.table and @$j.$route.$autonomous and @global.$JKEOC_Autonomy.$enabled">
+        <set_value name="$r" exact="$j.$route"/>
+        <set_value name="$guard" exact="table[$route=$r,$run=$r.$token,$kind='STATION']"/>
+        <signal_cue_instantly cue="md.JKEOC_Autonomy_Guard.Check" param="$guard"/>
+        <set_value name="$allowed" exact="$guard.$allowed and $p.$enabled and $r.$station == $j.$station and $r.$ware == $j.$ware and @$j.$station.isplayerowned and @$j.$station.isoperational"/>
+      </do_if>
+    </actions></library>
+    <library name="Coverage"><actions>
+      <!-- Recheck current assigned/registered coverage at the spending boundary.
+           A changed fleet requires a fresh route assessment, not an old quote. -->
+      <set_value name="$coverageClear" exact="false"/>
+      <do_if value="@$j.$station.exists and $j.$station.subordinates.count le 512 and (not global.$JKEOC_B76EligibleShips? or (typeof @global.$JKEOC_B76EligibleShips == datatype.list and global.$JKEOC_B76EligibleShips.count le 512))">
+        <set_value name="$coverageClear" exact="true"/>
+        <set_value name="$coverageCount" exact="0"/>
+        <do_for_each name="$ship" in="$j.$station.subordinates">
+          <do_if value="@$ship.isplayerowned and @$ship.isoperational and $ship.waretransport.indexof.{$j.$ware.waretransport}">
+            <set_value name="$coverageCount" operation="add" exact="1"/>
+            <do_if value="not @$j.$capacity"><set_value name="$coverageClear" exact="false"/></do_if>
+            <do_elseif value="$ship.commander != $j.$station or $ship == player.controlled or $ship == player.ship or $ship.ismission or $ship.isunit or $ship.subordinates.count != 0 or not @$ship.assignedpilot.exists or $ship.hasorderloop or $ship.primarypurpose != (if $j.$cargo == 'container' then purpose.trade else purpose.mine) or not @$ship.defaultorder.exists or $ship.defaultorder.id != (if $j.$cargo == 'container' then 'TradeRoutine' else 'MiningRoutine') or ($ship.orders.count == 0 and $ship.tradeorders.count == 0 and $ship.cargo.list.count == 0) or $ship.tradeorders.count gt 128"><set_value name="$coverageClear" exact="false"/></do_elseif>
+            <do_else>
+              <do_if value="@$ship.defaultorder.$warebasket_override.count and not @$ship.defaultorder.$warebasket_override.indexof.{$j.$ware}"><set_value name="$coverageClear" exact="false"/></do_if>
+              <do_for_each name="$order" in="$ship.tradeorders"><do_if value="@$order.exists and @$order.trade.exists and $order.trade.ware == $j.$ware and $order.trade.buyer == $j.$station"><set_value name="$coverageClear" exact="false"/></do_if></do_for_each>
+            </do_else>
+          </do_if>
+        </do_for_each>
+        <do_if value="$coverageCount ge 3"><set_value name="$coverageClear" exact="false"/></do_if>
+        <do_if value="global.$JKEOC_B76EligibleShips?">
+          <do_for_each name="$ship" in="global.$JKEOC_B76EligibleShips">
+            <do_if value="$ship != @$coverageHandoff and @$ship.isplayerowned and @$ship.isoperational and not $ship.commander and $ship.waretransport.indexof.{$j.$ware.waretransport}"><set_value name="$coverageClear" exact="false"/></do_if>
+          </do_for_each>
+        </do_if>
+      </do_if>
+    </actions></library>
+    <library name="Report"><actions>
+      <set_value name="$p.$status" exact="$j.$status"/>
+      <do_if value="$j.$phase == 'BLOCKED' and not $j.$reserved and @$j.$station.exists and $j.$ware? and $j.$ware != null">
+        <set_value name="$j.$blockedAt" exact="player.age"/>
+        <set_value name="$j.$blockedMoney" exact="player.money"/><set_value name="$j.$blockedCap" exact="$p.$orderCap"/><set_value name="$j.$blockedHour" exact="$p.$hourCap"/><set_value name="$j.$blockedReserve" exact="$p.$reserve"/>
+        <set_value name="$j.$blockedStock" exact="$j.$station.cargo.{$j.$ware}.count"/><set_value name="$j.$blockedShips" exact="$j.$station.subordinates.count"/>
+      </do_if>
+      <do_if value="typeof @$j.$route == datatype.table and @global.$JKEOC_Autonomy.$routes.indexof.{$j.$route}">
+        <set_value name="$r" exact="$j.$route"/>
+        <set_value name="$stationName" exact="if @$j.$station.exists then $j.$station.name else 'Station no longer available'"/>
+        <set_value name="$wareName" exact="if $j.$ware? and $j.$ware != null then $j.$ware.name else 'Resource no longer available'"/>
+        <set_value name="$r.$autofullreport" exact="'AUTOMATIC SUPPLY: ' + $stationName + ' / ' + $wareName + '\n' + $j.$status + '\n' + $j.$reason + '\nThis is procurement/assignment evidence, not proof of resource delivery or profit.'"/>
+        <set_value name="$r.$status" exact="$j.$status"/>
+        <signal_cue_instantly cue="md.JKEOC_Autonomy_Queue.Record" param="$r"/>
+      </do_if>
+    </actions></library>
+    <cue name="Configure" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'supply.configure'"/></conditions><actions>
+        <include_actions ref="Init"/><set_value name="$q" exact="event.param3"/>
+        <do_if value="$valid and typeof $q == datatype.table">
+          <do_if value="(typeof @$q.$orderCap).isnumeric and (typeof @$q.$hourCap).isnumeric and (typeof @$q.$reserve).isnumeric and typeof @$q.$enable == typeof true">
+            <do_if value="$q.$orderCap == ($q.$orderCap)i and $q.$hourCap == ($q.$hourCap)i and $q.$reserve == ($q.$reserve)i and $q.$orderCap gt 0 and $q.$hourCap ge $q.$orderCap and $q.$hourCap le 1000000000 and $q.$reserve ge 0 and $q.$reserve le 1000000000">
+              <set_value name="$p.$orderCap" exact="($q.$orderCap)i"/><set_value name="$p.$hourCap" exact="($q.$hourCap)i"/><set_value name="$p.$reserve" exact="($q.$reserve)i"/>
+              <set_value name="$p.$enabled" exact="$q.$enable"/>
+              <set_value name="$p.$status" exact="if $p.$enabled then 'SUPPLY EXPANSION ENABLED - EXISTING SHIPS FIRST; PURCHASES WITHIN SAVED LIMITS' else 'NEW SUPPLY PURCHASES OFF - PAID ORDERS AND EVIDENCE PRESERVED'"/>
+            </do_if>
+          </do_if>
+        </do_if>
+        <signal_cue_instantly cue="Publish"/>
+      </actions>
+    </cue>
+    <cue name="Request" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/><set_value name="$r" exact="event.param"/>
+        <do_if value="$valid and $p.$enabled and @$r.$autonomous and not @$r.$selling and @$r.$needed gt 0 and @$r.$incoming == 0 and typeof @$r.$candidates == datatype.list and $r.$candidates.count le 128 and $p.$jobs.count lt 32">
+          <set_value name="$duplicate" exact="false"/><set_value name="$open" exact="0"/>
+          <do_for_each name="$old" in="$p.$jobs">
+            <do_if value="@$old.$station == $r.$station and @$old.$ware == $r.$ware"><set_value name="$duplicate" exact="true"/></do_if>
+            <do_if value="not @$old.$closed"><set_value name="$open" operation="add" exact="1"/></do_if>
+          </do_for_each>
+          <do_if value="not $duplicate and $open lt 4">
+            <set_value name="$j" exact="table[$id=$p.$next,$route=$r,$station=$r.$station,$ware=$r.$ware,$cargo=if $r.$ware.waretransport == waretransport.solid then 'solid' else if $r.$ware.waretransport == waretransport.liquid then 'liquid' else 'container',$phase='EXISTING',$created=player.age,$sequence=0,$yardcursor=1,$cursor=1,$records=[],$reserved=false,$closed=false,$status='SUPPLY SHIP SEARCH',$reason='No compatible assigned or registered candidate was available. EOC will check suitable idle unregistered ships before checking known suppliers; no purchase yet.']"/>
+            <include_actions ref="Authority"/>
+            <set_value name="$j.$capacity" exact="$r.$candidates.count gt 0"/>
+            <set_value name="$j.$startStock" exact="$j.$station.cargo.{$j.$ware}.count"/>
+            <set_value name="$j.$observationAt" exact="player.age"/>
+            <include_actions ref="Coverage"/>
+            <set_value name="$allowed" exact="$allowed and $coverageClear"/>
+            <do_if value="$j.$capacity"><set_value name="$j.$phase" exact="'OBSERVING'"/><set_value name="$j.$status" exact="'OBSERVING SUPPLY CAPACITY - NO PURCHASE'"/><set_value name="$j.$reason" exact="'Existing compatible ships are working. EOC will observe at least30minutes and require continued severe low stock without an increase before considering another ship.'"/></do_if>
+            <do_if value="$allowed">
+              <set_value name="$p.$next" operation="add" exact="1"/>
+              <do_if value="$allowed">
+                <append_to_list name="$p.$jobs" exact="$j"/>
+                <set_value name="$r.$supplypending" exact="true"/><include_actions ref="Report"/>
+              </do_if>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <library name="Send"><actions>
+      <raise_lua_event name="'JKEOC_Supply.begin'" param="$j.$request"/>
+      <raise_lua_event name="'JKEOC_Supply.station'" param="$j.$station"/>
+      <raise_lua_event name="'JKEOC_Supply.yard'" param="$j.$yard"/>
+      <raise_lua_event name="'JKEOC_Supply.cargo'" param="$j.$cargo"/>
+      <raise_lua_event name="'JKEOC_Supply.cursor'" param="$j.$cursor"/>
+      <raise_lua_event name="'JKEOC_Supply.macro'" param="if $j.$macro? then $j.$macro else ''"/>
+      <raise_lua_event name="'JKEOC_Supply.price'" param="if $j.$price? then $j.$price else 0"/>
+      <raise_lua_event name="'JKEOC_Supply.task'" param="if $j.$taskkey? then $j.$taskkey else ''"/>
+      <raise_lua_event name="'JKEOC_Supply.reserve'" param="$p.$reserve"/>
+      <raise_lua_event name="'JKEOC_Supply.orderCap'" param="$p.$orderCap"/>
+      <raise_lua_event name="'JKEOC_Supply.execute'" param="$operation"/>
+    </actions></library>
+    <cue name="Pulse" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/>
+        <do_if value="$valid">
+          <set_value name="$retired" exact="[]"/>
+          <do_for_each name="$finished" in="$p.$jobs">
+            <do_if value="$finished.$closed and ($finished.$phase == 'ENROLLED' or ($finished.$phase == 'BLOCKED' and not $finished.$reserved)) and typeof @$finished.$closedAt == typeof player.age and player.age ge $finished.$closedAt and player.age - $finished.$closedAt ge 1h and not @$finished.$route.$supplypending">
+              <append_to_list name="$retired" exact="$finished"/>
+            </do_if>
+          </do_for_each>
+          <do_for_each name="$finished" in="$retired"><remove_from_list name="$p.$jobs" exact="$finished"/></do_for_each>
+          <set_value name="$worked" exact="false"/>
+          <do_if value="typeof @$p.$cursor != typeof 1 or @$p.$cursor lt 1 or @$p.$cursor gt $p.$jobs.count"><set_value name="$p.$cursor" exact="1"/></do_if>
+          <do_for_each name="$j" in="$p.$jobs" counter="$index">
+            <do_if value="$index == $p.$cursor and not $j.$closed">
+              <do_if value="not $j.$reserved and (not @$j.$station.exists or not @$j.$station.isplayerowned or not @global.$JKEOC_Autonomy.$routes.indexof.{$j.$route} or not @$j.$route.$supplypending)">
+                <set_value name="$j.$closed" exact="true"/><set_value name="$j.$closedAt" exact="player.age"/><set_value name="$j.$phase" exact="'BLOCKED'"/>
+                <set_value name="$j.$status" exact="'UNSPENT SUPPLY REQUEST CLOSED'"/><set_value name="$j.$reason" exact="'The original station or owned request is no longer available. No purchase was made.'"/>
+                <set_value name="$j.$route.$supplypending" exact="false"/><include_actions ref="Report"/>
+              </do_if>
+              <do_elseif value="not $j.$reserved and $j.$station.cargo.{$j.$ware}.count * 4 ge $j.$station.cargo.{$j.$ware}.target * 3">
+                <set_value name="$j.$closed" exact="true"/><set_value name="$j.$closedAt" exact="player.age"/><set_value name="$j.$phase" exact="'BLOCKED'"/>
+                <set_value name="$j.$status" exact="'SUPPLY SHORTAGE NO LONGER PRESENT'"/><set_value name="$j.$reason" exact="'Current stock no longer justifies a new ship. The unspent request is closed.'"/>
+                <set_value name="$j.$route.$supplypending" exact="false"/><include_actions ref="Report"/>
+              </do_elseif>
+              <do_if value="not $j.$closed">
+              <do_if value="$j.$phase == 'OBSERVING' and player.age - $j.$observationAt ge 30min">
+                <include_actions ref="Authority"/><include_actions ref="Coverage"/>
+                <do_if value="$allowed and $coverageClear and $j.$station.cargo.{$j.$ware}.count le $j.$startStock and $j.$station.cargo.{$j.$ware}.count * 4 lt $j.$station.cargo.{$j.$ware}.target"><set_value name="$j.$phase" exact="'EXISTING'"/></do_if>
+                <do_else><set_value name="$j.$phase" exact="'BLOCKED'"/><set_value name="$j.$status" exact="'MORE SHIPS NOT JUSTIFIED BY CURRENT EVIDENCE'"/><set_value name="$j.$reason" exact="'Stock, incoming work, current ship coverage or permission changed. Existing work remains intact; no ship purchase was authorized.'"/><include_actions ref="Report"/></do_else>
+              </do_if>
+              <do_if value="$j.$phase == 'BLOCKED' and not $j.$reserved and typeof @$j.$blockedAt == typeof player.age and player.age - $j.$blockedAt ge 30min">
+                <include_actions ref="Authority"/>
+                <do_if value="$allowed and (player.money != @$j.$blockedMoney or $p.$orderCap != @$j.$blockedCap or $p.$hourCap != @$j.$blockedHour or $p.$reserve != @$j.$blockedReserve or $j.$station.cargo.{$j.$ware}.count != @$j.$blockedStock or $j.$station.subordinates.count != @$j.$blockedShips)">
+                  <!-- New evidence can retry only a provably unspent job. Never replay a permit. -->
+                  <set_value name="$j.$phase" exact="'EXISTING'"/><set_value name="$j.$cursor" exact="1"/><set_value name="$j.$yardcursor" exact="1"/>
+                  <do_if value="@$j.$capacity"><set_value name="$j.$phase" exact="'OBSERVING'"/><set_value name="$j.$startStock" exact="$j.$station.cargo.{$j.$ware}.count"/><set_value name="$j.$observationAt" exact="player.age"/></do_if>
+                  <remove_value name="$j.$received"/><remove_value name="$j.$taskkey"/>
+                  <set_value name="$j.$status" exact="'SUPPLY CONDITIONS CHANGED - RECHECKING EXISTING SHIPS'"/><set_value name="$j.$reason" exact="'The previous attempt spent nothing. After the cooldown, changed supply or budget evidence permits a fresh assessment, not replay of the previous quote.'"/><include_actions ref="Report"/>
+                </do_if>
+              </do_if>
+              <do_if value="$j.$phase == 'QUOTING' and player.age - $j.$requested gt 1min"><set_value name="$j.$phase" exact="'BLOCKED'"/><set_value name="$j.$status" exact="'SUPPLY QUOTE UNAVAILABLE'"/><set_value name="$j.$reason" exact="'The quote service did not answer. No purchase permit was issued.'"/><include_actions ref="Report"/></do_if>
+              <do_if value="$j.$phase == 'EXISTING'"><signal_cue_instantly cue="Existing" param="$j"/></do_if>
+              <do_elseif value="$j.$phase == 'SELECTING'">
+                <include_actions ref="Authority"/>
+                <do_if value="$allowed">
+                  <set_value name="$worked" exact="true"/>
+                  <do_if value="$j.$yardcursor le $j.$yards.count">
+                    <set_value name="$j.$yard" exact="$j.$yards.{$j.$yardcursor}"/>
+                    <do_if value="@$j.$yard.isoperational and @$j.$yard.shiptrader.exists and not $j.$yard.hasrelation.enemy.{faction.player} and not $j.$yard.owner.hastag.noplayerbuyships">
+                      <set_value name="$j.$sequence" operation="add" exact="1"/><set_value name="$j.$request" exact="'%1:%2'.[$j.$id,$j.$sequence]"/>
+                      <set_value name="$j.$requested" exact="player.age"/><set_value name="$j.$phase" exact="'QUOTING'"/><set_value name="$operation" exact="'quote'"/><include_actions ref="Send"/>
+                    </do_if>
+                    <do_else><set_value name="$j.$yardcursor" operation="add" exact="1"/><set_value name="$j.$cursor" exact="1"/></do_else>
+                  </do_if>
+                  <do_else><set_value name="$j.$phase" exact="'BLOCKED'"/><set_value name="$j.$status" exact="'NO VERIFIED SUPPLY SHIP QUOTE'"/><set_value name="$j.$reason" exact="'Known supplier search finished without an eligible medium supply ship. Check known yards, licences and equipment availability; no purchase was attempted.'"/><include_actions ref="Report"/></do_else>
+                </do_if>
+              </do_elseif>
+              <do_elseif value="$j.$phase == 'ATTEMPTED' or $j.$phase == 'QUEUED'">
+                <set_value name="$worked" exact="true"/>
+                <signal_cue_instantly cue="Link" param="$j"/>
+                <do_if value="$j.$taskkey? and $j.$taskkey != '' and not @$j.$linked">
+                  <set_value name="$operation" exact="'receipt'"/><include_actions ref="Send"/>
+                </do_if>
+                <signal_cue_instantly cue="Enroll" param="$j"/>
+              </do_elseif>
+              </do_if>
+            </do_if>
+          </do_for_each>
+          <set_value name="$p.$cursor" operation="add" exact="1"/>
+        </do_if>
+      </actions>
+    </cue>
+    <library name="FindIdle"><actions>
+            <find_ship name="$ships" multiple="true" recursive="true" space="player.galaxy" owner="faction.player" hascommander="false" unit="false" class="[class.ship_m, class.ship_l, class.ship_xl]"/>
+            <set_value name="$selected" exact="null"/>
+            <do_if value="$ships.count le 512">
+              <do_for_each name="$ship" in="$ships">
+                <do_if value="$selected == null and @$ship.isplayerowned and @$ship.isoperational and $ship != player.controlled and $ship != player.ship and not $ship.ismission and not $ship.isunit and not $ship.commander and $ship.subordinates.count == 0 and $ship.age ge 5min and @$ship.assignedpilot.exists and not $ship.hasorderloop and $ship.orders.count == 0 and $ship.tradeorders.count == 0 and $ship.cargo.list.count == 0 and $ship.waretransport.indexof.{$j.$ware.waretransport} and $ship.primarypurpose == (if $j.$cargo == 'container' then purpose.trade else purpose.mine) and (not @$ship.defaultorder.exists or $ship.defaultorder.id == 'Wait')">
+                  <set_value name="$locked" exact="false"/>
+                  <do_for_each name="$other" in="global.$JKEOC_B371Routes"><do_if value="$other != $j.$route and (@$other.$actor == $ship or @$other.$ship == $ship) and (@$other.$active or @$other.$job or @$other.$watch or @$other.$pinpending or @$other.$status == 'APPROVAL NEEDED')"><set_value name="$locked" exact="true"/></do_if></do_for_each>
+                  <do_if value="@global.$JKEOC_B74PendingShip == $ship or @global.$JKEOC_B298Pending.$ship == $ship or @global.$JKEOC_B219MinimumPending.$ship == $ship"><set_value name="$locked" exact="true"/></do_if>
+                  <do_if value="not $locked"><set_value name="$selected" exact="$ship"/></do_if>
+                </do_if>
+              </do_for_each>
+            </do_if>
+    </actions></library>
+    <cue name="Existing" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/><set_value name="$j" exact="event.param"/>
+        <do_if value="$valid and $p.$jobs.indexof.{$j} and $j.$phase == 'EXISTING' and (not $p.$discoveredAt? or player.age - $p.$discoveredAt ge 5min)">
+          <include_actions ref="Authority"/>
+          <do_if value="$allowed">
+            <set_value name="$p.$discoveredAt" exact="player.age"/>
+            <include_actions ref="FindIdle"/>
+            <do_if value="$ships.count le 512">
+              <do_if value="$selected != null">
+                <do_if value="not global.$JKEOC_B76EligibleShips?"><set_value name="global.$JKEOC_B76EligibleShips" exact="[]"/></do_if>
+                <do_if value="typeof global.$JKEOC_B76EligibleShips == datatype.list and global.$JKEOC_B76EligibleShips.count lt 512">
+                  <set_value name="$j.$closed" exact="true"/><set_value name="$j.$closedAt" exact="player.age"/><set_value name="$j.$phase" exact="'ENROLLED'"/>
+                  <do_if value="not global.$JKEOC_B76EligibleShips.indexof.{$selected}"><append_to_list name="global.$JKEOC_B76EligibleShips" exact="$selected"/></do_if>
+                  <set_value name="$j.$status" exact="'EXISTING SUPPLY SHIP FOUND - CHECKING ROUTE'"/><set_value name="$j.$reason" exact="'Registered one compatible idle existing ship. No ship was purchased. Existing EOC checks must still prove its source and assignment.'"/>
+                  <include_actions ref="Report"/><set_value name="$j.$route.$supplypending" exact="false"/><set_value name="$j.$handoffship" exact="$selected"/><set_value name="$j.$route.$supplyjob" exact="$j"/><set_value name="$j.$route.$supplyship" exact="$selected"/><signal_cue_instantly cue="md.JKEOC_Recovery_Workflow.Begin" param="$j.$route"/>
+                </do_if>
+                <do_else><set_value name="$j.$phase" exact="'BLOCKED'"/><set_value name="$j.$status" exact="'SUPPLY SHIP REGISTRATION UNAVAILABLE'"/><set_value name="$j.$reason" exact="'The registration list is invalid or full. Existing ship orders are preserved; no purchase is permitted.'"/><include_actions ref="Report"/></do_else>
+              </do_if>
+              <do_else>
+                <find_station name="$yards" space="player.galaxy" hascontrolentity="controlpost.shiptrader" functional="true" canbuildfor="faction.player" knownto="faction.player" multiple="true"/>
+                <do_if value="$yards.count le 128"><set_value name="$j.$yards" exact="$yards"/><set_value name="$j.$phase" exact="'SELECTING'"/></do_if>
+                <do_else><set_value name="$j.$phase" exact="'BLOCKED'"/></do_else>
+              </do_else>
+            </do_if>
+            <do_else><set_value name="$j.$phase" exact="'BLOCKED'"/></do_else>
+            <do_if value="$j.$phase == 'BLOCKED' and $j.$status != 'SUPPLY SHIP REGISTRATION UNAVAILABLE'"><set_value name="$j.$status" exact="'SUPPLY SEARCH INCOMPLETE'"/><set_value name="$j.$reason" exact="'The full existing-ship or known-yard set exceeds the safe search bound. EOC did not treat a partial search as permission to purchase.'"/><include_actions ref="Report"/></do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Quote" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'supply.quote'"/></conditions><actions>
+        <include_actions ref="Init"/><set_value name="$q" exact="event.param3"/>
+        <do_if value="$valid and typeof $q == datatype.table and typeof @$q.$token == typeof ''">
+          <do_for_each name="$j" in="$p.$jobs"><do_if value="$j.$phase == 'QUOTING' and @$j.$request == $q.$token and player.age ge $j.$requested and player.age - $j.$requested le 30s">
+            <set_value name="$j.$phase" exact="'BLOCKED'"/>
+            <do_if value="@$q.$status == 'NEXT' and (typeof @$q.$cursor).isnumeric and $q.$cursor == ($q.$cursor)i and $q.$cursor gt $j.$cursor and $q.$cursor le 2049">
+              <set_value name="$j.$cursor" exact="($q.$cursor)i"/><set_value name="$j.$phase" exact="'SELECTING'"/>
+            </do_if>
+            <do_elseif value="@$q.$status == 'END'"><set_value name="$j.$yardcursor" operation="add" exact="1"/><set_value name="$j.$cursor" exact="1"/><set_value name="$j.$phase" exact="'SELECTING'"/></do_elseif>
+            <do_elseif value="@$q.$status == 'QUOTED' and typeof @$q.$macro == typeof '' and $q.$macro != '' and (typeof @$q.$price).isnumeric and $q.$price == ($q.$price)i and $q.$price ge 0 and $q.$price le $p.$orderCap and typeof @$q.$owned == typeof true">
+              <include_actions ref="Authority"/><include_actions ref="Coverage"/>
+              <set_value name="$allowed" exact="$allowed and $coverageClear"/>
+              <do_if value="@$j.$capacity and (typeof @$j.$observationAt != typeof player.age or typeof @$j.$startStock != typeof 1)"><set_value name="$allowed" exact="false"/></do_if>
+              <do_elseif value="@$j.$capacity"><set_value name="$allowed" exact="$allowed and player.age - $j.$observationAt ge 30min and $j.$station.cargo.{$j.$ware}.count le $j.$startStock and $j.$station.cargo.{$j.$ware}.count * 4 lt $j.$station.cargo.{$j.$ware}.target"/></do_elseif>
+              <set_value name="$committed" exact="0"/>
+              <do_if value="$allowed">
+                <do_if value="not $p.$purchaseCheckedAt? or player.age - $p.$purchaseCheckedAt ge 5min">
+                  <set_value name="$p.$purchaseCheckedAt" exact="player.age"/><include_actions ref="FindIdle"/>
+                  <do_if value="$ships.count gt 512"><set_value name="$allowed" exact="false"/></do_if>
+                  <do_elseif value="$selected != null"><set_value name="$allowed" exact="false"/><set_value name="$j.$phase" exact="'EXISTING'"/><set_value name="$j.$status" exact="'EXISTING SHIP NOW AVAILABLE'"/><set_value name="$j.$reason" exact="'A fresh check found an idle logistics ship before payment. The quote was not spent; EOC will reassess that existing ship.'"/><include_actions ref="Report"/></do_elseif>
+                </do_if>
+                <do_else><set_value name="$allowed" exact="false"/><set_value name="$j.$phase" exact="'SELECTING'"/></do_else>
+              </do_if>
+              <do_for_each name="$old" in="$p.$jobs"><do_if value="@$old.$reserved and (not @$old.$closed or player.age - $old.$reservedAt lt 1h)"><set_value name="$committed" operation="add" exact="$old.$price"/></do_if></do_for_each>
+              <do_if value="$allowed and $committed + $q.$price le $p.$hourCap and player.money ge ($q.$price + $p.$reserve) * 1Cr and @$j.$yard.isoperational and @$j.$yard.shiptrader.exists and ($j.$yard.owner == faction.player) == $q.$owned and ($q.$owned or $q.$price gt 0) and not $j.$yard.owner.hastag.noplayerbuyships and not $j.$yard.hasrelation.enemy.{faction.player} and $j.$station.cargo.{$j.$ware}.count * 4 lt $j.$station.cargo.{$j.$ware}.target * 3">
+                <set_value name="$j.$macro" exact="$q.$macro"/><set_value name="$j.$price" exact="($q.$price)i"/><set_value name="$j.$owned" exact="$q.$owned"/>
+                <!-- Persist BEFORE native permit; missing callbacks never release or replay it. -->
+                <set_value name="$j.$reserved" exact="true"/><set_value name="$j.$reservedAt" exact="player.age"/><set_value name="$j.$phase" exact="'ATTEMPTED'"/>
+                <set_value name="$j.$status" exact="'SUPPLY PURCHASE OUTCOME PENDING'"/><set_value name="$j.$reason" exact="'One ship quote reserved. The native payment/build request may be in progress; missing evidence never permits another purchase.'"/>
+                <include_actions ref="Report"/><set_value name="$operation" exact="'permit'"/><include_actions ref="Send"/>
+              </do_if>
+            </do_elseif>
+            <do_if value="$j.$phase == 'BLOCKED'"><set_value name="$j.$status" exact="'SUPPLY PURCHASE BLOCKED'"/><set_value name="$j.$reason" exact="'No purchase permit issued: eligibility, current shortage, consent, quote or spending reserve could not be verified.'"/><include_actions ref="Report"/></do_if>
+          </do_if></do_for_each>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Receipt" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'supply.receipt'"/></conditions><actions>
+        <include_actions ref="Init"/><set_value name="$q" exact="event.param3"/>
+        <do_if value="$valid and typeof $q == datatype.table and typeof @$q.$token == typeof ''">
+          <do_for_each name="$j" in="$p.$jobs"><do_if value="$j.$phase == 'ATTEMPTED' and $j.$reserved and $j.$request == $q.$token and not $j.$received?">
+            <set_value name="$j.$received" exact="true"/>
+            <do_if value="typeof @$q.$task == typeof '' and $q.$task != '' and typeof @$q.$object == typeof ''"><set_value name="$j.$taskkey" exact="$q.$task"/><set_value name="$j.$nativeobject" exact="@component.{$q.$object}"/></do_if>
+            <set_value name="$j.$reason" exact="'Native submission returned. Exact build/payment association and delivery remain pending; the reservation is preserved.'"/>
+            <do_if value="@$q.$status == 'NOT_ATTEMPTED' and @$q.$attempted == false and @$q.$paid == 0 and @$q.$task == ''">
+              <set_value name="$j.$reserved" exact="false"/><set_value name="$j.$phase" exact="'BLOCKED'"/><set_value name="$j.$status" exact="'SUPPLY PURCHASE NOT ATTEMPTED'"/><set_value name="$j.$reason" exact="'Final native preparation changed before payment/build. No replay will occur from this quote.'"/>
+            </do_if>
+            <include_actions ref="Report"/><signal_cue_instantly cue="Link" param="$j"/>
+          </do_if></do_for_each>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Observed" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'supply.observed'"/></conditions><actions>
+        <include_actions ref="Init"/><set_value name="$q" exact="event.param3"/>
+        <do_if value="$valid and typeof $q == datatype.table and typeof @$q.$token == typeof '' and typeof @$q.$task == typeof '' and typeof @$q.$object == typeof '' and @$q.$status == 'IDENTIFIED'">
+          <do_for_each name="$j" in="$p.$jobs"><do_if value="$j.$reserved and not @$j.$linked and @$j.$request == $q.$token and @$j.$taskkey == $q.$task and ($j.$phase == 'ATTEMPTED' or $j.$phase == 'QUEUED')">
+            <set_value name="$j.$nativeobject" exact="@component.{$q.$object}"/><signal_cue_instantly cue="Link" param="$j"/>
+          </do_if></do_for_each>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Added" instantiate="true" namespace="this">
+      <conditions><event_player_build_added/></conditions><actions>
+        <include_actions ref="Init"/>
+        <do_if value="$valid and @event.param.exists and event.param.isshipbuild and event.param.faction == faction.player">
+          <do_for_each name="$j" in="$p.$jobs"><do_if value="$j.$phase == 'ATTEMPTED' and player.age ge $j.$reservedAt and player.age - $j.$reservedAt le 30s and event.param2 == $j.$yard and event.param.macro.id == $j.$macro">
+            <set_value name="$duplicate" exact="false"/><do_for_each name="$b" in="$j.$records"><do_if value="$b.$task == event.param"><set_value name="$duplicate" exact="true"/></do_if></do_for_each>
+            <do_if value="not $duplicate and $j.$records.count lt 8"><append_to_list name="$j.$records" exact="table[$task=event.param,$yard=event.param2,$macro=event.param.macro,$price=event.param.price,$delivered=false]"/></do_if>
+            <do_elseif value="not $duplicate"><set_value name="$j.$overflow" exact="true"/></do_elseif>
+          </do_if></do_for_each>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Finished" instantiate="true" namespace="this">
+      <conditions><event_player_build_finished/></conditions><actions>
+        <include_actions ref="Init"/>
+        <do_if value="$valid"><do_for_each name="$j" in="$p.$jobs"><do_for_each name="$b" in="$j.$records">
+          <do_if value="$b.$task == event.param3 and @event.param3.exists and not $b.$delivered">
+            <set_value name="$ship" exact="@event.param3.buildobject"/><set_value name="$b.$paid" exact="event.param3.transferredamount"/>
+            <do_if value="@$ship.isplayerowned and @$ship.isoperational and $ship.macro == $b.$macro">
+              <set_value name="$b.$ship" exact="$ship"/><set_value name="$b.$delivered" exact="true"/><set_value name="$b.$oldorder" exact="@$ship.order"/><set_value name="$b.$olddefault" exact="@$ship.defaultorder"/>
+            </do_if>
+            <signal_cue_instantly cue="Link" param="$j"/><signal_cue_instantly cue="Enroll" param="$j"/>
+          </do_if>
+        </do_for_each></do_for_each></do_if>
+      </actions>
+    </cue>
+    <cue name="Link" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/><set_value name="$j" exact="event.param"/>
+        <do_if value="$valid and $p.$jobs.indexof.{$j} and $j.$reserved and not $j.$closed and ($j.$phase == 'ATTEMPTED' or $j.$phase == 'QUEUED') and not @$j.$overflow and not @$j.$linked and @$j.$nativeobject.exists and typeof @$j.$taskkey == typeof '' and $j.$taskkey != ''">
+          <set_value name="$matches" exact="0"/><set_value name="$match" exact="null"/>
+          <do_for_each name="$b" in="$j.$records">
+            <set_value name="$object" exact="@$b.$ship"/>
+            <do_if value="@$b.$task.exists"><set_value name="$object" exact="$b.$task.buildobject"/><set_value name="$b.$paid" exact="$b.$task.transferredamount"/></do_if>
+            <do_if value="$object == $j.$nativeobject"><set_value name="$matches" operation="add" exact="1"/><set_value name="$match" exact="$b"/></do_if>
+          </do_for_each>
+          <do_if value="$matches == 1 and $match.$yard == $j.$yard and $match.$macro.id == $j.$macro and $match.$price == $j.$price * 1Cr and @$match.$paid == $j.$price * 1Cr and $j.$nativeobject.owner == faction.player and $j.$nativeobject.macro == $match.$macro">
+            <set_value name="$j.$linked" exact="$match"/><set_value name="$j.$phase" exact="'QUEUED'"/>
+            <set_value name="$j.$status" exact="'SUPPLY BUILD VERIFIED - AWAITING DELIVERY'"/><set_value name="$j.$reason" exact="'Exact receipt, native build object, hull, supplier and paid amount agree. Native construction and captain availability remain pending.'"/>
+            <set_value name="$p" exact="global.$JKEOC_SupplyProcurement"/><include_actions ref="Report"/>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Enroll" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/><set_value name="$j" exact="event.param"/>
+        <do_if value="$valid and $p.$jobs.indexof.{$j} and $j.$phase == 'QUEUED' and @$j.$linked.$delivered and not @$j.$enrolled">
+          <include_actions ref="Authority"/><set_value name="$b" exact="$j.$linked"/><set_value name="$ship" exact="$b.$ship"/>
+          <do_if value="$allowed and @$ship.isplayerowned and @$ship.isoperational and $ship.macro.id == $j.$macro and $ship != player.controlled and @$ship.assignedpilot.exists and not $ship.isunit and not $ship.ismission and not $ship.commander and $ship.allsubordinates.count == 0 and $ship.orders.count == 0 and $ship.tradeorders.count == 0 and $ship.cargo.list.count == 0 and $ship.waretransport.indexof.{$j.$ware.waretransport} and (if @$ship.order.exists then $ship.order == @$b.$oldorder else not @$b.$oldorder.exists) and (if @$ship.defaultorder.exists then $ship.defaultorder == @$b.$olddefault else not @$b.$olddefault.exists) and not @$j.$route.$active and not @$j.$route.$job">
+            <do_if value="not global.$JKEOC_B76EligibleShips?"><set_value name="global.$JKEOC_B76EligibleShips" exact="[]"/></do_if>
+            <do_if value="typeof global.$JKEOC_B76EligibleShips == datatype.list and global.$JKEOC_B76EligibleShips.count lt 512">
+              <set_value name="$j.$enrolled" exact="true"/>
+              <do_if value="not global.$JKEOC_B76EligibleShips.indexof.{$ship}"><append_to_list name="global.$JKEOC_B76EligibleShips" exact="$ship"/></do_if>
+              <set_value name="$j.$phase" exact="'ENROLLED'"/><set_value name="$j.$closed" exact="true"/><set_value name="$j.$closedAt" exact="player.age"/>
+              <set_value name="$j.$status" exact="'SUPPLY SHIP DELIVERED - CHECKING WORK ROUTE'"/><set_value name="$j.$reason" exact="'The exact purchased ship is delivered with a captain and unchanged idle orders. Registered it for existing EOC route checks; assignment and resource delivery are not yet proven.'"/>
+              <include_actions ref="Report"/><set_value name="$j.$route.$supplypending" exact="false"/><set_value name="$j.$handoffship" exact="$ship"/><set_value name="$j.$route.$supplyjob" exact="$j"/><set_value name="$j.$route.$supplyship" exact="$ship"/>
+              <signal_cue_instantly cue="md.JKEOC_Recovery_Workflow.Begin" param="$j.$route"/>
+            </do_if>
+            <do_else><set_value name="$j.$status" exact="'DELIVERED SHIP REGISTRATION BLOCKED'"/><set_value name="$j.$reason" exact="'The registration list is invalid or full. The paid ship and reservation are retained; EOC will not purchase a replacement.'"/><include_actions ref="Report"/></do_else>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="AssignmentCapacity" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <set_value name="event.param.$supplyCapacityAllowed" exact="false"/>
+        <include_actions ref="Init"/><set_value name="$r" exact="event.param"/><set_value name="$j" exact="@$r.$supplyjob"/>
+        <do_if value="$valid and typeof $j == datatype.table and $p.$jobs.indexof.{$j} and $j.$route == $r and @$j.$capacity and $j.$closed and $j.$phase == 'ENROLLED' and @$j.$handoffship == @$r.$ship and @$r.$supplyRun == $r.$token and player.age ge $j.$closedAt and player.age - $j.$closedAt lt 1h">
+          <include_actions ref="Authority"/>
+          <do_if value="$allowed">
+            <set_value name="$coverageHandoff" exact="$r.$ship"/><include_actions ref="Coverage"/>
+            <set_value name="$r.$supplyCapacityAllowed" exact="$coverageClear and player.age - $j.$observationAt ge 30min and $j.$station.cargo.{$j.$ware}.count le $j.$startStock and $j.$station.cargo.{$j.$ware}.count * 4 lt $j.$station.cargo.{$j.$ware}.target"/>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="Publish" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <include_actions ref="Init"/>
+        <do_if value="$valid">
+          <set_value name="$p.$uiSequence" exact="if typeof @$p.$uiSequence == typeof 1 then $p.$uiSequence + 1 else 1"/>
+          <raise_lua_event name="'JKEOC_Supply.policy.begin'" param="$p.$uiSequence"/>
+          <raise_lua_event name="'JKEOC_Supply.policy.enabled'" param="if $p.$enabled then 1 else 0"/>
+          <raise_lua_event name="'JKEOC_Supply.policy.orderCap'" param="$p.$orderCap"/>
+          <raise_lua_event name="'JKEOC_Supply.policy.hourCap'" param="$p.$hourCap"/>
+          <raise_lua_event name="'JKEOC_Supply.policy.reserve'" param="$p.$reserve"/>
+          <raise_lua_event name="'JKEOC_Supply.policy.jobs'" param="$p.$jobs.count"/>
+          <raise_lua_event name="'JKEOC_Supply.policy.status'" param="$p.$status"/>
+          <raise_lua_event name="'JKEOC_Supply.policy.complete'" param="$p.$uiSequence"/>
+        </do_if>
+        <do_else><raise_lua_event name="'JKEOC_Supply.policy.error'" param="'Saved supply policy or job evidence is invalid. Automatic supply actions are suspended; retained evidence was preserved.'"/></do_else>
+      </actions>
+    </cue>
+    <cue name="StatusRequest" instantiate="true" namespace="this"><conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'supply.status'"/></conditions><actions><signal_cue_instantly cue="Publish"/></actions></cue>
+  </cues>
+</mdscript>

@@ -5,13 +5,15 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current update
 
 - Version: 3.9
-- Engineering build: 383
-- Extension version: 4.83
-- Status: GitHub contains the exact Build 383 runtime; Steam distribution is handled separately by the maintainer. The archived build retains its original TEST identity; this update is not a new GA promotion.
+- Engineering build: 390
+- Extension version: 4.90
+- Status: GitHub contains the exact Build 390 runtime. Steam distribution is handled separately by the maintainer. The archived build retains its original TEST identity; this update is not a new GA promotion.
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 383 adds optional background management of existing stations and eligible ships, requiring compatible, responsive **X4 Diagnostics B007 or later**. It starts OFF, respects saved spending limits and current trade rules, and uses confirmed transfers for bounded partner preferences. It does not buy ships, build modules, rewrite public offers or guarantee profit. Assisted EOC remains available independently of Diagnostics. See [Build 383 release notes](docs/RELEASE_NOTES_BUILD383.md) and the [automatic manager guide](docs/EOC_AUTOMATIC_MANAGER.md). End-to-end automatic delivery, learning and save/reload remain **RUNTIME ACCEPTANCE REQUIRED**.
+Build 390 expands the optional automatic manager introduced in Build 383. History now includes a live, newest-first Automatic Activity view whose rows and summary bars update together while EOC is open. A visible key explains the `RUNNING`, `WAITING`, `BLOCKED`, `COMPLETED`, and `RECORDED` states; state and shortened-action hover text provides the full meaning. Enabled automatic options use steady `RUNNING` or `ACTIVE` labels without flashing, animation, countdowns, polling, or timed redraws.
+
+Automatic supply expansion is a separate opt-in. EOC uses eligible existing ships first and may purchase a suitable miner or freighter only within the player's saved limits, normal blueprint/shipyard/resource/delivery rules, and existing assignment safeguards. Assisted EOC remains available independently of Diagnostics. See [Build 390 release notes](docs/RELEASE_NOTES_BUILD390.md), the [automatic manager guide](docs/EOC_AUTOMATIC_MANAGER.md), and the [illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md). Unexercised native paths remain **RUNTIME ACCEPTANCE REQUIRED**.
 
 Retained new features: question-based Home navigation, station-wide Fix All, explicit reviewed-report archiving, gains-versus-losses comparison and Home return buttons, with native station-reference and report-formatting corrections. See [Build 382 release notes](docs/RELEASE_NOTES_BUILD382.md) and the [illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md).
 
@@ -130,6 +132,8 @@ Build 259 also preserves the complete EOC 3.2 feature set:
 
 - [EOC Development Roadmap](docs/EOC_ROADMAP.md)
 - [EOC 3.9 GA Illustrated Player Guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md)
+- [EOC Build 390 Release Notes](docs/RELEASE_NOTES_BUILD390.md)
+- [EOC Automatic Manager Guide](docs/EOC_AUTOMATIC_MANAGER.md)
 - [EOC 3.9 GA Release Notes](docs/RELEASE_NOTES_3.9_GA.md)
 - [EOC 3.8 GA Player Guide](docs/EOC_3.8_GA_PLAYER_GUIDE.md)
 - [EOC 3.8 GA Release Notes](docs/RELEASE_NOTES_3.8_GA.md)

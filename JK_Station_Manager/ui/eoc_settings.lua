@@ -102,6 +102,7 @@ local menu = {
     actions = {},
     reports = {},
     selectedReport = 1,
+    autoActivityIncoming = nil,
 }
 
 local config = {
@@ -1086,18 +1087,27 @@ local function prerequisiteRows(caseData)
     if #rows == 0 then add("CASE EVIDENCE", "UNKNOWN", "No family-specific prerequisite set is available; follow the case root cause and manual action.") end
     return rows
 end
+function menu.rawResourceGuidance(caseData)
+    local cargo=string.upper(text(v(caseData,12,"UNKNOWN")))
+    if cargo~="SOLID" and cargo~="LIQUID" then return nil end
+    local resource=text(v(caseData,17,v(caseData,4,"this resource")))
+    if string.upper(text(v(caseData,3,"")))=="STORAGE PRESSURE" then
+        return "RAW RESOURCE SURPLUS: "..resource.." is accumulating, not missing. Do not add miners or manufacture more. Review excess mining deliveries, permitted buyers and actual consumption; preserve any ships already doing useful work."
+    end
+    return "RAW RESOURCE SUPPLY: "..resource.." needs "..(cargo=="SOLID" and "mineral miners with solid cargo storage (Ice/ores)" or "gas miners with liquid cargo storage")..", or a supplier and a ship with matching cargo storage. A production module is not the mining solution. Check resource-probe evidence, manager range, trade restrictions and current miner orders before adding ships. A named deposit is not verified until source evidence identifies it."
+end
 local function manualNextAction(caseData, rows)
     for _, check in ipairs(rows) do
         if check.state == "FAIL" or check.state == "UNKNOWN" or check.state == "NOT YET TESTED" then
             if check.state == "UNKNOWN" or check.state == "NOT YET TESTED" then
                 return "Run a fresh Empire Analysis so EOC can collect the missing evidence. Do not change the station until EOC identifies a supported cause."
             elseif check.label == "INCIDENT EVIDENCE" then return text(v(caseData, 7, "Review the grouped retained evidence, then run a focused diagnostic before changing the station."))
-            elseif check.label == "DELIVERY PATH" then return "Open the " .. text(v(caseData, 17, v(caseData, 4, "required ware"))) .. " buy offer first. Confirm its ware-specific trade rule permits the intended NPC supplier; then verify at least one assigned station trader can carry " .. text(v(caseData, 12, "the required cargo")) .. ". Change no station-wide rule unless you intend the wider effect."
+            elseif check.label == "DELIVERY PATH" then return menu.rawResourceGuidance(caseData) or ("Open the " .. text(v(caseData, 17, v(caseData, 4, "required ware"))) .. " buy offer first. Confirm its ware-specific trade rule permits the intended NPC supplier; then verify at least one assigned station trader can carry " .. text(v(caseData, 12, "the required cargo")) .. ". Change no station-wide rule unless you intend the wider effect.")
             elseif check.label == "STORAGE INSTALLED" then return "Open the Station Build Plan and add compatible " .. text(v(caseData, 12, "cargo")) .. " storage; wait until it is operational."
             elseif check.label == "STORAGE FREE SPACE" then return "Open Logical Station Overview and move, sell, or reallocate stock until the required " .. text(v(caseData, 12, "cargo")) .. " storage space is free."
             elseif check.label == "STATION OPERATING FUNDS" then local required = math.max(0, ((tonumber(v(caseData, 30, 0)) or 0) * (tonumber(v(caseData, 21, 0)) or 0)) - (tonumber(v(caseData, 32, 0)) or 0)); return "Open the station Information account and transfer at least " .. formatNumber(required) .. " Cr for the immediate purchase. EOC will not move player credits."
             elseif check.label == "REACHABLE SUPPLY" then return "Open the station buy offer for " .. text(v(caseData, 17, v(caseData, 4, "the required ware"))) .. " and verify trade rule, price, and manager range permit a supplier."
-            elseif check.label == "STATION TRADER" then return "Assign one operational trader compatible with " .. text(v(caseData, 17, v(caseData, 4, "the required ware"))) .. " to " .. text(v(caseData, 1, "the station")) .. "."
+            elseif check.label == "STATION TRADER" then return menu.rawResourceGuidance(caseData) or ("Assign one operational trader compatible with " .. text(v(caseData, 17, v(caseData, 4, "the required ware"))) .. " to " .. text(v(caseData, 1, "the station")) .. ".")
             elseif check.label == "LOCAL PRODUCTION" and v(caseData, 29, false) then return "1. Open the station's Logical Overview. 2. Find the production modules for " .. text(v(caseData, 4, "this ware")) .. ". 3. Check whether the modules are paused, missing workers, missing energy, or waiting for an input. 4. Fix the problem you find. 5. Let one normal production cycle finish."
             elseif check.label == "PRODUCTION INPUTS" then return "1. Open the station's Logical Overview. 2. Find " .. text(v(caseData, 28, "the missing production input")) .. ". 3. Restore its buy offer, delivery, or local production. 4. Wait until the input reaches the station. 5. Let one normal production cycle finish." end
         end
@@ -1106,6 +1116,7 @@ local function manualNextAction(caseData, rows)
     local subject = string.upper(text(v(caseData, 4, "")))
     if caseType == "STORAGE PRESSURE" then
         return "Do not add more of this ware. With Do Everything enabled, allow one station-manager trade cycle for EOC's bounded surplus sell offer. If stock does not fall, check for a permitted buyer, reduce the ware allocation, or increase local consumption; then run a fresh verification check."
+    elseif menu.rawResourceGuidance(caseData) then return menu.rawResourceGuidance(caseData)
     elseif subject == "ALLOGRAPHYNE" then
         return "The import path is ready, so allow one delivery cycle first. For a permanent local chain, add and operate the Allographyne Scrap Processor and its required recycling support, then verify that its inputs are supplied before changing ships or storage."
     end
@@ -1231,9 +1242,11 @@ function menu.backgroundTestInstruction(backgroundTest, caseData, checks)
     local baseline = formatNumber(backgroundTest and backgroundTest.baseline or "unavailable")
     local samples = formatNumber(backgroundTest and backgroundTest.samples or 0)
     local result = text(backgroundTest and backgroundTest.result, "No result was returned.")
-    local header = "WHAT EOC TESTED: " .. subject .. " at " .. station .. ".\nSTARTING VALUE: " .. baseline .. ". COMPLETED CHECKS: " .. samples .. "."
-    if state == "REQUESTED" or state == "CHECKING" or state == "WAITING" then
-        return header .. "\nWHAT THIS MEANS: The test is still running. EOC does not have an answer yet.\nWHAT TO DO NOW: 1. Keep playing normally. 2. Do not press the test button again. 3. Do not open Station Build mode. 4. Wait for TEST COMPLETE. EOC will update this page for you."
+    local header = "CHECK SUBJECT: " .. subject .. " at " .. station .. ".\nSTARTING VALUE: " .. baseline .. ". COMPLETED CHECKS: " .. samples .. "."
+    if state == "REQUESTED" then
+        return header .. "\nWAITING FOR EOC: Your request was sent; the first completed check has not been confirmed. A request is not a result. Keep the simulation running and do not submit duplicates. Opening this calculator does not itself start a test."
+    elseif state == "CHECKING" or state == "WAITING" then
+        return header .. "\nWAITING FOR EOC / NORMAL DELIVERIES: EOC needs later stock and operating evidence to distinguish a temporary delay from a lasting shortage. The original problem is not yet resolved, and this does not prove more production modules are needed. Keep playing normally; no new player action is requested during this check."
     elseif state == "RESOLVED" or state == "SUCCESS" then
         return header .. "\nRESULT: THE PROBLEM IS FIXED. " .. result .. "\nWHAT TO DO NOW: 1. Do not run this test again. 2. Return to Guided Recovery. 3. Close the case if EOC shows no other problem for it. Station Build mode is safe now."
     elseif state == "IMPROVING" or state == "PARTIAL" then
@@ -1297,14 +1310,39 @@ local function reportTimeReceived(_, value)
     menu.pendingReportTime = value
 end
 
+function menu.reportIdentityBegin()
+    menu.reportIdentityPending={};menu.reportIdentity=nil
+end
+function menu.reportIdentityField(key,value)
+    local p=menu.reportIdentityPending
+    if not p or p.invalid then return end
+    if p[key]~=nil then p.invalid=true;return end
+    if key=="title" or key=="text" then
+        if type(value)~="string" then p.invalid=true;return end
+    else
+        if type(value)~="number" or value~=value or value==math.huge or value<0 or (key~="time" and value~=math.floor(value)) then p.invalid=true;return end
+        if key=="id" and value<=0 or key=="archived" and value~=0 and value~=1 then p.invalid=true;return end
+    end
+    p[key]=value
+end
+function menu.reportIdentityComplete()
+    local p=menu.reportIdentityPending;menu.reportIdentityPending=nil
+    if not p or p.invalid then return end
+    for _,key in ipairs({"title","text","time","id","route","revision","archived"}) do if p[key]==nil then return end end
+    menu.reportIdentity=p
+end
+
 local function reportSaved()
     local requested = menu.reportRunning == true and (menu.page == "reports" or (menu.reportOrigin and menu.reportOrigin.page == menu.page))
     local previous = menu.reportAnchor or (menu.reports or {})[menu.selectedReport or 1]
     menu.reportRunning = false
     menu.lastReport = text(menu.pendingReportTitle or menu.pendingReport or "EOC REPORT")
     menu.reportOutput = text(menu.pendingReportText or "Report saved to Tips.")
+    local identity=menu.reportIdentity;menu.reportIdentity=nil
+    if identity and (identity.title~=menu.lastReport or identity.text~=menu.reportOutput) then identity=nil end
     local latest = menu.reports and menu.reports[1]
     local unchanged = latest and text(v(latest, 1, "")) == menu.lastReport and text(v(latest, 2, "")) == menu.reportOutput
+    if unchanged and identity and tonumber(latest[5]) and tonumber(latest[5])>0 and tonumber(latest[5])~=identity.id then unchanged=false end
     menu.reportStatus = unchanged and "REPORT UNCHANGED — LATEST COPY RETAINED. WHAT THIS MEANS: the new job returned the same report, so no duplicate was archived. DO THIS NEXT: read the selected report; no repeat is required until source evidence changes." or "REPORT SAVED TO TIPS. WHAT THIS MEANS: report generation completed and the newest retained output is selected below. DO THIS NEXT: read it now; this report-only job requires no repeat unless you intentionally want a later snapshot after evidence changes."
     menu.reportStatusUntil = getElapsedTime() + 4
     if not unchanged then
@@ -1314,6 +1352,11 @@ local function reportSaved()
             formatGameTime(menu.pendingReportTime),
             tonumber(menu.pendingReportTime) or 0,
         })
+    end
+    if identity and menu.reports[1] then
+        local record=menu.reports[1]
+        record[3]=formatGameTime(identity.time);record[4]=identity.time
+        record[5]=identity.id;record[6]=identity.archived;record[7]=identity.route;record[8]=identity.revision
     end
     while #menu.reports > 20 do
         table.remove(menu.reports)
@@ -1628,6 +1671,12 @@ local function init()
     RegisterEvent(menu.name .. ".analysis.output", analysisOutputReceived)
     RegisterEvent(menu.name .. ".analysis.time", analysisTimeReceived)
     RegisterEvent(menu.name .. ".report.saved", reportSaved)
+    RegisterEvent(menu.name .. ".report.identity.begin",menu.reportIdentityBegin)
+    for _,key in ipairs({"title","text","time","id","route","revision","archived"}) do
+        local field=key
+        RegisterEvent(menu.name .. ".report.identity."..field,function(_,value) menu.reportIdentityField(field,value) end)
+    end
+    RegisterEvent(menu.name .. ".report.identity.complete",menu.reportIdentityComplete)
     RegisterEvent(menu.name .. ".report.archived", menu.reportArchived)
     RegisterEvent(menu.name .. ".report.archive.error", menu.reportArchiveError)
     RegisterEvent(menu.name .. ".batch.begin", menu.batchBegin)
@@ -1746,6 +1795,29 @@ local function init()
     RegisterEvent(menu.name .. ".recovery.probe.token", function(_,value) if menu.recoveryProbe then menu.recoveryProbe.token=tonumber(value) end end)
     RegisterEvent(menu.name .. ".recovery.probe.ship", function(_,value) if menu.recoveryProbe then menu.recoveryProbe.ship=value end end)
     RegisterEvent(menu.name .. ".recovery.probe.execute", menu.recoveryReadFailures)
+    RegisterEvent(menu.name .. ".autoReports.begin", menu.autoReportsBegin)
+    RegisterEvent(menu.name .. ".autoReports.commit", menu.autoReportsCommit)
+    RegisterEvent(menu.name .. ".autoReports.complete", menu.autoReportsComplete)
+    RegisterEvent(menu.name .. ".autoReports.error", menu.autoReportsError)
+    RegisterEvent(menu.name .. ".autoArchive.saved", function(_,value) menu.autoArchiveComplete(value,true) end)
+    RegisterEvent(menu.name .. ".autoArchive.error", function(_,value) menu.autoArchiveComplete(value,false) end)
+    for _,field in ipairs({"id","revision","title","status","text","time"}) do
+        local key=field
+        RegisterEvent(menu.name .. ".autoActivity."..key,function(_,value) menu.autoActivityField(key,value) end)
+    end
+    RegisterEvent(menu.name .. ".autoActivity.commit", menu.autoActivityCommit)
+    RegisterEvent(menu.name .. ".insights.begin", menu.insightsBegin)
+    RegisterEvent(menu.name .. ".insights.row", menu.insightsRow)
+    RegisterEvent(menu.name .. ".insights.complete", menu.insightsComplete)
+    RegisterEvent(menu.name .. ".insights.error", menu.insightsError)
+    for _,field in ipairs({"count","label","status","units","time"}) do
+        local key=field
+        RegisterEvent(menu.name..".insights."..key,function(_,value) menu.insightsField(key,value) end)
+    end
+    for _,field in ipairs({"count","id","revision","title","status","text","time","archived"}) do
+        local key=field
+        RegisterEvent(menu.name .. ".autoReports."..key,function(_,value) menu.autoReportsField(key,value) end)
+    end
     RegisterEvent(menu.name .. ".autonomy.begin", menu.autonomyBegin)
     for _,key in ipairs({"status","enabled","orderCap","hourCap","reserve","jobs","learned","latest"}) do
         local field=key
@@ -5679,8 +5751,8 @@ local function solutionPlannerCenter(tableWidget)
         commandActionLabel = "DEEP DIVE — EVIDENCE AND ANALYSIS"
         commandAction = function() menu.solutionDeepDiveKey = checklistCaseKey(caseData); menu.solutionDeepDivePage = 1; menu.refresh() end
     else
-        commandConclusion = "EOC CONCLUSION: Measured station consumption does not currently prove a need for another production module."
-        commandNext = "DO THIS NEXT: Do not add capacity from this snapshot. Ask EOC to test the case; EOC will return when later demand evidence supports an answer."
+        commandConclusion = "MORE EVIDENCE NEEDED: The original supply problem is not proven fixed. This snapshot does not establish that another production module would solve it."
+        commandNext = "NEXT: Return to Diagnostics to review the cause and verification status. If a check is requested or running, let it finish; otherwise request one check. EOC must compare later supply and demand before recommending permanent capacity. This calculator does not start that check."
         commandActionLabel = "RETURN TO DIAGNOSTICS — VERIFY LATER"
         commandAction = function() menu.page = "diagnostics"; menu.activeTab = "diagnostics"; menu.refresh() end
     end
@@ -5721,7 +5793,7 @@ local function solutionPlannerCenter(tableWidget)
             local activeCascadePassed = calculatorState.result and calculatorState.result.cascadePassed or commandCascadePassed
             local activeCascadeReason = calculatorState.result and calculatorState.result.cascadeReason or commandCascadeReason
             local cascadeRow = tableWidget:addRow(false)
-            local cascadeText = commandScenarioMode and not calculatorState.result and "PLAYER SCENARIO READY: Choose at least one final-output module and check the plan. EOC will calculate the bounded native support cascade without claiming that X4 demand proves your chosen count." or ((activeCascadePassed and "CASCADE CHECK COMPLETE: " or "CASCADE GATE STOPPED - ESTIMATE INCOMPLETE: ") .. activeCascadeReason)
+            local cascadeText = commandScenarioMode and not calculatorState.result and "PLAYER SCENARIO READY: Choose at least one final-output module and check the plan. EOC will calculate the bounded native support cascade without claiming that X4 demand proves your chosen count." or ((activeCascadePassed and "RECIPE CALCULATION COMPLETE — NOT PROOF THE SHORTAGE IS FIXED: " or "RECIPE CALCULATION INCOMPLETE: ") .. activeCascadeReason)
             cascadeRow[1]:setColSpan(4):createText(cascadeText, { wordwrap = true, color = activeCascadePassed and investigationPassColor or investigationFailColor })
             local calculatorGuide = tableWidget:addRow(false)
             calculatorGuide[1]:setColSpan(4):createText(calculatorState.dirty and "YOUR PLAN CHANGED: Press TAB after the number, then select CHECK MY MODULE PLAN again. The prior result is stale." or (commandScenarioMode and "PROJECT DEMAND IS UNKNOWN: Enter how many final-output modules you are considering, press TAB, then select CHECK MY MODULE PLAN. EOC will calculate the supporting modules and safety gates; it does not claim your chosen final count is required." or "REPAIR COMPARISON: These counts must match EOC demand estimates to save an agreed repair list. For your own expansion, enter the final factory count, press TAB, then choose PLAN MY OWN EXPANSION."), { wordwrap = true, color = calculatorState.dirty and investigationFailColor or navigationStoryColor })
@@ -5751,7 +5823,7 @@ local function solutionPlannerCenter(tableWidget)
                         supplyRow[1]:setColSpan(4):createText("WORKFORCE SUPPLIES - INFORMATION ONLY, NOT MODULE COUNTS: " .. (item.provisionScope and item.provisionScope ~= "" and item.provisionScope or "Exact future provision wares remain unknown until workers arrive."), { wordwrap = true, color = navigationStoryColor })
                     end
                 else
-                    simpleRow[1]:setColSpan(4):createText(item.ware .. ": NO PRODUCTION-MODULE COUNT AVAILABLE | PROVIDE ABOUT " .. formatNumber(item.requiredRate or 0) .. "/h BY THE SOURCE ROUTE SHOWN IN ADVANCED DETAILS", { wordwrap = true, color = investigationUnknownColor, font = Helper.headerFont })
+                    simpleRow[1]:setColSpan(4):createText(item.ware .. ": EXTERNAL SUPPLY REQUIRED — NOT A PRODUCTION-MODULE INSTRUCTION | About " .. formatNumber(item.requiredRate or 0) .. "/h. Ice/ores require mineral miners; gases require gas miners. For other wares, check suppliers. Advanced Details shows available source evidence, not guaranteed delivery.", { wordwrap = true, color = investigationUnknownColor, font = Helper.headerFont })
                 end
             end
             if simplePageCount > 1 then
@@ -8115,6 +8187,8 @@ local function diagnosticsCenter(tableWidget)
     pair(tableWidget, "WORKING STATION", stationName, "ACTIVE CASES", #cases)
     if diagnosticCase then
         section(tableWidget, "WORKING CASE: " .. text(v(diagnosticCase, 4, "SELECTED CASE")))
+        local rawGuidance=menu.rawResourceGuidance(diagnosticCase)
+        if rawGuidance then local rawRow=tableWidget:addRow(false);rawRow[1]:setColSpan(4):createText(rawGuidance,{wordwrap=true,color=navigationStoryColor}) end
     end
 
     local row = tableWidget:addRow(true)
@@ -8503,7 +8577,7 @@ local function diagnosticsCenter(tableWidget)
             or "OPEN NEXT ACTION - REFRESH THE INFORMATION"
         local backgroundButtonLabel = testRecoveryExhausted and "OPEN SOLUTION PLANNER - RECOVERY EXHAUSTED"
             or (workingEvidenceMissing and "OPEN NEXT ACTION - EOC NEEDS MORE INFORMATION"
-            or (backgroundPending and "TEST RUNNING - WAIT FOR EOC"
+            or (backgroundPending and (backgroundState == "REQUESTED" and "REQUEST SENT - WAITING FOR EOC" or (backgroundState == "WAITING" and "WAITING FOR LATER EVIDENCE" or "EOC IS CHECKING - NO ACTION NEEDED"))
             or (backgroundCanRetest and "RUN ONE NEW TEST - ONLY AFTER YOU HAVE FINISHED THE STEPS"
             or (backgroundFinished and backgroundFinishedLabel
             or "ASK EOC TO RUN THIS TEST ONCE"))))
@@ -8525,7 +8599,7 @@ local function diagnosticsCenter(tableWidget)
             raise("verification.request", { station = stationName, subject = diagnosticSubject, severity = text(v(diagnosticCase, 2, "UNKNOWN")), amount = tonumber(v(diagnosticCase, 8, 0)) or 0 })
             menu.backgroundTests = menu.backgroundTests or {}
             menu.backgroundTestAcknowledged[verificationKey] = nil
-            menu.backgroundTests[verificationKey] = { station=stationName, subject=diagnosticSubject, status="REQUESTED", result="EOC started the test. Keep playing normally. Do not press the test button again and do not open Station Build mode. Wait for TEST COMPLETE.", baseline=tonumber(v(diagnosticCase, 8, 0)) or 0, severity=text(v(diagnosticCase, 2, "UNKNOWN")), samples=0 }
+            menu.backgroundTests[verificationKey] = { station=stationName, subject=diagnosticSubject, status="REQUESTED", result="Request sent to EOC; execution and the first completed check are not yet confirmed. Keep playing normally and do not submit duplicates.", baseline=tonumber(v(diagnosticCase, 8, 0)) or 0, severity=text(v(diagnosticCase, 2, "UNKNOWN")), samples=0 }
             menu.refresh()
         end, not backgroundPending and (workingEvidenceMissing or string.upper(text(v(diagnosticCase, 2, ""))) ~= "PLAYER"))
         row[3]:setColSpan(2)
@@ -9470,7 +9544,7 @@ local function dashboard(tableWidget)
     local storyRecords = {}
     for stationIndex, station in ipairs(menu.stations or {}) do
         local name=text(v(station,1,"Station")); local observations={}; local categories={}; local counts={SYSTEMIC=0,RECURRING=0,CANDIDATE=0,RECOVERING=0,RELAPSED=0}; local leading=nil
-        local stationReports={}; local reportKinds={}; for _,report in ipairs(menu.reports or {}) do local title=text(v(report,1,"EOC REPORT")); local body=text(v(report,2,"")); local stamp=tonumber(v(report,4,0)) or 0; if (menu.narrativeScope=="history" or cutoff<=0 or (menu.narrativeScope=="review" and stamp>cutoff) or (menu.narrativeScope~="review" and stamp>=cutoff)) and (string.find(title,name,1,true) or string.find(body,"Station: "..name,1,true)) then stationReports[#stationReports+1]=report; reportKinds[title]=true end end
+        local stationReports={}; local reportKinds={}; for _,report in ipairs(menu.reports or {}) do local title=text(v(report,1,"EOC REPORT")); local body=text(v(report,2,"")); local stamp=tonumber(v(report,4,0)) or 0; if tonumber(report[6])~=1 and (menu.narrativeScope=="history" or cutoff<=0 or (menu.narrativeScope=="review" and stamp>cutoff) or (menu.narrativeScope~="review" and stamp>=cutoff)) and (string.find(title,name,1,true) or string.find(body,"Station: "..name,1,true)) then stationReports[#stationReports+1]=report; reportKinds[title]=true end end
         for _,obs in ipairs(stationObservations(name)) do local stamp=math.max(tonumber(v(obs,16,0)) or 0,tonumber(v(obs,17,0)) or 0,tonumber(v(obs,18,0)) or 0); if menu.narrativeScope=="history" or cutoff<=0 or stamp>=cutoff then observations[#observations+1]=obs; categories[text(v(obs,2,"OPERATIONS"))]=true; local state=text(v(obs,4,"BASELINE")); counts[state]=(counts[state] or 0)+1; if not leading or (({RELAPSED=5,SYSTEMIC=4,RECURRING=3,CANDIDATE=2,RECOVERING=1})[state] or 0) > (({RELAPSED=5,SYSTEMIC=4,RECURRING=3,CANDIDATE=2,RECOVERING=1})[text(v(leading,4,"BASELINE"))] or 0) then leading=obs end end end
         local cases=stationCases(name)
         if #observations>0 or #cases>0 or #stationReports>0 then storyRecords[#storyRecords+1]={ stationIndex=stationIndex, station=station, name=name, observations=observations, categories=categories, counts=counts, leading=leading, reports=stationReports, reportKinds=reportKinds, cases=cases } end
@@ -9671,7 +9745,7 @@ local function addOperationsControls(tableWidget)
 
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addModeButton(row, 1, "TRADE MODE: ADVISOR", menu.mode == "ADVISOR", not menu.settingsChangeRunning, function()
+    addModeButton(row, 1, menu.mode == "ADVISOR" and "TRADE ADVISOR — ACTIVE" or "TRADE MODE: ADVISOR", menu.mode == "ADVISOR", not menu.settingsChangeRunning, function()
         menu.settingsChangeRunning = true
         menu.settingsStatus = "STATUS: APPLYING ADVISOR MODE..."
         raise("trade.advisor", {})
@@ -9679,7 +9753,7 @@ local function addOperationsControls(tableWidget)
         menu.refresh()
     end)
     row[3]:setColSpan(2)
-    addModeButton(row, 3, "TRADE MODE: MANAGED", menu.mode == "MANAGED", not menu.settingsChangeRunning, function()
+    addModeButton(row, 3, menu.mode == "MANAGED" and "MANAGED TRADE — RUNNING" or "TRADE MODE: MANAGED", menu.mode == "MANAGED", not menu.settingsChangeRunning, function()
         menu.settingsChangeRunning = true
         menu.settingsStatus = "STATUS: APPLYING MANAGED TRADE..."
         raise("trade.managed", {})
@@ -9693,7 +9767,7 @@ local function addOperationsControls(tableWidget)
     addModeButton(
         row,
         1,
-        menu.shipmode == "DISABLED" and "SHIP ASSIGNMENT: DISABLED" or "SHIP ASSIGNMENT: ENABLED",
+        menu.shipmode == "DISABLED" and "SHIP ASSIGNMENT: OFF" or "SHIP ASSIGNMENT: RUNNING",
         menu.shipmode ~= "DISABLED",
         not menu.settingsChangeRunning,
         function()
@@ -9713,7 +9787,7 @@ local function addOperationsControls(tableWidget)
     local assignmentEnabled = menu.shipmode ~= "DISABLED"
     row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addModeButton(row, 1, "APPROVAL REQUIRED", menu.shipmode == "APPROVAL REQUIRED", assignmentEnabled and not menu.settingsChangeRunning, function()
+    addModeButton(row, 1, menu.shipmode == "APPROVAL REQUIRED" and "APPROVAL REQUIRED — ACTIVE" or "APPROVAL REQUIRED", menu.shipmode == "APPROVAL REQUIRED", assignmentEnabled and not menu.settingsChangeRunning, function()
         menu.settingsChangeRunning = true
         menu.settingsStatus = "STATUS: APPLYING APPROVAL REQUIRED..."
         raise("shipping.approval", {})
@@ -9722,7 +9796,7 @@ local function addOperationsControls(tableWidget)
         menu.refresh()
     end)
     row[3]:setColSpan(2)
-    addModeButton(row, 3, "AUTO-ASSIGN REGISTERED", menu.shipmode == "AUTO-ASSIGN REGISTERED", assignmentEnabled and not menu.settingsChangeRunning, function()
+    addModeButton(row, 3, menu.shipmode == "AUTO-ASSIGN REGISTERED" and "AUTO-ASSIGN REGISTERED — RUNNING" or "AUTO-ASSIGN REGISTERED", menu.shipmode == "AUTO-ASSIGN REGISTERED", assignmentEnabled and not menu.settingsChangeRunning, function()
         menu.settingsChangeRunning = true
         menu.settingsStatus = "STATUS: APPLYING AUTO-ASSIGN REGISTERED..."
         raise("shipping.auto", {})
@@ -9809,12 +9883,17 @@ local function addReportsControls(tableWidget)
 end
 
 function menu.reportSame(a,b)
+    if not a or not b then return false end
+    local aid,bid=tonumber(a[5]),tonumber(b[5])
+    if aid and aid>0 or bid and bid>0 then return aid~=nil and aid>0 and aid==bid end
     return a and b and a[1]==b[1] and a[2]==b[2] and a[4]==b[4]
 end
 
 function menu.reportArchived(_,id)
-    for _,report in ipairs(menu.reports or {}) do if tonumber(report[5])==tonumber(id) and tonumber(id)>0 then report[6]=1 end end
-    menu.reportArchiveNotice="Reviewed report archived. Retained copy remains in ALL RETAINED REPORTS and Logbook > Tips."
+    id=tonumber(id)
+    if not id or id~=id or id==math.huge or id<=0 or id~=math.floor(id) then return end
+    for _,report in ipairs(menu.reports or {}) do if tonumber(report[5])==id then report[6]=1 end end
+    menu.reportArchiveNotice="Card archived and hidden from normal History views. Evidence remains under ALL RETAINED REPORTS. Ongoing checks and deliveries continue."
     local pending=menu.reportArchivePending;menu.reportArchivePending=nil
     if menu.page=="reports" and pending and pending.id==tonumber(id) and menu.reportSame(menu.reportAnchor,pending.record) then menu.reportReading=false;menu.reportAnchor=nil;menu.refresh() end
 end
@@ -9877,8 +9956,14 @@ function menu.reportTextSlice(body, offset, width, height)
     end
     if best<offset then return "",offset end
     if best<#body then
-        local space=body:sub(offset,best):match(".*()%s")
-        if space and space>(best-offset+1)*0.6 then best=offset+space-1 end
+        local slice=body:sub(offset,best)
+        local newline=slice:match(".*()\n")
+        if newline and newline>#slice*0.35 then
+            best=offset+newline-1
+        else
+            local space=slice:match(".*()%s")
+            if space and space>#slice*0.6 then best=offset+space-1 end
+        end
     end
     return body:sub(offset,best),best+1
 end
@@ -9894,15 +9979,15 @@ function menu.reportReader(tableWidget,record,current)
     addButton(row,2,"SUMMARY",function() if current() then menu.reportMode="summary"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.refresh() end end,true)
     addButton(row,3,"SUPPORTING EVIDENCE",function() if current() then menu.reportMode="evidence"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.refresh() end end,evidence~="")
     addButton(row,4,"ORIGINAL REPORT",function() if current() then menu.reportMode="original"; menu.reportTextOffset=1; menu.reportTextBack={}; menu.refresh() end end,true)
-    local linked=(tonumber(record[5]) or 0)>0 and (tonumber(record[7]) or 0)>0
+    local linked=(tonumber(record[5]) or 0)>0
     row=tableWidget:addRow(true);row[1]:setColSpan(4)
-    addButton(row,1,tonumber(record[6])==1 and "REVIEWED — ARCHIVED" or "REVIEWED — ARCHIVE CLOSED REPORT",function()
+    addButton(row,1,tonumber(record[6])==1 and "ARCHIVED CARD" or "ARCHIVE CARD — KEEP EVIDENCE AND WORK",function()
         if not current() or not menu.reportSame(menu.reportAnchor,record) or not linked or tonumber(record[6])==1 then return end
-        menu.reportArchiveNotice="Checking current closure before archiving; no work will be cancelled."
+        menu.reportArchiveNotice="Archiving this card only; checks and deliveries will continue."
         menu.reportArchivePending={id=tonumber(record[5]),record=record}
         raise("report.archive",{id=record[5]})
     end,linked and tonumber(record[6])~=1)
-    menu.readingNotice(tableWidget,menu.reportArchiveNotice or (linked and "Archive checks exact recovery closure and current stock. Merely reading does not acknowledge this report." or "Legacy report has no exact recovery link; closure cannot be inferred. Original evidence remains available."))
+    menu.readingNotice(tableWidget,menu.reportArchiveNotice or (linked and "Archive hides this report card from normal History views. It does not resolve the problem or cancel work. Show all retained reports to read it again." or "This legacy report has no stable report ID yet. Evidence remains available; no work has been cancelled."))
     row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(text(record[1]),{wordwrap=false})
     row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(text(record[3]).." | "..string.upper(mode).." | Recorded state, not a fresh assessment",{wordwrap=false})
     pixels,pool,pitch=menu.readingBudget(tableWidget,1)
@@ -9964,6 +10049,17 @@ function menu.reportCenterBody(tableWidget)
 end
 
 local function reportsCenter(tableWidget)
+    local frame=menu.frame
+    local source=tableWidget:addRow(true);source[1]:setColSpan(2);source[3]:setColSpan(2)
+    addButton(source,1,"MANUAL REPORTS",function()
+        if menu.page~="reports" or menu.frame~=frame then return end
+        menu.autoReportsView=false;menu.refresh()
+    end,true)
+    addButton(source,3,"AUTOMATIC REPORTS",function()
+        if menu.page~="reports" or menu.frame~=frame then return end
+        menu.openAutoReports()
+    end,true)
+    if menu.autoReportsView then menu.autoReportsCenter(tableWidget);return end
     local pixels,pool,pitch=menu.readingBudget(tableWidget,0)
     if menu.reportOrigin and pool>4 and pixels>pitch*5 then
         local origin=menu.reportOrigin
@@ -9987,6 +10083,10 @@ local function stationWorkspace(tableWidget)
         if menu.playerStationDetail == stationKey then menu.playerStationDetail=nil else menu.playerStationDetail=stationKey end
         menu.refresh()
     end,station ~= nil)
+    local historyRow=tableWidget:addRow(true);historyRow[1]:setColSpan(4)
+    addButton(historyRow,1,"STATION HEALTH HISTORY",function()
+        if menu.page=="stations" and selectedStation()==station then menu.openInsights("health",station) end
+    end,station~=nil)
     if station and menu.playerStationDetail ~= stationKey then menu.playerTaskList(tableWidget,station); return end
     section(tableWidget, "SELECTED STATION")
 
@@ -10223,6 +10323,415 @@ local function commandOSBoot(tableWidget)
     end
 end
 
+-- Retained health/learning evidence: opening and paging never collect or change gameplay.
+function menu.openInsights(view,station)
+    if view~="health" and view~="learning" then return end
+    local id=""
+    if view=="health" then
+        id=menu.componentIdentity(v(station,24,nil))
+        if not id or id=="" then return end
+    end
+    local key=view..":"..id
+    local previous=menu.insights
+    menu.insightsSerial=(menu.insightsSerial or 0)+1
+    menu.insights={view=view,station=station,key=key,request="insights:"..menu.insightsSerial,
+        deadline=getElapsedTime()+10,page=1,rows=previous and previous.key==key and previous.rows or nil,
+        notice="Loading saved evidence; this does not start a new scan."}
+    menu.page="insights";menu.activeTab=view=="health" and "stations" or "reports"
+    menu.refresh()
+    raise("insights.read",{request=menu.insights.request,view=view,station=id})
+end
+function menu.insightsBegin(_,token)
+    local s=menu.insights
+    if s and s.request and type(token)=="string" and s.request==token then s.pending={rows={},row={}} end
+end
+function menu.insightsField(key,value)
+    local s=menu.insights;local p=s and s.pending
+    if not p or p.invalid then return end
+    if key=="count" then
+        if p.count~=nil or type(value)~="number" or value~=math.floor(value) or value<0 or value>(s.view=="health" and 72 or 128) then p.invalid=true else p.count=value end
+        return
+    end
+    if p.row[key]~=nil then p.invalid=true;return end
+    if key=="units" or key=="time" then
+        if type(value)~="number" or value~=value or value==math.huge or value<0 or (key=="units" and value~=math.floor(value)) then p.invalid=true;return end
+    elseif (key~="label" and key~="status") or type(value)~="string" then p.invalid=true;return end
+    p.row[key]=value
+end
+function menu.insightsRow(_,index)
+    local s=menu.insights;local p=s and s.pending
+    if not p or p.invalid then return end
+    local r=p.row
+    if not p.count or index~=#p.rows+1 or index>p.count or r.label==nil or r.status==nil or r.units==nil or r.time==nil then p.invalid=true;return end
+    p.rows[#p.rows+1]=r;p.row={}
+end
+function menu.insightsComplete(_,token)
+    local s=menu.insights
+    if not s or not s.request or s.request~=token then return end
+    local p=s.pending;s.request=nil;s.pending=nil;s.deadline=nil
+    if not p or p.invalid or p.count~=#p.rows or next(p.row)~=nil then
+        s.notice="Incomplete evidence response; previous complete snapshot preserved."
+    else s.rows=p.rows;s.notice="Saved evidence received. Times are simulation time; not a fresh assessment." end
+    if menu.page=="insights" then menu.refresh() end
+end
+function menu.insightsError(_,token)
+    local s=menu.insights
+    if not s or not s.request or s.request~=token then return end
+    s.request=nil;s.pending=nil;s.deadline=nil
+    s.notice="Evidence unavailable for this request. Previous snapshot and saved records are preserved."
+    if menu.page=="insights" then menu.refresh() end
+end
+function menu.insightsCenter(t)
+    local s=menu.insights;if not s then menu.readingNotice(t,"Choose a station history or learned-partners view.");return end
+    local frame=menu.frame
+    local function current() return menu.page=="insights" and menu.insights==s and menu.frame==frame end
+    section(t,s.view=="health" and "STATION HEALTH — OBSERVED HISTORY" or "LEARNED TRADE PARTNERS — CONFIRMED TRANSFERS")
+    local row=t:addRow(true);row[1]:setColSpan(2);row[3]:setColSpan(2)
+    addButton(row,1,"REFRESH SAVED EVIDENCE",function() if current() then menu.openInsights(s.view,s.station) end end,true)
+    addButton(row,3,s.view=="health" and "BACK TO STATIONS" or "BACK TO AUTOMATIC MANAGER",function() if current() then menu.page=s.view=="health" and "stations" or "autonomy";menu.activeTab=s.view=="health" and "stations" or "settings";menu.refresh() end end,true)
+    menu.readingNotice(t,s.notice)
+    menu.readingNotice(t,s.view=="health" and "Up to 72 observations, at least five simulation minutes apart. Status colours show EOC's recorded assessment; bars count active recurring-evidence records, not profit or a health percentage. MONITORING is not proof that every system is healthy. History begins with this build; gaps are not filled in."
+        or "Each row is one station / ware / direction / partner memory. Units are confirmed native transfers, not stock rises or a count of unique routes. Memory holds up to 128 partners; old entries are not guaranteed current routes or profit. Fresh legal offers are checked before reuse.")
+    local rows=s.rows
+    if not rows or #rows==0 then menu.readingNotice(t,not rows and "No complete snapshot received yet." or (s.view=="health" and "No retained samples yet. Let the normal station analysis run; opening this page does not force a sample." or "No confirmed trade-partner memories yet. Open Automatic Reports to distinguish pending, blocked and unconfirmed deliveries."));return end
+    local maximum=1
+    if s.view=="health" then for _,r in ipairs(rows) do maximum=math.max(maximum,r.units) end end
+    local first,last,page,pages=menu.readingWindow(t,#rows,s.page,1)
+    row=t:addRow(true);row[2]:setColSpan(2):createText("PAGE "..page.." / "..pages)
+    addButton(row,1,"PREVIOUS",function() if current() then s.page=page-1;menu.refresh() end end,page>1)
+    addButton(row,4,"NEXT",function() if current() then s.page=page+1;menu.refresh() end end,page<pages)
+    for i=first,last do
+        local r=rows[i]
+        local color=(r.status=="CRITICAL" or r.status=="CHRONIC") and investigationFailColor or ((r.status=="TRANSIENT" or r.status=="RECURRING" or r.status=="RELAPSED") and investigationUnknownColor or navigationStoryColor)
+        if s.view=="health" then
+            row=t:addRow(false)
+            row[1]:setColSpan(2):createText(formatGameTime(r.time).." | "..r.status,{wordwrap=false,color=color})
+            row[3]:createStatusBar({current=r.units,start=0,max=maximum,valueColor=color,markerColor=inactiveModeBackground,height=Helper.standardTextHeight})
+            row[4]:createText(formatNumber(r.units).." records",{halign="right"})
+        else
+            row=t:addRow(false);row[1]:setColSpan(4):createText(r.label.." | "..r.status.." | "..formatNumber(r.units).." units | "..formatGameTime(r.time),{wordwrap=false,color=color})
+        end
+    end
+end
+
+-- On-demand, request-correlated snapshot; incomplete transfers never replace retained UI evidence.
+function menu.openAutoReports(latest)
+    menu.page="reports";menu.activeTab="reports";menu.autoReportsView=true
+    menu.autoReportsLatest=latest==true;menu.autoReportsMode="dashboard"
+    menu.autoReportsSerial=(menu.autoReportsSerial or 0)+1
+    menu.autoReportsRequest="reports:"..tostring(menu.autoReportsSerial);menu.autoReportsPending=nil
+    menu.autoReportsDeadline=getElapsedTime()+10
+    menu.autoReportsNotice="Loading retained automatic reports..."
+    menu.autoReportSelected=nil;menu.autoReportOffset=1;menu.autoReportBack={}
+    menu.refresh()
+    raise("autonomy.reports",menu.autoReportsRequest)
+end
+function menu.autoReportsBegin(_,value)
+    if value~=menu.autoReportsRequest or type(value)~="string" then return end
+    menu.autoReportsPending={request=value,rows={},row={},seen={}}
+end
+function menu.autoReportsField(key,value)
+    local p=menu.autoReportsPending;if not p or p.invalid then return end
+    if key=="count" then
+        if p.count~=nil or type(value)~="number" or value~=value or value<0 or value>64 or value~=math.floor(value) then p.invalid=true;return end
+        p.count=value;return
+    end
+    if p.row[key]~=nil then p.invalid=true;return end
+    if key=="id" or key=="revision" or key=="time" then
+        if type(value)~="number" or value~=value or value==math.huge or value<0 or (key~="time" and (value<1 or value~=math.floor(value))) then p.invalid=true;return end
+    elseif key=="archived" then
+        if value~=0 and value~=1 then p.invalid=true;return end
+    elseif key=="title" or key=="status" or key=="text" then
+        if type(value)~="string" then p.invalid=true;return end
+    else p.invalid=true;return end
+    p.row[key]=value
+end
+function menu.autoReportsCommit(_,value)
+    local p=menu.autoReportsPending;if not p or p.invalid then return end
+    local r=p.row
+    if p.count==nil or value~=#p.rows+1 or value>p.count or r.id==nil or r.revision==nil or r.title==nil or r.status==nil or r.text==nil or r.time==nil then p.invalid=true;return end
+    -- Changed outcome text can legitimately share a route/revision/time; commit index owns snapshot identity.
+    p.rows[#p.rows+1]=r;p.row={}
+end
+function menu.autoReportsComplete(_,value)
+    local p=menu.autoReportsPending
+    if value~=menu.autoReportsRequest or not p or p.request~=value then return end
+    menu.autoReportsPending=nil;menu.autoReportsRequest=nil;menu.autoReportsDeadline=nil
+    if p.invalid or p.count~=#p.rows or next(p.row)~=nil then
+        menu.autoReportsNotice="Incomplete report response; previous snapshot preserved. Refresh to retry."
+    else
+        menu.autoReportsRows=p.rows;menu.autoReportsNotice="Latest retained automatic outcomes (up to 64), newest first. Recorded evidence, not a fresh assessment."
+        local verify=menu.autoArchiveVerify
+        if verify then
+            local matches,archived=0,false
+            for _,record in ipairs(p.rows) do
+                if record.id==verify.id and record.revision==verify.revision and record.time==verify.time and record.text==verify.text then
+                    matches=matches+1;archived=record.archived==1
+                end
+            end
+            if matches==1 and archived then
+                menu.autoReportsNotice="Card archived and verified from saved state. Evidence and ongoing work were preserved; use Show archived to read it."
+            elseif matches==1 then
+                menu.autoReportsNotice="Archive was not saved for this exact outcome. Evidence and ongoing work are unchanged."
+            else
+                menu.autoReportsNotice="Archive saved-state verification was inconclusive; exact evidence was preserved."
+            end
+            menu.autoArchiveVerify=nil
+        end
+        menu.autoReportsPage=1;menu.autoReportSelected=nil
+        if menu.autoReportsLatest then menu.autoReportSelected=menu.autoReportsVisible()[1];menu.autoReportEvidence=false end
+    end
+    menu.autoReportsLatest=nil
+    if menu.page=="reports" and menu.autoReportsView then menu.refresh() end
+end
+
+function menu.autoActivityField(key,value)
+    local row=menu.autoActivityIncoming
+    if not row then row={};menu.autoActivityIncoming=row end
+    if row.invalid or row[key]~=nil then row.invalid=true;return end
+    if key=="id" or key=="revision" or key=="time" then
+        if type(value)~="number" or value~=value or value==math.huge or value<0 or (key~="time" and (value<1 or value~=math.floor(value))) then row.invalid=true;return end
+    elseif key=="title" or key=="status" or key=="text" then
+        if type(value)~="string" then row.invalid=true;return end
+    else row.invalid=true;return end
+    row[key]=value
+end
+
+function menu.autoActivityCommit()
+    local row=menu.autoActivityIncoming;menu.autoActivityIncoming=nil
+    if not row or row.invalid or row.id==nil or row.revision==nil or row.title==nil or row.status==nil or row.text==nil or row.time==nil then return end
+    local rows=menu.autoReportsRows or {}
+    for index=#rows,1,-1 do
+        local old=rows[index]
+        if old.id==row.id and old.revision==row.revision and old.time==row.time and old.text==row.text then table.remove(rows,index) end
+    end
+    row.archived=0
+    table.insert(rows,1,row)
+    while #rows>64 do table.remove(rows) end
+    menu.autoReportsRows=rows
+    menu.autoReportsNotice="Live automatic activity — newest first. Up to 64 saved outcomes retained; manual Refresh resynchronizes saved history."
+    if menu.page=="reports" and menu.autoReportsView and menu.autoReportsMode=="dashboard" and not menu.autoReportSelected then menu.refresh() end
+end
+function menu.autoReportsError(_,value)
+    if not menu.autoReportsRequest or value~=menu.autoReportsRequest then return end
+    menu.autoReportsPending=nil;menu.autoReportsRequest=nil;menu.autoReportsDeadline=nil
+    menu.autoReportsLatest=nil
+    if menu.autoArchiveVerify then
+        menu.autoReportsNotice="Archive saved-state verification unavailable; exact evidence and ongoing work were preserved."
+        menu.autoArchiveVerify=nil
+    else
+        menu.autoReportsNotice="Automatic report data unavailable; saved evidence and previous snapshot preserved."
+    end
+    if menu.page=="reports" and menu.autoReportsView then menu.refresh() end
+end
+function menu.autoReportsTimeout(now)
+    if menu.autoArchivePending and now>=menu.autoArchivePending.deadline then
+        local record=menu.autoArchivePending.record;menu.autoArchivePending=nil
+        menu.verifyAutoArchive(record)
+    end
+    if not menu.autoReportsRequest or not menu.autoReportsDeadline or now<menu.autoReportsDeadline then return end
+    menu.autoReportsPending=nil;menu.autoReportsRequest=nil;menu.autoReportsDeadline=nil;menu.autoReportsLatest=nil
+    menu.autoReportsNotice="Report response not received. This does not mean there are no reports or that automatic work stopped. Previous evidence is preserved. Refresh to retry once."
+    if menu.page=="reports" and menu.autoReportsView then menu.refresh() end
+end
+
+function menu.verifyAutoArchive(record)
+    if not record or menu.autoReportsRequest then
+        menu.autoReportsNotice="Archive confirmation was delayed. Select Refresh Automatic Reports once to verify saved status; existing work was not cancelled."
+        if menu.page=="reports" and menu.autoReportsView then menu.refresh() end
+        return
+    end
+    menu.autoArchiveVerify={id=record.id,revision=record.revision,time=record.time,text=record.text}
+    menu.autoReportsSerial=(menu.autoReportsSerial or 0)+1
+    menu.autoReportsRequest="reports:"..tostring(menu.autoReportsSerial);menu.autoReportsPending=nil
+    menu.autoReportsDeadline=getElapsedTime()+10
+    menu.autoReportsNotice="Archive response received; verifying the exact saved outcome..."
+    if menu.page=="reports" and menu.autoReportsView then menu.refresh() end
+    raise("autonomy.reports",menu.autoReportsRequest)
+end
+function menu.autoReportsVisible()
+    local rows={}
+    for _,record in ipairs(menu.autoReportsRows or {}) do
+        if record.archived~=1 or menu.autoShowArchived then rows[#rows+1]=record end
+    end
+    return rows
+end
+function menu.archiveAutoReport(record)
+    if menu.autoArchivePending or menu.page~="reports" or not menu.autoReportsView or menu.autoReportSelected~=record then return end
+    local matches=0
+    for _,item in ipairs(menu.autoReportsRows or {}) do
+        if item.id==record.id and item.revision==record.revision and item.time==record.time and item.text==record.text then matches=matches+1 end
+    end
+    if matches~=1 then menu.autoReportsNotice="This outcome has an ambiguous identity; evidence preserved. Refresh before archiving.";menu.refresh();return end
+    menu.autoArchiveSerial=(menu.autoArchiveSerial or 0)+1
+    local request="archive:"..menu.autoArchiveSerial
+    menu.autoArchivePending={request=request,record=record,deadline=getElapsedTime()+10}
+    raise("autonomy.archive",{request=request,id=record.id,revision=record.revision,time=record.time,text=record.text})
+end
+function menu.autoArchiveComplete(request,saved)
+    local p=menu.autoArchivePending
+    if not p or request~=p.request then return end
+    menu.autoArchivePending=nil
+    if saved then
+        p.record.archived=1
+        if menu.autoReportSelected==p.record then menu.autoReportSelected=nil end
+        for _,record in ipairs(menu.autoReportsRows or {}) do
+            if record.id==p.record.id and record.revision==p.record.revision and record.time==p.record.time and record.text==p.record.text then
+                record.archived=1
+                if menu.autoReportSelected==record then menu.autoReportSelected=nil end
+            end
+        end
+        menu.autoReportsNotice="Card archived. Evidence and ongoing work preserved; use Show archived to read it."
+    else
+        menu.verifyAutoArchive(p.record)
+        return
+    end
+    if menu.page=="reports" and menu.autoReportsView then menu.refresh() end
+end
+function menu.autoReportGroup(status)
+    if status=="RESOLVED" or status=="NOT CURRENTLY FAILING" then return 1 end
+    if status=="PLAYER ACTION NEEDED" or status=="BLOCKED" then return 2 end
+    if status=="AWAITING DELIVERY" or status=="DELIVERY OBSERVED" or status=="CHECKING" then return 3 end
+    return 4
+end
+function menu.autoReportStats(records)
+    local counts={0,0,0,0}
+    for _,record in ipairs(records) do local group=menu.autoReportGroup(record.status);counts[group]=counts[group]+1 end
+    return counts
+end
+
+function menu.autoActivityState(status)
+    if status=="RESOLVED" or status=="NOT CURRENTLY FAILING" or status=="DELIVERY OBSERVED" then return "COMPLETED",investigationPassColor,"EOC verified that this recorded check completed or is currently clear." end
+    if status=="PLAYER ACTION NEEDED" or status=="BLOCKED" then return "BLOCKED",investigationFailColor,"EOC stopped safely because it needs a player change, permission, compatible ship, usable route, or other required evidence." end
+    if status=="AWAITING DELIVERY" then return "WAITING",investigationUnknownColor,"EOC started supported work and is waiting for an X4 order, construction, transfer, or delivery result." end
+    if status=="CHECKING" then return "RUNNING",navigationStoryColor,"EOC is actively checking evidence or performing one authorized bounded action." end
+    return "RECORDED",availableModeBackground,"EOC saved information or an outcome. RECORDED alone does not mean that work is active or successful."
+end
+
+function menu.autoActivityAction(record)
+    local first=(record.text or ""):match("RECORDED OUTCOME:[^\n]*\n([^\n]+)") or (record.text or ""):match("([^\n]+)") or "Recorded outcome available."
+    return first:gsub("\r","")
+end
+
+function menu.autoActivityCenter(t,current)
+    local source=menu.autoReportsRows or {}
+    local pixels,pool,pitch=menu.readingBudget(t,8)
+    local capacity=math.max(0,math.min(12,#source,pool,math.floor(pixels/pitch)))
+    if capacity<1 then
+        menu.readingNotice(t,"Recent activity is available through Browse All Reports on this display size.")
+        return
+    end
+    section(t,"HOW TO READ THE DASHBOARD")
+    local row=t:addRow(false);row[1]:setColSpan(4):createText("The bars group saved reports. NEEDS PLAYER includes individual rows whose live state is BLOCKED.",{wordwrap=true,mouseOverText="Summary bars count report groups; the STATE column describes each individual live activity row."})
+    row=t:addRow(false)
+    local keys={{"RUNNING","Actively checking",navigationStoryColor,"EOC is actively checking evidence or performing one authorized bounded action."},{"WAITING","Waiting for X4",investigationUnknownColor,"EOC started supported work and is waiting for an X4 order, construction, transfer, or delivery result."},{"BLOCKED","Needs player change",investigationFailColor,"EOC stopped safely because it needs a player change, permission, compatible ship, usable route, or other required evidence."},{"COMPLETED","Verified clear / done",investigationPassColor,"EOC verified that this recorded check completed or is currently clear."}}
+    for i,key in ipairs(keys) do row[i]:createText(key[1].." — "..key[2],{wordwrap=true,color=key[3],mouseOverText=key[4]}) end
+    row=t:addRow(false);row[1]:setColSpan(4):createText("RECORDED — Saved information; not proof that work is active or successful.",{wordwrap=true,color=availableModeBackground,mouseOverText="EOC saved information or an outcome. RECORDED alone does not mean that work is active or successful."})
+    section(t,"LIVE AUTOMATIC ACTIVITY — NEWEST FIRST")
+    local row=t:addRow(false)
+    row[1]:createText("SIM TIME",{wordwrap=false});row[2]:createText("STATE",{wordwrap=false});row[3]:createText("STATION / SUBJECT",{wordwrap=false});row[4]:createText("CURRENT ACTION",{wordwrap=false})
+    for i=1,capacity do
+        local record=source[i]
+        local state,color,meaning=menu.autoActivityState(record.status)
+        row=t:addRow(true)
+        row[1]:createText(formatGameTime(record.time),{wordwrap=false})
+        row[2]:createText(state,{wordwrap=false,color=color,mouseOverText=meaning})
+        row[3]:createText((record.title or "Recorded activity"):gsub("[\r\n]"," "),{wordwrap=false})
+        local action=menu.autoActivityAction(record)
+        row[4]:createText(action,{wordwrap=false,mouseOverText=action})
+    end
+    row=t:addRow(true);row[1]:setColSpan(4)
+    addButton(row,1,"OPEN LATEST ACTIVITY REPORT",function() if current() and source[1] then menu.autoReportSelected=source[1];menu.autoReportEvidence=false;menu.autoReportOffset=1;menu.autoReportBack={};menu.refresh() end end,source[1]~=nil)
+    menu.readingNotice(t,"New saved outcomes appear immediately while EOC is open. Latest 12 shown; up to 64 retained. Manual Refresh resynchronizes saved history. No polling, animation, countdown, or timed redraw.")
+end
+function menu.autoReportSummary(record)
+    -- Preserve the recorded wording; do not infer money, causation or completion from prose.
+    local body=record.text
+    local ending=body:find("\nSOURCE / BLOCKER",1,true)
+    if ending then body=body:sub(1,ending-1) end
+    return record.title.."\nRECORDED STATUS: "..record.status.."\nRound "..record.revision.." | Simulation seconds: "..record.time.."\n\n"..body.."\n\nOpen FULL EVIDENCE for the recorded checks and next steps. This is not a fresh assessment."
+end
+function menu.autoReportsCenter(t)
+    local frame=menu.frame
+    local function current() return menu.page=="reports" and menu.autoReportsView and menu.frame==frame end
+    local row=t:addRow(true);row[1]:setColSpan(2);row[3]:setColSpan(2)
+    addButton(row,1,"REFRESH AUTOMATIC REPORTS",function() if current() then menu.openAutoReports() end end,true)
+    addButton(row,3,"BACK TO AUTOMATIC MANAGER",function() if current() then menu.page="autonomy";menu.activeTab="settings";menu.refresh() end end,true)
+    menu.readingNotice(t,menu.autoReportsNotice or "Select Refresh to read saved automatic outcomes.")
+    row=t:addRow(true);row[1]:setColSpan(4)
+    addButton(row,1,menu.autoShowArchived and "HIDE ARCHIVED CARDS" or "SHOW ARCHIVED CARDS",function() if current() then menu.autoShowArchived=not menu.autoShowArchived;menu.autoReportSelected=nil;menu.autoReportsPage=1;menu.refresh() end end,true)
+    local records=menu.autoReportsVisible()
+    local selected=menu.autoReportSelected
+    if selected then
+        row=t:addRow(true);row[1]:setColSpan(2);row[3]:setColSpan(2)
+        addButton(row,1,"AUTOMATIC REPORT LIST",function() if current() then menu.autoReportSelected=nil;menu.autoReportsMode="list";menu.refresh() end end,true)
+        addButton(row,3,menu.autoReportEvidence and "SHOW SUMMARY" or "FULL EVIDENCE",function() if current() and menu.autoReportSelected==selected then menu.autoReportEvidence=not menu.autoReportEvidence;menu.autoReportOffset=1;menu.autoReportBack={};menu.refresh() end end,true)
+        row=t:addRow(true);row[1]:setColSpan(4)
+        addButton(row,1,selected.archived==1 and "ARCHIVED - EVIDENCE RETAINED" or "ARCHIVE CARD - KEEP EVIDENCE AND WORK",function() if current() and selected.archived~=1 then menu.archiveAutoReport(selected) end end,selected.archived~=1 and not menu.autoArchivePending)
+        local body=menu.autoReportEvidence and (selected.title.."\n"..selected.status.." | Simulation seconds: "..selected.time.." | Round "..selected.revision.."\n\n"..selected.text) or menu.autoReportSummary(selected)
+        local pixels,pool,pitch=menu.readingBudget(t,1)
+        if pool<2 or pixels<pitch*2 then menu.readingNotice(t,"Not enough display space for report text.");return end
+        local offset=menu.autoReportOffset or 1
+        local chunk,nextOffset=menu.reportTextSlice(body,offset,math.max(1,math.floor((menu.listContentWidth or 0)-Helper.scaleX(60))),pixels-pitch)
+        if chunk=="" then menu.readingNotice(t,"Not enough display space for report text.");return end
+        local back=menu.autoReportBack or {};menu.autoReportBack=back
+        row=t:addRow(true);row[2]:setColSpan(2):createText("TEXT PAGE "..(#back+1),{wordwrap=false})
+        addButton(row,1,"PREVIOUS TEXT PAGE",function() if current() and menu.autoReportSelected==selected and #back>0 then menu.autoReportOffset=table.remove(back);menu.refresh() end end,#back>0)
+        addButton(row,4,"NEXT TEXT PAGE",function() if current() and menu.autoReportSelected==selected and nextOffset>offset and nextOffset<=#body then back[#back+1]=offset;menu.autoReportOffset=nextOffset;menu.refresh() end end,nextOffset>offset and nextOffset<=#body)
+        row=t:addRow(false);row[1]:setColSpan(4):createText(chunk,{wordwrap=true})
+        return
+    end
+    if #records==0 then
+        if menu.autoReportsRequest then menu.readingNotice(t,"Waiting for EOC's saved report response; no scan or repair is started by this page.")
+        elseif menu.autoReportsRows==nil then menu.readingNotice(t,"No report snapshot has been received yet. Automatic work and saved evidence are separate from this view.")
+        else menu.readingNotice(t,"No automatic report cards in this view. Archived evidence can be shown above; manual reports are separate.") end
+        return
+    end
+    row=t:addRow(true);row[1]:setColSpan(2);row[3]:setColSpan(2)
+    addButton(row,1,"OUTCOME DASHBOARD",function() if current() then menu.autoReportsMode="dashboard";menu.refresh() end end,true)
+    addButton(row,3,"BROWSE ALL REPORTS",function() if current() then menu.autoReportsMode="list";menu.autoReportsFilter=nil;menu.autoReportsPage=1;menu.refresh() end end,true)
+    if menu.autoReportsMode=="dashboard" then
+        local pixels,pool,pitch=menu.readingBudget(t,0)
+        if pool<7 or pixels<pitch*12 then menu.readingNotice(t,"Compact display: choose BROWSE ALL REPORTS for the measured list.");return end
+        row=t:addRow(true);row[1]:setColSpan(4)
+        addButton(row,1,"OPEN LATEST REPORT",function() if current() then menu.autoReportSelected=records[1];menu.autoReportEvidence=false;menu.autoReportOffset=1;menu.autoReportBack={};menu.refresh() end end,true)
+        local counts=menu.autoReportStats(records)
+        local labels={"Clear / resolved","Needs player","In progress","Other / unknown"}
+        local colors={investigationPassColor,investigationFailColor,navigationStoryColor,investigationUnknownColor}
+        menu.readingNotice(t,#records.." retained reports, not unique routes or profit. Select a category below.")
+        for group,label in ipairs(labels) do
+            -- Same native status-bar descriptor already used by Supply; capped four rows.
+            menu.supplyBar(t,label,counts[group],#records," reports",colors[group])
+        end
+        row=t:addRow(true)
+        for group,label in ipairs(labels) do
+            local filter=group
+            addButton(row,group,label,function() if current() then menu.autoReportsMode="list";menu.autoReportsFilter=filter;menu.autoReportsPage=1;menu.refresh() end end,counts[group]>0)
+        end
+        menu.autoActivityCenter(t,current)
+        return
+    end
+    if menu.autoReportsFilter then
+        local filtered={}
+        for _,record in ipairs(records) do if menu.autoReportGroup(record.status)==menu.autoReportsFilter then filtered[#filtered+1]=record end end
+        records=filtered
+    end
+    if #records==0 then menu.readingNotice(t,"No reports match this category.");return end
+    local first,last,page,pages,capacity=menu.readingWindow(t,#records,menu.autoReportsPage or 1,1)
+    if capacity==0 then menu.readingNotice(t,"Not enough display space for report list.");return end
+    row=t:addRow(true);row[2]:setColSpan(2):createText("PAGE "..page.." / "..pages,{wordwrap=false})
+    addButton(row,1,"PREVIOUS REPORT PAGE",function() if current() then menu.autoReportsPage=page-1;menu.refresh() end end,page>1)
+    addButton(row,4,"NEXT REPORT PAGE",function() if current() then menu.autoReportsPage=page+1;menu.refresh() end end,page<pages)
+    for i=first,last do
+        local record=records[i]
+        -- Button labels are single-line and capped; full labels remain in the measured reader.
+        local label=record.title:gsub("[\r\n]"," ")
+        if #label>120 then local n=120;while label:byte(n+1) and label:byte(n+1)>=128 and label:byte(n+1)<192 do n=n-1 end;label=label:sub(1,n).."..." end
+        row=t:addRow(true);row[1]:setColSpan(4)
+        addButton(row,1,label,function() if current() then menu.autoReportSelected=record;menu.autoReportEvidence=false;menu.autoReportOffset=1;menu.autoReportBack={};menu.refresh() end end,true)
+    end
+end
+
 function menu.autonomyBegin(_,value)
     if type(value)~="number" or value~=value or value<=0 or value~=math.floor(value) or value==math.huge or value<=(menu.autonomySequence or 0) then menu.autonomyPending=nil;return end
     menu.autonomyPending={sequence=value,fields={},count=0}
@@ -10255,28 +10764,36 @@ function menu.autonomyRequest(action,payload)
     raise(action,payload or {})
 end
 function menu.autonomyCenter(tableWidget)
-    section(tableWidget,"OPTIONAL AUTOMATIC MANAGER - EXISTING ASSETS")
+    section(tableWidget,"OPTIONAL AUTOMATIC MANAGER")
     local frame=menu.frame
     if menu.autonomyEditFrame~=frame then menu.autonomyEditing=nil;menu.autonomyEditFrame=frame end
     local function current() return menu.page=="autonomy" and menu.frame==frame end
     local function note(value)
         local row=tableWidget:addRow(false);row[1]:setColSpan(4):createText(value,{wordwrap=true})
     end
-    note("OFF by default. Requires compatible, responsive X4 Diagnostics. Uses eligible assigned/registered ships and current trade rules. No ship purchases, construction, public-offer changes or guaranteed profit.")
+    note("OFF by default. Requires compatible, responsive X4 Diagnostics. Uses eligible assigned/registered ships and current trade rules. Supply-ship purchasing needs the separate opt-in below. No station construction or guaranteed profit.")
     local s=menu.autonomyState
+    local reports=tableWidget:addRow(true);reports[1]:setColSpan(2);reports[3]:setColSpan(2)
+    addButton(reports,1,"VIEW AUTOMATIC REPORTS",function() if current() then menu.openAutoReports() end end,true)
+    addButton(reports,3,"OPEN LATEST REPORT",function() if current() then menu.openAutoReports(true) end end,true)
+    local supply=tableWidget:addRow(true);supply[1]:setColSpan(4)
+    addButton(supply,1,"SUPPLY EXPANSION - SHIP PURCHASE CONSENT AND LIMITS",function() if current() then menu.openSupplyPolicy() end end,true)
     note(s and ((s.enabled==1 and "ENABLED | " or "OFF | ")..s.status) or "Status not loaded. Select REFRESH STATUS; opening this page does not enable automation.")
     local row=tableWidget:addRow(true);row[1]:setColSpan(2);row[3]:setColSpan(2)
     addButton(row,1,"REFRESH STATUS",function() if current() then menu.autonomyRequest("autonomy.status") end end,true)
     addButton(row,3,"STOP NEW AUTOMATIC ACTIONS",function() if current() then menu.autonomyConfirm=nil;menu.autonomyRequest("autonomy.stop") end end,true)
     note("Stopping preserves paid orders and their delivery checks. Manual EOC settings remain separate. Automatic assessments run without opening EOC; unresolved attempts wait before retrying.")
     row=tableWidget:addRow(true);row[1]:setColSpan(4)
-    addButton(row,1,menu.autonomyConfirm and "CONFIRM: ENABLE AUTOMATIC MANAGEMENT" or "ENABLE AUTOMATIC MANAGEMENT...",function()
+    local managerLabel=s and s.enabled==1 and "AUTOMATIC MANAGEMENT: RUNNING" or (menu.autonomyConfirm and "CONFIRM: ENABLE AUTOMATIC MANAGEMENT" or "ENABLE AUTOMATIC MANAGEMENT...")
+    addButton(row,1,managerLabel,function()
         if not current() or not menu.autonomyState or menu.autonomyInvalid then return end
         if menu.autonomyConfirm then menu.autonomyConfirm=nil;menu.autonomyRequest("autonomy.enable")
         else menu.autonomyConfirm=true;menu.refresh(true) end
-    end,s~=nil and s.enabled==0 and not menu.autonomyInvalid)
-    if menu.autonomyConfirm then note("Confirm authorizes bounded trade and compatible existing-ship assignments across your stations, within the saved limits below. Diagnostics is checked again before new actions.") end
+    end,s~=nil and s.enabled==0 and not menu.autonomyInvalid,s and s.enabled==1 and investigationPassColor or nil)
+    if menu.autonomyConfirm then note("Confirm authorizes bounded trade and compatible ship assignments across your stations. Separately enabled supply-purchase consent also applies. Diagnostics is checked again before new actions.") end
     section(tableWidget,"SAVED SPENDING LIMITS (CREDITS)")
+    row=tableWidget:addRow(true);row[1]:setColSpan(4)
+    addButton(row,1,"VIEW LEARNED TRADE PARTNERS AND CONFIRMED UNITS",function() if current() then menu.openInsights("learning") end end,true)
     if s then
         note("Saved: "..tostring(s.orderCap).." per order; "..tostring(s.hourCap).." per hour; keep "..tostring(s.reserve).." in each station account. Outstanding quotes remain counted.")
         local draft=menu.autonomyDraft or {orderCap=s.orderCap,hourCap=s.hourCap,reserve=s.reserve};menu.autonomyDraft=draft
@@ -10300,14 +10817,71 @@ function menu.autonomyCenter(tableWidget)
             menu.autonomyDraft=nil;menu.autonomyNotice=nil;menu.autonomyRequest("autonomy.configure",values)
         end,true)
         note("Active automatic jobs: "..s.jobs.." / 16 | Learned trade partners: "..s.learned.." / 128. Learning uses actual transfers, not stock rises or player checkmarks.")
-        note("Latest outcome: "..s.latest..". Full automatic reports: Logbook > Tips.")
+        note("Latest outcome: "..s.latest..". Select OPEN LATEST REPORT above.")
     end
     if menu.autonomyNotice then note(menu.autonomyNotice) end
 end
 
+function menu.openSupplyPolicy()
+    menu.page="supplyPolicy";menu.activeTab="settings";menu.supplyConfirm=nil;menu.supplyEditing=nil
+    local b=JKEOC_SupplyBridge
+    if b then b.onStatus=function()
+        if not menu.supplyDirty then menu.supplyDraft=nil end
+        if menu.page=="supplyPolicy" and not menu.supplyEditing then menu.refresh(true) end
+    end end
+    menu.refresh();raise("supply.status",{})
+end
+function menu.supplyPolicyCenter(w)
+    section(w,"AUTOMATIC SUPPLY EXPANSION - SEPARATE PERMISSION")
+    local frame=menu.frame
+    local function current() return menu.page=="supplyPolicy" and menu.frame==frame end
+    local function note(text) local row=w:addRow(false);row[1]:setColSpan(4):createText(text,{wordwrap=true}) end
+    local row=w:addRow(true);row[1]:setColSpan(2);row[3]:setColSpan(2)
+    addButton(row,1,"BACK TO AUTOMATIC MANAGER",function() if current() then menu.page="autonomy";menu.supplyConfirm=nil;menu.refresh() end end,true)
+    addButton(row,3,"REFRESH SAVED STATUS",function() if current() then raise("supply.status",{}) end end,true)
+    note("When enabled alongside Automatic Management, EOC checks assigned/registered ships, then may enroll one suitable idle unassigned miner or freighter before ordering an equipped medium supply ship. Native construction resources and delivery still apply.")
+    note("Ice/ores need mineral miners; gases need gas miners; manufactured goods need freighters. Buying a ship does not prove a usable route or successful supply. No station modules are built.")
+    local b=JKEOC_SupplyBridge;local s=b and b.state
+    if not s then note(b and b.policyError or "Saved policy has not loaded. Refresh status; purchasing remains unchanged.");return end
+    note((s.enabled==1 and "PURCHASE CONSENT ENABLED | " or "PURCHASES OFF | ")..s.status)
+    note("Saved limits: "..s.orderCap.." credits per ship; "..s.hourCap.." per hour; keep "..s.reserve.." in your PLAYER account. Reserved/unverified orders continue counting. Retained jobs: "..s.jobs.." / 32.")
+    if not menu.supplyDraft then menu.supplyDraft={orderCap=s.orderCap,hourCap=s.hourCap,reserve=s.reserve} end
+    local draft=menu.supplyDraft
+    for _,entry in ipairs({{"Per ship","orderCap"},{"Per hour","hourCap"},{"Player reserve","reserve"}}) do
+        local key=entry[2];row=w:addRow(true);row[1]:setColSpan(2):createText(entry[1]);row[3]:setColSpan(2):createEditBox({height=Helper.standardButtonHeight}):setText(tostring(draft[key]))
+        row[3].handlers.onEditBoxActivated=function() if current() then menu.supplyEditing=true;menu.supplyConfirm=nil end end
+        row[3].handlers.onEditBoxDeactivated=function(_,v) if current() then menu.supplyEditing=nil;draft[key]=v;menu.supplyDirty=true;menu.supplyConfirm=nil end end
+    end
+    local function submit(enable)
+        if not current() then return end
+        local values={enable=enable}
+        for _,key in ipairs({"orderCap","hourCap","reserve"}) do
+            local v=tonumber(draft[key]);if not v or v~=v or v<0 or v>1000000000 or v~=math.floor(v) then menu.supplyNotice="Enter whole credit limits from 0 to 1,000,000,000.";menu.refresh();return end
+            values[key]=v
+        end
+        if values.orderCap<=0 or values.hourCap<values.orderCap then menu.supplyNotice="Per-ship limit must be positive; hourly limit must cover one ship.";menu.refresh();return end
+        menu.supplyConfirm=nil;menu.supplyDraft=nil;menu.supplyDirty=nil;menu.supplyNotice=nil;raise("supply.configure",values)
+    end
+    row=w:addRow(true);row[1]:setColSpan(4)
+    local purchaseLabel=s.enabled==1 and "SUPPLY PURCHASES: RUNNING" or (menu.supplyConfirm and "CONFIRM: ALLOW AUTOMATIC SUPPLY-SHIP PURCHASES" or "ENABLE PURCHASES WITH THESE LIMITS...")
+    addButton(row,1,purchaseLabel,function()
+        if not current() then return end
+        if menu.supplyConfirm then submit(true) else menu.supplyConfirm=true;menu.refresh(true) end
+    end,s.enabled~=1,s.enabled==1 and investigationPassColor or nil)
+    row=w:addRow(true);row[1]:setColSpan(4)
+    addButton(row,1,"STOP NEW SUPPLY PURCHASES",function()
+        if not current() then return end
+        menu.supplyConfirm=nil
+        raise("supply.configure",{enable=false,orderCap=s.orderCap,hourCap=s.hourCap,reserve=s.reserve})
+    end,true)
+    if menu.supplyConfirm then note("Confirm permits enrolling idle unassigned logistics ships, spending player credits on supply ships, and assigning them through EOC's existing safety checks. Previous existing-assets-only consent did NOT enable this permission.") end
+    if menu.supplyNotice then note(menu.supplyNotice) end
+    note("Stopping preserves paid orders, receipt evidence and reservations. Review results in History > Automatic Reports. Automatic Management must also be enabled; this page alone does not start it.")
+end
+
 local function globalSettings(tableWidget)
     local automatic=tableWidget:addRow(true);automatic[1]:setColSpan(4)
-    addButton(automatic,1,"OPTIONAL AUTOMATIC MANAGER - EXISTING ASSETS",function() menu.playerRoute("autonomy") end,true)
+    addButton(automatic,1,"OPTIONAL AUTOMATIC MANAGER",function() menu.playerRoute("autonomy") end,true)
     section(tableWidget,"WHAT MAY EOC CHANGE?")
     pair(tableWidget,"TRADE AUTHORITY",menu.mode,"SHIP ASSIGNMENT",menu.shipmode)
     pair(tableWidget,"CONSTRUCTION FUNDING",menu.constructionAuthority,"FUNDING LIMIT","EXACT VERIFIED SHORTFALL")
@@ -10401,7 +10975,7 @@ local function globalSettings(tableWidget)
     pair(tableWidget, "APPROVAL", "Player confirms each exact station shortfall.", "DO IT ALL", "Funds verified construction and assigns eligible idle builders automatically.")
     local constructionRow = tableWidget:addRow(true)
     constructionRow[1]:setColSpan(2)
-    addModeButton(constructionRow, 1, "APPROVAL REQUIRED", menu.constructionAuthority == "APPROVAL REQUIRED", not menu.settingsChangeRunning, function()
+    addModeButton(constructionRow, 1, menu.constructionAuthority == "APPROVAL REQUIRED" and "APPROVAL REQUIRED — ACTIVE" or "APPROVAL REQUIRED", menu.constructionAuthority == "APPROVAL REQUIRED", not menu.settingsChangeRunning, function()
         menu.settingsChangeRunning = true
         menu.settingsStatus = "STATUS: APPLYING CONSTRUCTION APPROVAL MODE..."
         menu.constructionAuthority = "APPROVAL REQUIRED"
@@ -10409,7 +10983,7 @@ local function globalSettings(tableWidget)
         menu.refresh()
     end)
     constructionRow[3]:setColSpan(2)
-    addModeButton(constructionRow, 3, "DO IT ALL", menu.constructionAuthority == "DO IT ALL", not menu.settingsChangeRunning, function()
+    addModeButton(constructionRow, 3, menu.constructionAuthority == "DO IT ALL" and "DO IT ALL — RUNNING" or "DO IT ALL", menu.constructionAuthority == "DO IT ALL", not menu.settingsChangeRunning, function()
         menu.settingsChangeRunning = true
         menu.settingsStatus = "STATUS: ENABLING DO IT ALL MODE..."
         menu.constructionAuthority = "DO IT ALL"
@@ -10426,7 +11000,7 @@ local function globalSettings(tableWidget)
     )
     local row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addModeButton(row, 1, "ADVISOR MODE", menu.mode == "ADVISOR", not menu.settingsChangeRunning, function()
+    addModeButton(row, 1, menu.mode == "ADVISOR" and "ADVISOR MODE — ACTIVE" or "ADVISOR MODE", menu.mode == "ADVISOR", not menu.settingsChangeRunning, function()
         menu.settingsChangeRunning = true
         menu.settingsStatus = "STATUS: APPLYING ADVISOR MODE..."
         raise("trade.advisor", {})
@@ -10434,7 +11008,7 @@ local function globalSettings(tableWidget)
         menu.refresh()
     end)
     row[3]:setColSpan(2)
-    addModeButton(row, 3, "MANAGED TRADE", menu.mode == "MANAGED", not menu.settingsChangeRunning, function()
+    addModeButton(row, 3, menu.mode == "MANAGED" and "MANAGED TRADE — RUNNING" or "MANAGED TRADE", menu.mode == "MANAGED", not menu.settingsChangeRunning, function()
         menu.settingsChangeRunning = true
         menu.settingsStatus = "STATUS: APPLYING MANAGED TRADE..."
         raise("trade.managed", {})
@@ -10459,7 +11033,7 @@ local function globalSettings(tableWidget)
     addModeButton(
         row,
         1,
-        menu.shipmode == "DISABLED" and "SHIP ASSIGNMENT: DISABLED" or "SHIP ASSIGNMENT: ENABLED",
+        menu.shipmode == "DISABLED" and "SHIP ASSIGNMENT: OFF" or "SHIP ASSIGNMENT: RUNNING",
         menu.shipmode ~= "DISABLED",
         not menu.settingsChangeRunning,
         function()
@@ -10479,7 +11053,7 @@ local function globalSettings(tableWidget)
     local assignmentEnabled = menu.shipmode ~= "DISABLED"
     row = tableWidget:addRow(true)
     row[1]:setColSpan(2)
-    addModeButton(row, 1, "APPROVAL REQUIRED", menu.shipmode == "APPROVAL REQUIRED", assignmentEnabled and not menu.settingsChangeRunning, function()
+    addModeButton(row, 1, menu.shipmode == "APPROVAL REQUIRED" and "APPROVAL REQUIRED — ACTIVE" or "APPROVAL REQUIRED", menu.shipmode == "APPROVAL REQUIRED", assignmentEnabled and not menu.settingsChangeRunning, function()
         menu.settingsChangeRunning = true
         menu.settingsStatus = "STATUS: APPLYING APPROVAL REQUIRED..."
         raise("shipping.approval", {})
@@ -10488,7 +11062,7 @@ local function globalSettings(tableWidget)
         menu.refresh()
     end)
     row[3]:setColSpan(2)
-    addModeButton(row, 3, "AUTO-ASSIGN REGISTERED", menu.shipmode == "AUTO-ASSIGN REGISTERED", assignmentEnabled and not menu.settingsChangeRunning, function()
+    addModeButton(row, 3, menu.shipmode == "AUTO-ASSIGN REGISTERED" and "AUTO-ASSIGN REGISTERED — RUNNING" or "AUTO-ASSIGN REGISTERED", menu.shipmode == "AUTO-ASSIGN REGISTERED", assignmentEnabled and not menu.settingsChangeRunning, function()
         menu.settingsChangeRunning = true
         menu.settingsStatus = "STATUS: APPLYING AUTO-ASSIGN REGISTERED..."
         raise("shipping.auto", {})
@@ -10679,6 +11253,10 @@ function menu.create()
             diagnosticsCenter(tableWidget)
         elseif menu.page == "autonomy" then
             menu.autonomyCenter(tableWidget)
+        elseif menu.page == "supplyPolicy" then
+            menu.supplyPolicyCenter(tableWidget)
+        elseif menu.page == "insights" then
+            menu.insightsCenter(tableWidget)
         else
             globalSettings(tableWidget)
         end
@@ -10799,6 +11377,9 @@ end
 function menu.onUpdate()
     if not menu.shown or menu.minimized or menu.closeInProgress then return end
     local now = getElapsedTime()
+    -- One local UI timeout, not polling/retry or a new background collector.
+    menu.autoReportsTimeout(now)
+    if menu.insights and menu.insights.request and menu.insights.deadline and now>=menu.insights.deadline then menu.insightsError(nil,menu.insights.request) end
 
     if menu.kpiView == "shortages" then menu.kpiView = "cash" end
     if menu.page == "kpi" and not menu.kpiPaused and not menu.kpiRefreshing and not menu.kpiControlDropdownActive and now >= (tonumber(menu.kpiNextRefreshAt) or 0) then

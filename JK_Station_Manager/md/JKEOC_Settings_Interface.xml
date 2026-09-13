@@ -13,6 +13,45 @@
     to play and must not start JKSM_EmpireOperations.
   -->
   <cues>
+    <cue name="JKEOC_B389_MenuClosedOnLoad" namespace="this">
+      <conditions><event_game_loaded/></conditions>
+      <actions><set_value name="global.$JKEOC_SettingsMenuOpen" exact="false"/></actions>
+    </cue>
+    <cue name="B387ReportIdentity" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><actions>
+        <!-- Validate the complete bounded history before assigning legacy identities. -->
+        <set_value name="global.$JKEOC_B387ReportIdentityValid" exact="false"/>
+        <set_value name="$valid" exact="typeof @global.$JKEOC_LuaReports == datatype.list"/>
+        <set_value name="$next" exact="1"/><set_value name="$seen" exact="[]"/>
+        <do_if value="global.$JKEOC_B380ReportNextId?">
+          <do_if value="typeof global.$JKEOC_B380ReportNextId == typeof 1 and global.$JKEOC_B380ReportNextId gt 0 and global.$JKEOC_B380ReportNextId lt 2147483000"><set_value name="$next" exact="global.$JKEOC_B380ReportNextId"/></do_if>
+          <do_else><set_value name="$valid" exact="false"/></do_else>
+        </do_if>
+        <do_if value="$valid">
+          <do_if value="global.$JKEOC_LuaReports.count gt 20"><set_value name="$valid" exact="false"/></do_if>
+          <do_else><do_for_each name="$r" in="global.$JKEOC_LuaReports">
+            <do_if value="typeof $r != datatype.list"><set_value name="$valid" exact="false"/></do_if>
+            <do_elseif value="not [3,7].indexof.{$r.count} or typeof @$r.{1} != typeof '' or typeof @$r.{2} != typeof '' or typeof @$r.{3} != typeof player.age"><set_value name="$valid" exact="false"/></do_elseif>
+            <do_elseif value="$r.count == 7">
+              <do_if value="typeof $r.{4} != typeof 1 or $r.{4} le 0 or $r.{4} ge 2147483000 or $seen.indexof.{$r.{4}} or typeof $r.{5} != typeof 1 or $r.{5} lt 0 or typeof $r.{6} != typeof 1 or $r.{6} lt 0 or typeof $r.{7} != typeof 1 or not [0,1].indexof.{$r.{7}}"><set_value name="$valid" exact="false"/></do_if>
+              <do_else><append_to_list name="$seen" exact="$r.{4}"/><set_value name="$next" exact="[$next,$r.{4}+1].max"/></do_else>
+            </do_elseif>
+          </do_for_each></do_else>
+        </do_if>
+        <!-- Leave room for every legacy identity and the next newly recorded card. -->
+        <do_if value="$next ge 2147482979"><set_value name="$valid" exact="false"/></do_if>
+        <do_if value="$valid">
+          <do_for_each name="$r" in="global.$JKEOC_LuaReports">
+            <do_if value="$r.count == 3">
+              <append_to_list name="$r" exact="$next"/><append_to_list name="$r" exact="0"/><append_to_list name="$r" exact="0"/><append_to_list name="$r" exact="0"/>
+              <set_value name="$next" operation="add" exact="1"/>
+            </do_if>
+          </do_for_each>
+          <set_value name="global.$JKEOC_B380ReportNextId" exact="$next"/>
+          <set_value name="global.$JKEOC_B387ReportIdentityValid" exact="true"/>
+        </do_if>
+      </actions>
+    </cue>
     <cue name="JKEOC_Settings_Open" instantiate="true" namespace="this">
       <conditions><check_any><event_conversation_next_section actor="player.computer" section="JKEOC_Settings_Open" /><event_ui_triggered screen="'JKEOC_PersonalOfficeAccess'" /></check_any></conditions>
       <actions>
@@ -37,6 +76,7 @@
         <do_if value="not global.$JKEOC_B67Profiles?"><set_value name="global.$JKEOC_B67Profiles" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B83Inbox?"><set_value name="global.$JKEOC_B83Inbox" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_LuaReports?"><set_value name="global.$JKEOC_LuaReports" exact="[]" /></do_if>
+        <signal_cue_instantly cue="B387ReportIdentity"/>
         <do_if value="not global.$JKEOC_PlayerCases?"><set_value name="global.$JKEOC_PlayerCases" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B243ChecklistProgress?"><set_value name="global.$JKEOC_B243ChecklistProgress" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_ShipOrders?"><set_value name="global.$JKEOC_ShipOrders" exact="if global.$JKEOC_B125ShipOrders? then global.$JKEOC_B125ShipOrders else []" /></do_if>
@@ -422,7 +462,7 @@
         <raise_lua_event name="'JKEOC_SettingsMenu.kpi.refresh.complete'" />
         <debug_text text="'[JKEOC][B233][KPI_REFRESH] view=%1 demand_scoped=1 ship_only_workload=1'.[event.param3.$view]" filter="general" />
       </do_elseif>
-        <do_elseif value="event.param2 == 'opened'"><signal_cue_instantly cue="JKEOC_Settings_ClearBackgroundConversation" /></do_elseif>
+        <do_elseif value="event.param2 == 'opened'"><set_value name="global.$JKEOC_SettingsMenuOpen" exact="true"/><signal_cue_instantly cue="JKEOC_Settings_ClearBackgroundConversation" /></do_elseif>
         <do_elseif value="event.param2 == 'startup.sequence.on'"><set_value name="global.$JKEOC_StartupSequenceEnabled" exact="true" /><debug_text text="'[JKEOC][B224][STARTUP_PREFERENCE] enabled=1 persisted=SAVE_GLOBAL'" filter="general" /></do_elseif>
         <do_elseif value="event.param2 == 'startup.sequence.off'"><set_value name="global.$JKEOC_StartupSequenceEnabled" exact="false" /><debug_text text="'[JKEOC][B224][STARTUP_PREFERENCE] enabled=0 persisted=SAVE_GLOBAL'" filter="general" /></do_elseif>
       <do_elseif value="event.param2 == 'minimums.authorize'"><signal_cue_instantly cue="md.JKEOC_Global_Fleet_Minimums.JKEOC_B219_MinimumAssign" /><debug_text text="'[JKEOC][B224][MINIMUM_AUTHORIZED] source=GLOBAL_SETTINGS'" filter="general" /></do_elseif>
@@ -853,7 +893,7 @@
         <do_elseif value="event.param2 == 'report.station'"><set_value name="global.$JKEOC_LuaReportIndex" exact="event.param3.$index" /><signal_cue_instantly cue="JKEOC_Settings_ReportStation" /></do_elseif>
         <do_elseif value="event.param2 == 'report.remediation'"><signal_cue_instantly cue="JKEOC_Settings_ReportRemediation" /></do_elseif>
         <do_elseif value="event.param2 == 'report.trade'"><signal_cue_instantly cue="JKEOC_Settings_ReportTrade" /></do_elseif>
-        <do_elseif value="event.param2 == 'closed'"><set_value name="global.$JKEOC_SettingsReturnReason" exact="if event.param3.$reason? then event.param3.$reason else 'close'" /><debug_text text="'[JKEOC][B253][WINDOW_CLOSED] reason=%1 legacy_pinwheel=0'.[global.$JKEOC_SettingsReturnReason]" filter="general" /></do_elseif>
+        <do_elseif value="event.param2 == 'closed'"><set_value name="global.$JKEOC_SettingsMenuOpen" exact="false"/><set_value name="global.$JKEOC_SettingsReturnReason" exact="if event.param3.$reason? then event.param3.$reason else 'close'" /><debug_text text="'[JKEOC][B253][WINDOW_CLOSED] reason=%1 legacy_pinwheel=0'.[global.$JKEOC_SettingsReturnReason]" filter="general" /></do_elseif>
       </actions>
     </cue>
 
@@ -1295,7 +1335,11 @@
         <do_if value="not global.$JKEOC_LuaReports?">
           <set_value name="global.$JKEOC_LuaReports" exact="[]" />
         </do_if>
-        <do_if value="not global.$JKEOC_B380ReportNextId?"><set_value name="global.$JKEOC_B380ReportNextId" exact="1" /></do_if>
+        <signal_cue_instantly cue="B387ReportIdentity"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.report.identity.begin'"/>
+        <do_if value="global.$JKEOC_B387ReportIdentityValid and typeof event.param == datatype.list">
+        <do_if value="event.param.count ge 2 and typeof @event.param.{1} == typeof '' and typeof @event.param.{2} == typeof ''">
+        <do_if value="event.param.count == 2 or (event.param.count == 4 and typeof @event.param.{3} == typeof 1 and @event.param.{3} ge 0 and typeof @event.param.{4} == typeof 1 and @event.param.{4} ge 0)">
         <do_if value="not global.$JKEOC_B334LastRecordedReportTitle? or global.$JKEOC_B334LastRecordedReportTitle != event.param.{1} or global.$JKEOC_B334LastRecordedReportText != event.param.{2}">
           <append_to_list name="global.$JKEOC_LuaReports" exact="[event.param.{1}, event.param.{2}, player.age, global.$JKEOC_B380ReportNextId, if event.param.count ge 4 then event.param.{3} else 0, if event.param.count ge 4 then event.param.{4} else 0, 0]" />
           <set_value name="global.$JKEOC_B380ReportNextId" operation="add" exact="1" />
@@ -1304,7 +1348,21 @@
         <do_while value="global.$JKEOC_LuaReports.count gt 20">
           <remove_from_list name="global.$JKEOC_LuaReports" exact="global.$JKEOC_LuaReports.{1}" />
         </do_while>
+        <do_if value="global.$JKEOC_LuaReports.count gt 0">
+          <set_value name="$latest" exact="global.$JKEOC_LuaReports.{global.$JKEOC_LuaReports.count}"/>
+          <do_if value="$latest.count == 7 and $latest.{1} == event.param.{1} and $latest.{2} == event.param.{2}">
+            <raise_lua_event name="'JKEOC_SettingsMenu.report.identity.title'" param="$latest.{1}"/>
+            <raise_lua_event name="'JKEOC_SettingsMenu.report.identity.text'" param="$latest.{2}"/>
+            <raise_lua_event name="'JKEOC_SettingsMenu.report.identity.time'" param="$latest.{3} / 1s"/>
+            <raise_lua_event name="'JKEOC_SettingsMenu.report.identity.id'" param="$latest.{4}"/>
+            <raise_lua_event name="'JKEOC_SettingsMenu.report.identity.route'" param="$latest.{5}"/>
+            <raise_lua_event name="'JKEOC_SettingsMenu.report.identity.revision'" param="$latest.{6}"/>
+            <raise_lua_event name="'JKEOC_SettingsMenu.report.identity.archived'" param="$latest.{7}"/>
+          </do_if>
+        </do_if>
         <debug_text text="'[JKEOC][B224][REPORT_FEED] title=%1 retained=%2'.[event.param.{1}, global.$JKEOC_LuaReports.count]" filter="general" />
+        </do_if></do_if></do_if>
+        <raise_lua_event name="'JKEOC_SettingsMenu.report.identity.complete'"/>
       </actions>
     </cue>
     <cue name="JKEOC_Settings_ClearBackgroundConversation" instantiate="true" namespace="this"><conditions><event_cue_signalled /></conditions><delay exact="1s" /><actions><cancel_conversation actor="player.computer" /><debug_text text="'[JKEOC][B224][BACKGROUND_CLOSED]'" filter="general" /></actions></cue>

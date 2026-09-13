@@ -17,7 +17,17 @@
             <do_if value="@$r.$recordedtext != $text or @$r.$recordedrevision != $r.$revision">
               <append_to_list name="$s.$results" exact="table[$id=$r.$id, $station=$r.$station, $stationname=$r.$stationname, $ware=$r.$ware, $warename=$r.$warename, $revision=$r.$revision, $time=player.age, $status=$r.$status, $report=$text]"/>
               <do_if value="$s.$results.count gt 64"><remove_value name="$s.$results.{1}"/></do_if>
-              <write_to_logbook category="tips" title="'EOC Automatic Manager: ' + $r.$stationname + ' / ' + $r.$warename" text="$text"/>
+              <do_if value="global.$JKEOC_SettingsMenuOpen? and global.$JKEOC_SettingsMenuOpen">
+                <set_value name="$live" exact="$s.$results.{$s.$results.count}"/>
+                <raise_lua_event name="'JKEOC_SettingsMenu.autoActivity.id'" param="$live.$id"/>
+                <raise_lua_event name="'JKEOC_SettingsMenu.autoActivity.revision'" param="$live.$revision"/>
+                <raise_lua_event name="'JKEOC_SettingsMenu.autoActivity.title'" param="$live.$stationname + ' / ' + $live.$warename"/>
+                <raise_lua_event name="'JKEOC_SettingsMenu.autoActivity.status'" param="$live.$status"/>
+                <raise_lua_event name="'JKEOC_SettingsMenu.autoActivity.text'" param="$live.$report"/>
+                <raise_lua_event name="'JKEOC_SettingsMenu.autoActivity.time'" param="$live.$time / 1s"/>
+                <raise_lua_event name="'JKEOC_SettingsMenu.autoActivity.commit'"/>
+              </do_if>
+              <!-- Automatic evidence stays in EOC results only; no native Logbook notification. -->
               <set_value name="$r.$recordedtext" exact="$text"/><set_value name="$r.$recordedrevision" exact="$r.$revision"/>
             </do_if>
           </do_if>
@@ -33,7 +43,7 @@
             <do_for_each name="$r" in="$s.$routes">
               <do_if value="typeof $r == datatype.table and @$r.$autonomous and global.$JKEOC_B371Routes.indexof.{$r}">
                 <include_actions ref="Settle"/>
-                <do_if value="$r.$recordedtext? and not @$r.$active and not @$r.$job and not @$r.$watch and not @$r.$queued and not @$r.$pinpending and not @$r.$buyorder.exists and not @$r.$sellorder.exists and (not $r.$budgettoken? or @$r.$budgetclosed == $r.$budgettoken)">
+                <do_if value="$r.$recordedtext? and not @$r.$supplypending and not @$r.$active and not @$r.$job and not @$r.$watch and not @$r.$queued and not @$r.$pinpending and not @$r.$buyorder.exists and not @$r.$sellorder.exists and (not $r.$budgettoken? or @$r.$budgetclosed == $r.$budgettoken)">
                   <do_if value="typeof @$r.$observation == datatype.table"><set_value name="$r.$observation.$next" exact="player.age + (if $r.$status == 'RESOLVED' or $r.$status == 'NOT CURRENTLY FAILING' then 10min else 30min)"/></do_if>
                   <set_value name="$r.$token" exact="$r.$token + 1"/><append_to_list name="$retired" exact="$r"/>
                 </do_if>

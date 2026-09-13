@@ -2,12 +2,12 @@
 <content
   id="ws_3788882957"
   name="EOC - Executive Operations Center"
-  description="EOC 3.9 - Build 383. Optional existing-assets automatic manager; runtime acceptance required."
+  description="EOC 3.9 - Build 390. Automatic Reports state key with compact explanations and action hover detail. Runtime acceptance required."
   author="RazorEQX"
-  version="483"
-  date="2026-09-11"
+  version="490"
+  date="2026-09-13"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 TEST Build 383" description="Optional existing-assets automatic manager. OFF by default; compatible Diagnostics required for automation." />
+  <text language="44" name="EOC 3.9 TEST Build 390" description="Automatic Reports state key with compact explanations and action hover detail. Runtime acceptance required." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

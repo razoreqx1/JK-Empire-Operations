@@ -63,6 +63,11 @@
                 </do_for_each>
                 <do_if value="global.$JKEOC_B76EligibleShips?"><do_for_each name="$ship" in="global.$JKEOC_B76EligibleShips"><do_if value="$ship.exists and not $ship.commander and not $r.$candidates.indexof.{$ship} and $ship.waretransport.indexof.{$w.waretransport}"><append_to_list name="$r.$candidates" exact="$ship" /></do_if></do_for_each></do_if>
                 <do_if value="not $r.$raw"><do_for_each name="$old" in="global.$JKEOC_B371Routes"><do_if value="$old != $r and $old.$status == 'RESOLVED' and not $old.$active and not @$old.$job and $old.$ship? and $old.$ship.exists and @$old.$assignmentownedship == $old.$ship and $old.$station.exists and $old.$station != $s and $old.$ship.commander == $old.$station and not $r.$candidates.indexof.{$old.$ship}"><append_to_list name="$r.$candidates" exact="$old.$ship" /><set_value name="$r.$donors.{$old.$ship}" exact="$old.$station" /></do_if></do_for_each></do_if>
+                <do_if value="$r.$supplyship?">
+                  <set_value name="$handoffShip" exact="$r.$supplyship"/><remove_value name="$r.$supplyship"/><set_value name="$r.$supplyRun" exact="$r.$token"/>
+                  <set_value name="$r.$candidates" exact="[]"/>
+                  <do_if value="@$handoffShip.exists and @global.$JKEOC_B76EligibleShips.indexof.{$handoffShip}"><append_to_list name="$r.$candidates" exact="$handoffShip"/></do_if>
+                </do_if>
                 <do_if value="$r.$incoming gt 0">
                   <set_value name="$r.$status" exact="'AWAITING DELIVERY'" /><set_value name="$r.$overview" exact="'Existing native trade orders already commit %1 units on this route. I will check their outcome before adding another ship.'.[$r.$incoming]" />
                   <set_value name="$r.$watchuntil" exact="player.age + 30min" /><set_value name="$r.$watch" exact="true" /><signal_cue_instantly cue="Watch" param="[$r,$r.$token]" /><signal_cue_instantly cue="Finish" param="$r" />
@@ -98,6 +103,10 @@
             <set_value name="$r.$sourcebrief" exact="$r.$bestblocked" />
             <set_value name="$r.$steps.{1}" exact="if $r.$candidates.count == 0 then 'Register an idle player-owned ship with the correct cargo type and role in EOC, or assign one to this station. Then choose CHECK PROGRESS; EOC will inspect its route and arrange supported work.' else 'Read the specific ship or source restriction above. If you choose to change that restriction or make another idle ship available, do so for the named object, then choose CHECK PROGRESS. EOC will run the route checks again.'" />
             <do_if value="$r.$beststep != ''"><set_value name="$r.$steps.{1}" exact="$r.$beststep" /></do_if>
+            <do_if value="@$r.$autonomous and $r.$candidates.count le 128 and not $r.$selling">
+              <signal_cue_instantly cue="md.JKEOC_Supply_Procurement.Request" param="$r" />
+              <do_if value="@$r.$supplypending"><set_value name="$r.$overview" exact="'EOC is checking supply-ship options under your separate purchasing permission. Existing work and budget reservations are preserved.'" /><set_value name="$r.$steps.{1}" exact="'EOC is responsible for the next bounded supplier check. Review Automatic Reports for the result; do not repeat the purchase request.'" /></do_if>
+            </do_if>
             <signal_cue_instantly cue="Finish" param="$r" />
           </do_else>
         </do_if>
