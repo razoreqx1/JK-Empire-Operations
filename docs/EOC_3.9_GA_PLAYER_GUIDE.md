@@ -1,8 +1,10 @@
-# EOC 3.9 Player Guide — Build 390
+# EOC 3.9 Player Guide — Build 397
 
-**Current edition:** EOC 3.9, Build 390, extension version 490. Retained older screenshots below are clearly labeled with the build they document.
+**Current edition:** EOC 3.9, Build 397, extension version 497. Retained older screenshots below are clearly labeled with the build they document.
 
-**Optional automatic manager:** Read the [Build 390 companion guide](EOC_AUTOMATIC_MANAGER.md) for background management, Diagnostics B007 requirements, spending limits, live activity, supply-ship consent, reports and stopping. Assisted play remains unchanged. Unexercised native paths remain **RUNTIME ACCEPTANCE REQUIRED**; older screenshots are not evidence for newer runtime behavior.
+**Current accepted construction route:** Build 397 was tested live from a Smart Chips case through saved module list, exact quote, explicit confirmation, native queue creation, correct station-progress routing, separate funding approval, builder assignment, supplied wares, and active construction. Read the [Build 397 release notes](RELEASE_NOTES_BUILD397.md). Other unexercised native paths remain **RUNTIME ACCEPTANCE REQUIRED**.
+
+**Optional automatic manager:** Read the [Build 390 companion guide](EOC_AUTOMATIC_MANAGER.md) for background management, Diagnostics B007 requirements, spending limits, live activity, supply-ship consent, reports and stopping. Assisted play remains unchanged; older screenshots are not evidence for newer runtime behavior.
 
 This edition includes new Home and money-view screenshots supplied during live use. Screenshots labeled Build 369 remain historical illustrations of retained tools; they are not relabeled as current screenshots. The established guide URL is retained for existing links.
 
@@ -22,7 +24,7 @@ The interface is organized around player tasks. The main tabs are **HOME**, **ST
 
 - A displayed result is evidence or advice, not proof that X4 completed an action.
 - **UNKNOWN** or **UNVERIFIED** means EOC does not have enough evidence. It does not mean zero, safe, or complete.
-- A saved production scenario is an advisory snapshot. It is not construction approval and does not modify the X4 Station Build Plan.
+- A calculated or saved production scenario is advisory. Only a later exact quote plus explicit player confirmation may queue the exact native X4 construction plan.
 - EOC never creates free ships, credits, cargo, resources, blueprints, modules, or stations.
 - Press **TAB** after changing a number so the menu commits the value.
 - Follow the steady **> NEXT:** control when a page presents a sequence.
@@ -158,13 +160,13 @@ Read every result page. The summary identifies the requested output, installed e
 
 The amber warning is important: the result is a **PLAYER SCENARIO, NOT BUILD APPROVAL**. Existing/planned modules are not deducted, and habitat/provisions, storage allocation, delivery throughput, construction materials, placement, and cost remain unverified. Raw resources still require mining or trade. Multi-product recipes remain external dependencies.
 
-### Step 6: save the advisory checklist
+### Step 6: save the player scenario build list
 
-After reviewing every page, select **> AFTER REVIEW: SAVE ADVISORY CHECKLIST**.
+After reviewing every page, save the player scenario build list. The saved list preserves the exact module counts you selected; it is still not construction approval.
 
 ![Build 369 saved confirmation](images/EOC_BUILD369_PLANS_SAVED_CONFIRMATION.png)
 
-The **SAVED: exact scenario read back** message confirms that EOC persisted the scenario record. It does not mean X4 approved or started construction.
+The saved confirmation means EOC persisted the exact scenario. It does not mean X4 approved or started construction.
 
 Open **SAVED PLANS** to see retained scenarios. **SHOW SAVED PLANS FOR** defaults to **All stations**; choose a station to filter the list. This is a browsing filter, not an instruction to create a production plan at every station.
 
@@ -174,7 +176,15 @@ Select a saved row to reopen the exact snapshot.
 
 ![Build 369 saved-plan detail](images/EOC_BUILD369_PLANS_SAVED_DETAIL.png)
 
-The saved detail is read-only historical advice. Use **< BACK TO YOUR PLAN** to return to the unsaved working draft. To build anything, compare the advice with X4’s native Station Build Plan and add the modules yourself.
+The saved detail remains a snapshot. Use **< BACK TO YOUR PLAN** to return to the unsaved working draft.
+
+### Step 7: prepare and confirm an exact expansion quote
+
+From the saved player scenario build list, select **PREPARE EXACT EXPANSION QUOTE**. EOC revalidates the exact station, saved module macros, unchanged base plan, and native connected sequence before presenting the quote. Read the module count and estimated native construction materials.
+
+If the quote is correct, select **CONFIRM QUEUE _N_ MODULE(S)** before the displayed confirmation window expires. This separate confirmation is the action that may queue normal X4 construction. A calculation, saved list, or prepared quote alone never queues modules.
+
+After an exact `QUEUED` result, EOC opens that station's construction-progress page. Funding remains separate. Approve the exact shortfall if required, assign a builder when needed, supply the listed construction wares, and refresh the page to follow X4's native progress. Canceled, expired, blocked, or failed confirmations do not redirect as if construction started.
 
 ### Existing repair plans are different
 
@@ -355,7 +365,7 @@ Read the route's summary, supporting evidence and retained progress. **CHECK PRO
 
 ### Cases and retained evidence
 
-A case keeps an exact station/subject problem, its evidence, responsibility, and next action together. Open an existing case instead of creating a duplicate. A first Supply snapshot does not prove persistence; EOC requires retained evidence before it can support stronger conclusions.
+A case keeps an exact station/subject problem, its evidence, responsibility, and next action together. Open an existing case instead of creating a duplicate. Build 397 keeps only one active row for an exact station/subject pair. Cases proven resolved or explicitly closed by the player leave the active list and move into bounded retained history; uncertain, waiting, current, and unresolved cases remain active. A first Supply snapshot does not prove persistence; EOC requires retained evidence before it can support stronger conclusions.
 
 ### Problem diagnosis and verification
 
@@ -363,11 +373,11 @@ Request verification once, follow the displayed inspection or correction, and wa
 
 ### Repair planner and saved build lists
 
-The repair planner is evidence-backed and recovery-gated. Immediate trade, funding, delivery, or assignment options are considered before permanent expansion. Saved repair lists track an agreed response to an exact case; they are separate from voluntary Plans scenarios.
+The repair planner is evidence-backed and recovery-gated. Immediate trade, funding, delivery, or assignment options are considered before permanent expansion. Saved repair lists track an agreed response to an exact case; they are separate from voluntary Plans scenarios. Opening another case clears the previous planner transaction so station, subject, counts, quote, and confirmation state cannot leak into the new case.
 
 ### Construction and funding
 
-Construction reviews an X4 plan that already exists. Refresh it to inspect the queue, builder, required wares, budget, and progress. Funding authority covers only an exact X4-reported shortfall and never creates or edits the plan.
+Construction reviews the native X4 plan after it exists. A Build 397 exact scenario confirmation may create that plan, then routes to the correct station's construction page. Refresh it to inspect the queue, builder, required wares, budget, and progress. Funding authority covers only an exact X4-reported shortfall; funding, builder assignment, ware delivery, and completion remain separate from the module-queue confirmation.
 
 ---
 
@@ -438,4 +448,4 @@ An `[=ERROR=]` prefix alone does not prove an EOC failure; some EOC diagnostics 
 
 For production scenarios, add one more rule:
 
-**Saved advice is not construction approval. Compare it with X4’s Station Build Plan and build manually.**
+**Saved advice is not construction approval. Prepare the exact quote, confirm only the exact station and module count, then verify funding, builder, wares, and progress on the station construction page.**

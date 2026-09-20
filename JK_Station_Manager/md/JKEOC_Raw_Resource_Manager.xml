@@ -8,7 +8,7 @@
         <do_if value="not global.$JKEOC_B298StationIndex? or global.$JKEOC_B298StationIndex lt 1"><set_value name="global.$JKEOC_B298StationIndex" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B298Pending? or not global.$JKEOC_B298Pending.$ship? or not global.$JKEOC_B298Pending.$ship.exists"><remove_value name="global.$JKEOC_B298Pending" /></do_if>
         <signal_cue_instantly cue="JKEOC_B298_Scheduler" />
-        <debug_text text="'[JKEOC][B298][RAW_FLEET_INIT] interval=5min stations_per_cycle=1 assignment_changes_per_cycle=1 max_pins_per_resource=3 routine_source_scan=0 bounded_source_check=after_6_low_cycles cooldown=30min blueprint_scan=0'" filter="general" />
+        <debug_text text="'[JKEOC][B391][RAW_FLEET_INIT] interval=5min stations_per_cycle=1 assignment_changes_per_cycle=1 max_pins_per_resource=5 sustained_levels=3/6/9 routine_source_scan=0 bounded_source_check=after_6_low_cycles cooldown=30min blueprint_scan=0'" filter="general" />
       </actions>
     </cue>
 
@@ -87,9 +87,10 @@
                 <set_value name="$record.$laststock" exact="$stock" /><set_value name="$record.$lastcycle" exact="player.age" />
                 <set_value name="$desired" exact="if $record.$misses ge 3 then 2 else 1" />
                 <do_if value="$record.$misses ge 6"><set_value name="$desired" exact="3" /></do_if>
+                <do_if value="$record.$misses ge 9"><set_value name="$desired" exact="5" /></do_if>
                 <set_value name="$record.$recommendedships" exact="$desired" />
                 <set_value name="$record.$status" exact="if $record.$pinunproven? and $record.$pinunproven then 'ASSIGNED - PIN NOT PROVEN' else if $validships.count ge $desired then 'PINNED COVERAGE' else if $validships.count gt 0 then 'MORE COVERAGE NEEDED' else 'SHIP NEEDED'" />
-                <set_value name="$record.$detail" exact="'%1 pinned miner(s) / %2 recommended; stock %3 / target %4; low-stock observations %5; observed stock increases %6; live station resource=%7.'.[$validships.count, $desired, $stock, $target, $record.$misses, if $record.$deliveries? then $record.$deliveries else 0, $currentresource]" />
+                <set_value name="$record.$detail" exact="'%1 pinned miner(s) / %2 recommended; stock %3 / target %4; low-stock observations %5; observed stock increases %6; live station resource=%7. Capacity rises only after sustained low-stock evidence (3/6/9 observations) and falls back after recovery.'.[$validships.count, $desired, $stock, $target, $record.$misses, if $record.$deliveries? then $record.$deliveries else 0, $currentresource]" />
 
                 <!-- A source lookup is deliberately rare: only after six low-stock cycles, at most one per manager cycle and once per record per 30 minutes. -->
                 <do_if value="$record.$misses ge 6 and $sourcechecks == 0 and (not $record.$lastsourcecheck? or player.age - $record.$lastsourcecheck ge 30min)">

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Approved_Station_Expansion" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+    <library name="Reply" purpose="run_actions">
+      <params><param name="Record"/><param name="Message"/></params>
+      <actions>
+        <raise_lua_event name="'JKEOC_SettingsMenu.expansion.state'" param="if $Record.$state? then $Record.$state else 'BLOCKED'"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.expansion.message'" param="$Message"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.expansion.token'" param="if $Record.$token? then $Record.$token else ''"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.expansion.price'" param="if $Record.$price? then ($Record.$price / 1Cr)i else 0"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.expansion.modules'" param="if $Record.$requested? then $Record.$requested else 0"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.expansion.commit'"/>
+      </actions>
+    </library>
+    <library name="ValidateBase" purpose="run_actions">
+      <params><param name="Record"/><param name="Result"/></params>
+      <actions>
+        <set_value name="$Result.$valid" exact="false"/>
+        <set_value name="$station" exact="@$Record.$station"/>
+        <do_if value="@$station.exists and $station.owner == faction.player and $station.isoperational and $station.buildstorage.exists and $Record.$original? and $Record.$original.count gt 0 and $Record.$original.count le 400">
+          <set_value name="$current" exact="$station.plannedconstruction.sequence"/>
+          <set_value name="$Result.$valid" exact="$current.count == $Record.$original.count"/>
+          <do_if value="$Result.$valid"><do_all exact="$current.count" counter="$i">
+            <do_if value="$current.{$i}.id != $Record.$original.{$i}.{1} or $current.{$i}.macro != $Record.$original.{$i}.{2}"><set_value name="$Result.$valid" exact="false"/></do_if>
+          </do_all></do_if>
+        </do_if>
+      </actions>
+    </library>
+
+    <cue name="Quote" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'planner.expansion.quote'"/></conditions>
+      <actions>
+        <set_value name="$q" exact="table[$token=event.param3.$token,$state='BLOCKED',$requested=0,$price=0Cr]"/>
+        <set_value name="$profile" exact="if event.param3.$profile gt 0 and event.param3.$profile le global.$JKEOC_B67Profiles.count then global.$JKEOC_B67Profiles.{event.param3.$profile} else null"/>
+        <set_value name="$station" exact="if $profile? and $profile.$station? then $profile.$station else null"/>
+        <set_value name="$plan" exact="null"/>
+        <do_for_each name="$candidate" in="global.$JKEOC_B348AgreedBuildPlans"><do_if value="$candidate.$station == $station and $candidate.$wareid == event.param3.$ware"><set_value name="$plan" exact="$candidate"/></do_if></do_for_each>
+        <do_if value="$station.exists and $station.owner == faction.player and $station.isoperational and $station.buildstorage.exists and $profile.$stationname == event.param3.$station and $plan? and $plan.$warnings.count == 0 and $q.$token != ''">
+          <set_value name="$q.$station" exact="$station"/><set_value name="$q.$plan" exact="$plan"/>
+          <set_value name="$q.$base" exact="$station.plannedconstruction.sequence"/><set_value name="$q.$original" exact="[]"/>
+          <do_all exact="$q.$base.count" counter="$i"><append_to_list name="$q.$original" exact="[$q.$base.{$i}.id,$q.$base.{$i}.macro]"/></do_all>
+          <set_value name="$new" exact="[]"/><set_value name="$valid" exact="$q.$original.count gt 0 and $q.$original.count le 400"/>
+          <do_for_each name="$row" in="$plan.$rows">
+            <do_if value="$row.$kind == 'MODULE' and $row.$agreed gt 0">
+              <set_value name="$product" exact="ware.{$row.$wareid}"/><remove_value name="$macro"/>
+              <do_if value="$product?"><get_module_definition macro="$candidates" ware="$product" tags="[tag.production,tag.module]" set="'factory'" multiple="true"/><do_for_each name="$candidate" in="$candidates"><do_if value="not $macro? and $candidate.id == $row.$macro"><set_value name="$macro" exact="$candidate"/></do_if></do_for_each></do_if>
+              <do_if value="$macro? and player.blueprints.{$macro.ware}.any.exists and $row.$agreed le 24"><do_all exact="$row.$agreed" counter="$n"><append_to_list name="$new" exact="$macro"/><set_value name="$q.$requested" operation="add" exact="1"/></do_all></do_if>
+              <do_else><set_value name="$valid" exact="false"/></do_else>
+            </do_if>
+          </do_for_each>
+          <get_module_definition macro="$connectors" tags="[tag.connection,tag.module]" set="'factory'" multiple="true"/>
+          <do_if value="$valid and $new.count gt 0 and $new.count le 24 and $connectors.count gt 0">
+            <set_value name="$q.$new" exact="$new"/><set_value name="$q.$connectors" exact="$connectors"/><set_value name="$q.$state" exact="'GENERATING'"/><set_value name="global.$JKEOC_B391Expansion" exact="$q"/>
+            <run_actions ref="Reply"><param name="Record" value="$q"/><param name="Message" value="'DESIGNING CONNECTED ADDITIONS: existing plan retained; no module queued and no credits moved.'"/></run_actions>
+            <signal_cue_instantly cue="Generate" param="$q"/>
+          </do_if>
+          <do_else><run_actions ref="Reply"><param name="Record" value="$q"/><param name="Message" value="'EXPANSION BLOCKED: the saved plan contains no bounded owned production-module set or no proven connector catalogue. Nothing changed.'"/></run_actions></do_else>
+        </do_if>
+        <do_else><run_actions ref="Reply"><param name="Record" value="$q"/><param name="Message" value="'EXPANSION BLOCKED: exact player station, warning-free saved plan, build storage, or identity validation failed. Nothing changed.'"/></run_actions></do_else>
+      </actions>
+    </cue>
+
+    <cue name="Generate" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions>
+      <actions><set_value name="$q" exact="event.param"/><create_construction_sequence station="$q.$station" base="$q.$base" macros="$q.$new" connectors="$q.$connectors"/></actions>
+      <cues>
+        <cue name="Generated"><conditions><event_object_construction_sequence_created object="$q.$station"/></conditions><actions>
+          <cancel_cue cue="Reload"/><set_value name="$check" exact="table[]"/><run_actions ref="ValidateBase"><param name="Record" value="$q"/><param name="Result" value="$check"/></run_actions>
+          <set_value name="$q.$state" exact="'FAILED DESIGN'"/>
+          <do_if value="event.param and event.param2 and $check.$valid">
+            <set_value name="$sequence" exact="event.param"/><set_value name="$valid" exact="$sequence.count gt $q.$original.count and $sequence.count le $q.$original.count + 64"/><set_value name="$remaining" exact="$q.$new.clone"/><set_value name="$cost" exact="0Cr"/>
+            <do_if value="$valid"><do_all exact="$sequence.count" counter="$i">
+              <do_if value="$i le $q.$original.count"><do_if value="$sequence.{$i}.id != $q.$original.{$i}.{1} or $sequence.{$i}.macro != $q.$original.{$i}.{2}"><set_value name="$valid" exact="false"/></do_if></do_if>
+              <do_else><set_value name="$macro" exact="$sequence.{$i}.macro"/><set_value name="$at" exact="$remaining.indexof.{$macro}"/><do_if value="$at"><remove_value name="$remaining.{$at}"/></do_if><do_elseif value="not $q.$connectors.indexof.{$macro}"><set_value name="$valid" exact="false"/></do_elseif><do_if value="typeof $macro.ware == datatype.ware"><set_value name="$resources" exact="$macro.ware.resources.table"/><do_for_each name="$ware" in="$resources"><set_value name="$cost" operation="add" exact="$ware.averageprice * $resources.{$ware}"/></do_for_each></do_if><do_else><set_value name="$valid" exact="false"/></do_else></do_else>
+            </do_all></do_if>
+            <do_if value="$valid and $remaining.count == 0 and $cost gt 0Cr"><set_value name="$q.$sequence" exact="$sequence"/><set_value name="$q.$price" exact="$cost"/><set_value name="$q.$state" exact="'QUOTED'"/><set_value name="$q.$expires" exact="player.age + 2min"/></do_if>
+          </do_if>
+          <run_actions ref="Reply"><param name="Record" value="$q"/><param name="Message" value="if $q.$state == 'QUOTED' then 'QUOTE READY: %1 production module(s), existing plan retained, estimated native build materials %2. Confirm within two game minutes. Confirmation queues construction; it does not prove completion.'.[$q.$requested,$q.$price.formatted.default] else 'DESIGN FAILED OR STATION PLAN CHANGED: nothing queued; request a fresh quote.'"/></run_actions>
+        </actions></cue>
+        <cue name="Reload"><conditions><event_game_loaded/></conditions><actions><do_if value="$q.$state == 'GENERATING'"><set_value name="$q.$state" exact="'CANCELLED ON LOAD'"/></do_if><cancel_cue cue="Generated"/></actions></cue>
+      </cues>
+    </cue>
+
+    <cue name="Confirm" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'planner.expansion.confirm'"/></conditions>
+      <actions>
+        <set_value name="$q" exact="@global.$JKEOC_B391Expansion"/><set_value name="$message" exact="'EXPANSION BLOCKED: quote expired, token changed, station plan changed, or another submission is active. Nothing queued.'"/>
+        <do_if value="@$q.$state == 'QUOTED' and $q.$token == event.param3.$token and player.age le $q.$expires">
+          <set_value name="$check" exact="table[]"/><run_actions ref="ValidateBase"><param name="Record" value="$q"/><param name="Result" value="$check"/></run_actions>
+          <do_if value="$check.$valid"><set_value name="$q.$state" exact="'CRITICAL QUEUE'"/><add_build_to_expand_station object="$q.$station.buildstorage" buildobject="$q.$station" constructionplan="$q.$sequence" result="$build"/>
+            <do_if value="@$build.exists and $build.buildobject == $q.$station"><set_value name="$q.$state" exact="'QUEUED'"/><set_value name="$q.$build" exact="$build"/><set_value name="$message" exact="'EXPANSION QUEUED: X4 accepted %1 production module(s). Normal builder, build-storage resources, and funding still apply. Queued is not built; do not submit again.'.[$q.$requested]"/><debug_text text="'[JKEOC][B391][APPROVED_EXPANSION] result=QUEUED station=%1 requested=%2 sequence=%3 explicit_player_confirmation=1 do_everything_bypass=0'.[$q.$station.name,$q.$requested,$q.$sequence.count]" filter="general"/></do_if>
+            <do_else><set_value name="$message" exact="'QUEUE RESULT UNCERTAIN: no automatic retry. Review the station build plan before taking any further action.'"/><debug_text text="'[JKEOC][B391][APPROVED_EXPANSION] result=UNCERTAIN no_retry=1'" filter="error"/></do_else>
+          </do_if>
+        </do_if>
+        <run_actions ref="Reply"><param name="Record" value="$q"/><param name="Message" value="$message"/></run_actions>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

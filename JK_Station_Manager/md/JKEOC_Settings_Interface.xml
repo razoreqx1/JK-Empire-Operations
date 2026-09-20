@@ -78,6 +78,26 @@
         <do_if value="not global.$JKEOC_LuaReports?"><set_value name="global.$JKEOC_LuaReports" exact="[]" /></do_if>
         <signal_cue_instantly cue="B387ReportIdentity"/>
         <do_if value="not global.$JKEOC_PlayerCases?"><set_value name="global.$JKEOC_PlayerCases" exact="[]" /></do_if>
+        <do_if value="not global.$JKEOC_ArchivedPlayerCases?"><set_value name="global.$JKEOC_ArchivedPlayerCases" exact="[]" /></do_if>
+        <!-- Build 395: reconcile exact player investigations against retained
+             resolution evidence before exposing the active list.  History is
+             archived, never erased, and a current EOC case always wins. -->
+        <do_for_each name="$playercase" in="global.$JKEOC_PlayerCases">
+          <set_value name="$stillactive" exact="false" />
+          <set_value name="$resolvedproof" exact="false" />
+          <do_for_each name="$livecase" in="global.$JKEOC_CriticalCases"><do_if value="$playercase.$station? and $livecase.$station? and $playercase.$station == $livecase.$station and $playercase.$subject? and $livecase.$ware? and $playercase.$subject == $livecase.$ware"><set_value name="$stillactive" exact="true" /></do_if></do_for_each>
+          <do_for_each name="$livecase" in="global.$JKEOC_WarningCases"><do_if value="$playercase.$station? and $livecase.$station? and $playercase.$station == $livecase.$station and $playercase.$subject? and $livecase.$ware? and $playercase.$subject == $livecase.$ware"><set_value name="$stillactive" exact="true" /></do_if></do_for_each>
+          <do_if value="not $stillactive and global.$JKEOC_SPOSRecords?">
+            <do_for_each name="$record" in="global.$JKEOC_SPOSRecords"><do_if value="$playercase.$station? and $record.$station? and $playercase.$station == $record.$station and $playercase.$subject? and $record.$subject? and $playercase.$subject == $record.$subject and $record.$state? and $record.$state == 'RESOLVED' and $record.$resolvedat? and $record.$resolvedat gt 0"><set_value name="$resolvedproof" exact="true" /></do_if></do_for_each>
+          </do_if>
+          <do_if value="$resolvedproof">
+            <set_value name="$playercase.$status" exact="'RESOLVED — ARCHIVED'" />
+            <set_value name="$playercase.$resolvedat" exact="player.age" />
+            <append_to_list name="global.$JKEOC_ArchivedPlayerCases" exact="$playercase" />
+            <remove_from_list name="global.$JKEOC_PlayerCases" exact="$playercase" />
+          </do_if>
+        </do_for_each>
+        <do_while value="global.$JKEOC_ArchivedPlayerCases.count gt 64"><remove_from_list name="global.$JKEOC_ArchivedPlayerCases" exact="global.$JKEOC_ArchivedPlayerCases.{1}" /></do_while>
         <do_if value="not global.$JKEOC_B243ChecklistProgress?"><set_value name="global.$JKEOC_B243ChecklistProgress" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_ShipOrders?"><set_value name="global.$JKEOC_ShipOrders" exact="if global.$JKEOC_B125ShipOrders? then global.$JKEOC_B125ShipOrders else []" /></do_if>
         <do_if value="not global.$JKEOC_FleetBuildOrders?"><set_value name="global.$JKEOC_FleetBuildOrders" exact="[]" /></do_if>
@@ -111,6 +131,10 @@
         <do_for_each name="$case" in="global.$JKEOC_PlayerCases">
           <append_to_list name="$casestationids" exact="if $case.$station? and $case.$station.exists and $case.$station.owner == faction.player then $case.$station else ''" />
           <append_to_list name="$cases" exact="[if $case.$stationname? then $case.$stationname else 'Unknown station', 'PLAYER', 'PLAYER-REPORTED', if $case.$subject? then $case.$subject else 'Player-requested investigation', if $case.$status? then $case.$status else 'OPEN - PLAYER REQUESTED', if $case.$rootcause? then $case.$rootcause else 'The player requested EOC investigation.', if $case.$corrective? then $case.$corrective else 'Review evidence and define a verification step.', if $case.$issues? then $case.$issues else 0, 0, 0, 'PLAYER']" />
+        </do_for_each>
+        <do_for_each name="$case" in="global.$JKEOC_ArchivedPlayerCases">
+          <append_to_list name="$casestationids" exact="if $case.$station? and $case.$station.exists and $case.$station.owner == faction.player then $case.$station else ''" />
+          <append_to_list name="$cases" exact="[if $case.$stationname? then $case.$stationname else 'Unknown station', 'RESOLVED', 'PLAYER-REPORTED', if $case.$subject? then $case.$subject else 'Player-requested investigation', 'RESOLVED — ARCHIVED', if $case.$rootcause? then $case.$rootcause else 'Resolved evidence retained for history.', if $case.$corrective? then $case.$corrective else 'No current action required.', if $case.$issues? then $case.$issues else 0, 0, 0, 'ARCHIVED']" />
         </do_for_each>
         <set_value name="$observations" exact="[]" />
         <do_if value="global.$JKEOC_SPOSRecords?">
@@ -400,7 +424,7 @@
           <set_value name="$savedrows" exact="[]" />
           <set_value name="$savedwarnings" exact="[]" />
           <do_for_each name="$row" in="event.param3.$rows">
-            <append_to_list name="$savedrows" exact="table[$kind=$row.{1}, $wareid=$row.{2}, $warename=$row.{3}, $module=$row.{4}, $agreed=$row.{5}, $baselineplanned=$row.{6}, $baselineproduction=$row.{7}, $outputperhour=$row.{8}, $requiredrate=$row.{9}, $transport=$row.{10}, $baselinecapacity=if $row.{11}? then $row.{11} else 0, $capacitypermodule=if $row.{12}? then $row.{12} else 0, $provisions=if $row.{13}? then $row.{13} else '', $species=if $row.{14}? then $row.{14} else '']" />
+            <append_to_list name="$savedrows" exact="table[$kind=$row.{1}, $wareid=$row.{2}, $warename=$row.{3}, $module=$row.{4}, $agreed=$row.{5}, $baselineplanned=$row.{6}, $baselineproduction=$row.{7}, $outputperhour=$row.{8}, $requiredrate=$row.{9}, $transport=$row.{10}, $baselinecapacity=if $row.{11}? then $row.{11} else 0, $capacitypermodule=if $row.{12}? then $row.{12} else 0, $provisions=if $row.{13}? then $row.{13} else '', $species=if $row.{14}? then $row.{14} else '', $macro=if $row.{15}? then $row.{15} else '']" />
           </do_for_each>
           <do_if value="event.param3.$warnings?">
             <do_for_each name="$warning" in="event.param3.$warnings"><append_to_list name="$savedwarnings" exact="$warning" /></do_for_each>
@@ -682,6 +706,7 @@
           <set_value name="global.$JKEOC_B241ActionStatus" exact="[]" />
           <set_value name="global.$JKEOC_B243ChecklistProgress" exact="[]" />
           <set_value name="global.$JKEOC_PlayerCases" exact="[]" />
+          <set_value name="global.$JKEOC_ArchivedPlayerCases" exact="[]" />
           <set_value name="global.$JKEOC_MonitoredCases" exact="[]" />
           <set_value name="global.$JKEOC_CriticalCases" exact="[]" />
           <set_value name="global.$JKEOC_WarningCases" exact="[]" />
@@ -785,7 +810,8 @@
         <do_elseif value="event.param2 == 'case.close' and event.param3.$index? and event.param3.$index gt 0 and event.param3.$index le global.$JKEOC_B67Profiles.count">
           <set_value name="$profile" exact="global.$JKEOC_B67Profiles.{event.param3.$index}" />
           <set_value name="$closed" exact="0" />
-          <do_for_each name="$existing" in="global.$JKEOC_PlayerCases"><do_if value="$profile.$station? and $existing.$station? and $existing.$station == $profile.$station and event.param3.$subject? and $existing.$subject == event.param3.$subject"><remove_from_list name="global.$JKEOC_PlayerCases" exact="$existing" /><set_value name="$closed" exact="$closed + 1" /></do_if></do_for_each>
+          <do_for_each name="$existing" in="global.$JKEOC_PlayerCases"><do_if value="$profile.$station? and $existing.$station? and $existing.$station == $profile.$station and event.param3.$subject? and $existing.$subject == event.param3.$subject"><set_value name="$existing.$status" exact="'CLOSED BY PLAYER — ARCHIVED'" /><set_value name="$existing.$resolvedat" exact="player.age" /><append_to_list name="global.$JKEOC_ArchivedPlayerCases" exact="$existing" /><remove_from_list name="global.$JKEOC_PlayerCases" exact="$existing" /><set_value name="$closed" exact="$closed + 1" /></do_if></do_for_each>
+          <do_while value="global.$JKEOC_ArchivedPlayerCases.count gt 64"><remove_from_list name="global.$JKEOC_ArchivedPlayerCases" exact="global.$JKEOC_ArchivedPlayerCases.{1}" /></do_while>
           <set_value name="$result" exact="if $closed gt 0 then 'Player-requested case closed. EOC-confirmed evidence remains active when applicable.' else 'No matching player-requested case remained to close.'" />
           <raise_lua_event name="'JKEOC_SettingsMenu.action.name'" param="'case.close'" /><raise_lua_event name="'JKEOC_SettingsMenu.action.result'" param="$result" /><raise_lua_event name="'JKEOC_SettingsMenu.action.time'" param="player.age" /><raise_lua_event name="'JKEOC_SettingsMenu.action.complete'" />
           <show_notification text="$result" timeout="7s" />

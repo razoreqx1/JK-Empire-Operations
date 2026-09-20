@@ -5,15 +5,19 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current update
 
 - Version: 3.9
-- Engineering build: 390
-- Extension version: 4.90
-- Status: GitHub contains the exact Build 390 runtime. Steam distribution is handled separately by the maintainer. The archived build retains its original TEST identity; this update is not a new GA promotion.
+- Engineering build: 397
+- Extension version: 4.97
+- Status: GitHub contains the exact Build 397 runtime accepted in live X4 testing. Steam distribution is handled separately by the maintainer. The build retains its TEST identity; this update is not a new GA promotion.
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 390 expands the optional automatic manager introduced in Build 383. History now includes a live, newest-first Automatic Activity view whose rows and summary bars update together while EOC is open. A visible key explains the `RUNNING`, `WAITING`, `BLOCKED`, `COMPLETED`, and `RECORDED` states; state and shortened-action hover text provides the full meaning. Enabled automatic options use steady `RUNNING` or `ACTIVE` labels without flashing, animation, countdowns, polling, or timed redraws.
+Build 397 cleans the active case list by archiving cases that EOC can prove resolved or that the player explicitly closed, while preserving uncertain and unresolved work. It prevents duplicate active station/subject rows, bounds retained case history, clears stale planner transactions when changing cases, and displays the exact EOC version and engineering build in the menu header.
 
-Automatic supply expansion is a separate opt-in. EOC uses eligible existing ships first and may purchase a suitable miner or freighter only within the player's saved limits, normal blueprint/shipyard/resource/delivery rules, and existing assignment safeguards. Assisted EOC remains available independently of Diagnostics. See [Build 390 release notes](docs/RELEASE_NOTES_BUILD390.md), the [automatic manager guide](docs/EOC_AUTOMATIC_MANAGER.md), and the [illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md). Unexercised native paths remain **RUNTIME ACCEPTANCE REQUIRED**.
+The production workflow now keeps voluntary scenarios advisory until the player saves the exact list, prepares a native expansion quote, and explicitly confirms that quote. A successful confirmation queues the normal X4 construction plan and opens the exact station's construction-progress page. Funding, builder assignment, construction wares, and completion still follow normal X4 rules. The exact Smart Chip Production route was accepted in live testing through quote, confirmation, funding, builder assignment, supplied wares, and active construction. See [Build 397 release notes](docs/RELEASE_NOTES_BUILD397.md) and the [illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md).
+
+Build 397 retains the optional automatic manager introduced in Build 383. History includes a live, newest-first Automatic Activity view whose rows and summary bars update together while EOC is open. A visible key explains the `RUNNING`, `WAITING`, `BLOCKED`, `COMPLETED`, and `RECORDED` states; state and shortened-action hover text provides the full meaning. Enabled automatic options use steady `RUNNING` or `ACTIVE` labels without flashing, animation, countdowns, polling, or timed redraws.
+
+Automatic supply expansion is a separate opt-in. EOC uses eligible existing ships first and may purchase a suitable miner or freighter only within the player's saved limits, normal blueprint/shipyard/resource/delivery rules, and existing assignment safeguards. Assisted EOC remains available independently of Diagnostics. See the [automatic manager guide](docs/EOC_AUTOMATIC_MANAGER.md). Native paths outside the accepted Build 397 construction route remain **RUNTIME ACCEPTANCE REQUIRED** where documented.
 
 Retained new features: question-based Home navigation, station-wide Fix All, explicit reviewed-report archiving, gains-versus-losses comparison and Home return buttons, with native station-reference and report-formatting corrections. See [Build 382 release notes](docs/RELEASE_NOTES_BUILD382.md) and the [illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md).
 
@@ -39,7 +43,7 @@ Release coverage is partial: automatic final recovery, rapid repeated-request du
 - Steady next-action cues, explicit navigation labels and Back controls for the planning flow.
 - Saved advisory player scenarios remain separate from evidence-backed repair plans.
 
-Scenarios do not place modules, spend credits or order ships. External supply is an assumption, not proof of delivery. Supporting production is recipe-dependent; raw resources still need mining or trade. Workforce, storage, throughput, cost and placement require review. Saved player scenarios are snapshots, not live construction progress.
+Scenario calculations do not place modules, spend credits, or order ships. A saved list remains advisory until the player prepares an exact native expansion quote and explicitly confirms the exact station and module count. Confirmation may queue normal X4 construction; funding, builder assignment, wares, placement, and completion remain separate. External supply is an assumption, not proof of delivery. Supporting production is recipe-dependent; raw resources still need mining or trade.
 
 The Build369 screenshots of retained workflows remain in the current guide alongside new question-based Home and money-comparison images.
 
@@ -132,6 +136,7 @@ Build 259 also preserves the complete EOC 3.2 feature set:
 
 - [EOC Development Roadmap](docs/EOC_ROADMAP.md)
 - [EOC 3.9 GA Illustrated Player Guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md)
+- [EOC Build 397 Release Notes](docs/RELEASE_NOTES_BUILD397.md)
 - [EOC Build 390 Release Notes](docs/RELEASE_NOTES_BUILD390.md)
 - [EOC Automatic Manager Guide](docs/EOC_AUTOMATIC_MANAGER.md)
 - [EOC 3.9 GA Release Notes](docs/RELEASE_NOTES_3.9_GA.md)
