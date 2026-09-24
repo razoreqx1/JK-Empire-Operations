@@ -1,8 +1,8 @@
-# EOC 3.9 Player Guide — Build 397
+# EOC 3.9 Player Guide — Build 404
 
-**Current edition:** EOC 3.9, Build 397, extension version 497. Retained older screenshots below are clearly labeled with the build they document.
+**Current edition:** EOC 3.9, Build 404, extension version 504. Retained older screenshots below are clearly labeled with the build they document.
 
-**Current accepted construction route:** Build 397 was tested live from a Smart Chips case through saved module list, exact quote, explicit confirmation, native queue creation, correct station-progress routing, separate funding approval, builder assignment, supplied wares, and active construction. Read the [Build 397 release notes](RELEASE_NOTES_BUILD397.md). Other unexercised native paths remain **RUNTIME ACCEPTANCE REQUIRED**.
+**Current accepted switch behavior:** Build 404 was tested live with all three feature switches independently changing state, surviving save/reload, restoring correctly when EOC reopened, and resuming their managers when enabled. Read the [Build 404 release notes](RELEASE_NOTES_BUILD404.md). The accepted Build 397 construction route remains unchanged; other unexercised native paths remain **RUNTIME ACCEPTANCE REQUIRED**.
 
 **Optional automatic manager:** Read the [Build 390 companion guide](EOC_AUTOMATIC_MANAGER.md) for background management, Diagnostics B007 requirements, spending limits, live activity, supply-ship consent, reports and stopping. Assisted play remains unchanged; older screenshots are not evidence for newer runtime behavior.
 
@@ -266,6 +266,14 @@ Use **SHOW ALL RETAINED REPORTS (INCLUDING ARCHIVED)** to find it again; **SHOW 
 ![Build 369 Settings](images/EOC_BUILD369_SETTINGS.png)
 
 Opening Settings changes nothing. Read the scope beside every control before changing it.
+
+### Global feature switches
+
+Three compact controls independently govern **Background Empire Analysis**, **Automatic Remediation Review**, and **Automatic Ship Matching**. Green is ON and yellow is OFF. One click saves immediately without a confirmation prompt.
+
+OFF stops new scheduled work for that feature. It does not delete reports, cases, history, receipts, paid or in-flight work, or manual actions. ON resumes the corresponding bounded manager. These switches do not change the separate trade, construction-funding, or ship-assignment authorities below.
+
+Each state is saved as an exact binary value and restored before the Settings page first appears. Changing one switch does not change the other two. If another automatic trading or ship-management mod competes for the same idle ships, disable one automation system or use EOC's Approval Required mode.
 
 ### Global ship minimums
 

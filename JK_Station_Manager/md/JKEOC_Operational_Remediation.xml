@@ -19,13 +19,13 @@
         <do_if value="not global.$JKEOC_B70UnlinkedShips?"><set_value name="global.$JKEOC_B70UnlinkedShips" exact="[]" /></do_if>
         <do_if value="not global.$JKEOC_B70NextIdentity?"><set_value name="global.$JKEOC_B70NextIdentity" exact="1" /></do_if>
         <set_value name="global.$JKEOC_B70NextCycle" exact="player.age" />
-        <signal_cue_instantly cue="JKEOC_B70_Analyze" />
+        <do_if value="global.$JKEOC_FeatureRemediationEnabled == 1"><signal_cue_instantly cue="JKEOC_B70_Analyze" /></do_if>
         <debug_text text="'[JKEOC][B70][REMEDIATION_READY] records=%1 schema=%2'.[global.$JKEOC_B70Remediations.count, global.$JKEOC_B70Schema]" filter="general" />
       </actions>
     </cue>
 
     <cue name="JKEOC_B70_Scheduler" instantiate="true" namespace="this" checktime="player.age + 5min" checkinterval="5min">
-      <conditions><check_value value="global.$JKEOC_B70Schema? and player.age ge global.$JKEOC_B70NextCycle" /></conditions>
+      <conditions><check_value value="global.$JKEOC_FeatureRemediationEnabled == 1 and global.$JKEOC_B70Schema? and player.age ge global.$JKEOC_B70NextCycle" /></conditions>
       <actions><signal_cue_instantly cue="JKEOC_B70_Analyze" /></actions>
     </cue>
 

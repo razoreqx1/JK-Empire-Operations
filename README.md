@@ -5,19 +5,19 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current update
 
 - Version: 3.9
-- Engineering build: 397
-- Extension version: 4.97
-- Status: GitHub contains the exact Build 397 runtime accepted in live X4 testing. Steam distribution is handled separately by the maintainer. The build retains its TEST identity; this update is not a new GA promotion.
+- Engineering build: 404
+- Extension version: 5.04
+- Status: GitHub contains the runtime-accepted Build 404 feature-switch release. Steam distribution is handled separately by the maintainer. This update is not a new GA promotion.
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
 
-Build 397 cleans the active case list by archiving cases that EOC can prove resolved or that the player explicitly closed, while preserving uncertain and unresolved work. It prevents duplicate active station/subject rows, bounds retained case history, clears stale planner transactions when changing cases, and displays the exact EOC version and engineering build in the menu header.
+Build 404 adds three independent one-click Global Settings switches for Background Empire Analysis, Automatic Remediation Review, and Automatic Ship Matching. Green is ON, yellow is OFF, and each click saves immediately without confirmation. OFF stops new scheduled work for that feature while preserving reports, cases, history, receipts, existing work, and manual actions.
 
-The production workflow now keeps voluntary scenarios advisory until the player saves the exact list, prepares a native expansion quote, and explicitly confirms that quote. A successful confirmation queues the normal X4 construction plan and opens the exact station's construction-progress page. Funding, builder assignment, construction wares, and completion still follow normal X4 rules. The exact Smart Chip Production route was accepted in live testing through quote, confirmation, funding, builder assignment, supplied wares, and active construction. See [Build 397 release notes](docs/RELEASE_NOTES_BUILD397.md) and the [illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md).
+The switches use exact saved binary values and restore all three states before the Settings page first appears. Changing one switch does not change the others. Live acceptance confirmed independent switching, save/reload persistence, correct restored states, and resumed analysis, remediation, and shipping. See [Build 404 release notes](docs/RELEASE_NOTES_BUILD404.md) and the [illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md).
 
-Build 397 retains the optional automatic manager introduced in Build 383. History includes a live, newest-first Automatic Activity view whose rows and summary bars update together while EOC is open. A visible key explains the `RUNNING`, `WAITING`, `BLOCKED`, `COMPLETED`, and `RECORDED` states; state and shortened-action hover text provides the full meaning. Enabled automatic options use steady `RUNNING` or `ACTIVE` labels without flashing, animation, countdowns, polling, or timed redraws.
+Build 404 preserves Build 397's accepted case lifecycle, confirmed station-expansion workflow, construction routing, and visible version header. History includes a live, newest-first Automatic Activity view whose rows and summary bars update together while EOC is open. A visible key explains the `RUNNING`, `WAITING`, `BLOCKED`, `COMPLETED`, and `RECORDED` states.
 
-Automatic supply expansion is a separate opt-in. EOC uses eligible existing ships first and may purchase a suitable miner or freighter only within the player's saved limits, normal blueprint/shipyard/resource/delivery rules, and existing assignment safeguards. Assisted EOC remains available independently of Diagnostics. See the [automatic manager guide](docs/EOC_AUTOMATIC_MANAGER.md). Native paths outside the accepted Build 397 construction route remain **RUNTIME ACCEPTANCE REQUIRED** where documented.
+Automatic supply expansion is a separate opt-in. EOC uses eligible existing ships first and may purchase a suitable miner or freighter only within the player's saved limits, normal blueprint/shipyard/resource/delivery rules, and existing assignment safeguards. Assisted EOC remains available independently of Diagnostics. See the [automatic manager guide](docs/EOC_AUTOMATIC_MANAGER.md). Unexercised automatic outcomes, alternate saves, extended-session performance, and broader mod compatibility remain **RUNTIME ACCEPTANCE REQUIRED** where documented.
 
 Retained new features: question-based Home navigation, station-wide Fix All, explicit reviewed-report archiving, gains-versus-losses comparison and Home return buttons, with native station-reference and report-formatting corrections. See [Build 382 release notes](docs/RELEASE_NOTES_BUILD382.md) and the [illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md).
 
@@ -136,6 +136,7 @@ Build 259 also preserves the complete EOC 3.2 feature set:
 
 - [EOC Development Roadmap](docs/EOC_ROADMAP.md)
 - [EOC 3.9 GA Illustrated Player Guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md)
+- [EOC Build 404 Release Notes](docs/RELEASE_NOTES_BUILD404.md)
 - [EOC Build 397 Release Notes](docs/RELEASE_NOTES_BUILD397.md)
 - [EOC Build 390 Release Notes](docs/RELEASE_NOTES_BUILD390.md)
 - [EOC Automatic Manager Guide](docs/EOC_AUTOMATIC_MANAGER.md)

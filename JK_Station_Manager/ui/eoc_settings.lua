@@ -95,7 +95,7 @@ ffi.cdef[[
 
 local menu = {
     name = "JKEOC_SettingsMenu",
-    title = "EOC - EOC - VERSION 497 (BUILD 397)",
+    title = "EOC - EOC - VERSION 504 (BUILD 404)",
     page = "dashboard",
     selected = 1,
     analysisRunning = false,
@@ -254,6 +254,13 @@ local function startupSequenceEnabled()
     if type(menu.startupPreference) == "boolean" then return menu.startupPreference end
     return commandIdentityStore().startupSequenceEnabled ~= false
 end
+
+function menu.setFeatureSwitch(key, enabled)
+    menu.featureSwitches = menu.featureSwitches or {}
+    menu.featureSwitches[key] = enabled and true or false
+    AddUITriggeredEvent(menu.name, "feature.switch", { key = key, enabled = enabled and true or false })
+end
+
 local function buildOSBootStages()
     local available = {}
     for index, message in ipairs(EOC_OS_MESSAGE_POOL) do available[index] = message end
@@ -1939,6 +1946,12 @@ end
 
 function menu.onShowMenu()
     menu.analysisRunning = false
+    local initialFeatureState = v(menu.param, 46, { 0, 0, 0 })
+    menu.featureSwitches = {
+        analysis = tonumber(v(initialFeatureState, 1, 0)) == 1,
+        remediation = tonumber(v(initialFeatureState, 2, 0)) == 1,
+        shipping = tonumber(v(initialFeatureState, 3, 0)) == 1,
+    }
     menu.mode = v(menu.param, 3, "ADVISOR")
     menu.offers = v(menu.param, 4, 0)
     menu.shipmode = v(menu.param, 5, "APPROVAL REQUIRED")
@@ -11002,6 +11015,23 @@ local function globalSettings(tableWidget)
     pair(tableWidget,"CONSTRUCTION FUNDING",menu.constructionAuthority,"FUNDING LIMIT","EXACT VERIFIED SHORTFALL")
     local summary = tableWidget:addRow(false)
     summary[1]:setColSpan(4):createText("Review permissions before changing them. Opening this page changes nothing. Existing controls retain their own apply/save behavior.",{wordwrap=true})
+    section(tableWidget, "GLOBAL FEATURE SWITCHES")
+    local featureSwitches = menu.featureSwitches or { analysis = true, remediation = true, shipping = true }
+    local switchHelp = tableWidget:addRow(false)
+    switchHelp[1]:setColSpan(4):createText("One click changes the saved setting immediately. GREEN is ON. YELLOW is OFF. OFF stops new scheduled work; existing paid orders, receipts, reports, and history are preserved. Manual actions remain available.", { wordwrap = true })
+    local function featureSwitch(label, key)
+        local enabled = featureSwitches[key] == true
+        local switchRow = tableWidget:addRow(true)
+        switchRow[1]:setColSpan(3):createText(label, { halign = "left" })
+        addButton(switchRow, 4, enabled and "ON" or "OFF", function()
+            menu.setFeatureSwitch(key, not enabled)
+            menu.settingsStatus = label .. " is now " .. (enabled and "OFF." or "ON.")
+            menu.refresh(true)
+        end, true, enabled and investigationPassColor or investigationUnknownColor, nil, nil, true)
+    end
+    featureSwitch("BACKGROUND EMPIRE ANALYSIS", "analysis")
+    featureSwitch("AUTOMATIC REMEDIATION REVIEW", "remediation")
+    featureSwitch("AUTOMATIC SHIP MATCHING", "shipping")
     local preference = tableWidget:addRow(true); preference[1]:setColSpan(4)
     addButton(preference,1,menu.playerPreferences and "HIDE IDENTITY AND STARTUP PREFERENCES" or "IDENTITY AND STARTUP PREFERENCES",function() menu.playerPreferences=not menu.playerPreferences; menu.refresh() end,true)
     if menu.playerPreferences then

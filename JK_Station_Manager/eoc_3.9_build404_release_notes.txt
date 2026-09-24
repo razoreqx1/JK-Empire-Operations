@@ -1,0 +1,12 @@
+EOC 3.9 Build 404 / version 504 - Persistent Independent Feature Switches
+
+- Adds independent Global Settings switches for Background Empire Analysis, Automatic Remediation Review, and Automatic Ship Matching.
+- Uses compact green ON and yellow OFF controls with immediate confirmation-free saving.
+- Stores exact binary state: 1 is ON and 0 is OFF.
+- Delivers all three saved values atomically when EOC opens, before the first Settings render.
+- Removes the delayed state reply that could redraw all controls after one click.
+- Preserves existing reports, cases, history, receipts, paid or in-flight work, and manual actions while a feature is OFF.
+- Retains separate player trade, construction, funding, and ship-assignment authorities.
+- Preserves Build 397's accepted case lifecycle, confirmed station expansion, construction routing, and visible version header.
+
+Live acceptance confirmed independent clicks, correct restored presentation, OFF and ON persistence across save/reload, and resumed analysis, remediation, and shipping cycles after enabling the switches. Extended-session performance and broader mod-set compatibility remain runtime dependent.

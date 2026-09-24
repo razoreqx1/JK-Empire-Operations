@@ -2008,7 +2008,7 @@ subordinates, storage modules, and funds. No station or ship settings are change
 
     <cue name="JKSM_PeriodicMonitor" namespace="this" version="80" instantiate="true" checktime="player.age + 300s" checkinterval="300s">
       <conditions>
-        <check_value value="global.$JKSM_MonitorInitialized?" />
+        <check_value value="global.$JKEOC_FeatureAnalysisEnabled == 1 and global.$JKSM_MonitorInitialized?" />
       </conditions>
       <actions>
         <signal_cue_instantly cue="JKSM_RunIntelligenceScan" />

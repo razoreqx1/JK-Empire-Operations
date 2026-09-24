@@ -2,12 +2,12 @@
 <content
   id="ws_3788882957"
   name="EOC - Executive Operations Center"
-  description="EOC 3.9 - Build 397. Visible runtime version header plus exact case-to-construction routing. Runtime acceptance required."
+  description="EOC 3.9 Build 404. Persistent independent controls for background analysis, remediation review, and automatic ship matching."
   author="RazorEQX"
-  version="497"
-  date="2026-09-20"
+  version="504"
+  date="2026-09-24"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 TEST Build 397" description="The EOC header identifies version and build; case expansion opens the governed workflow and confirmed queues open construction progress. Runtime acceptance required." />
+  <text language="44" name="EOC 3.9 Build 404" description="Independent saved feature switches restore before first render and preserve unrelated controls." />
   <dependency id="ws_3477279743" optional="true" />
 </content>

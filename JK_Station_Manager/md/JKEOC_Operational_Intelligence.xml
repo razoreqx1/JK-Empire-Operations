@@ -426,7 +426,7 @@
     </cue>
 
     <cue name="JKEOC_SPOS_Scheduler" instantiate="true" namespace="this" checktime="player.age + 2min" checkinterval="2min">
-      <conditions><check_value value="global.$JKEOC_SPOSInitialized? and player.age ge global.$JKEOC_SPOSNextCycle" /></conditions>
+      <conditions><check_value value="global.$JKEOC_FeatureAnalysisEnabled == 1 and global.$JKEOC_SPOSInitialized? and player.age ge global.$JKEOC_SPOSNextCycle" /></conditions>
       <actions><signal_cue_instantly cue="JKEOC_SPOS_RunCycle" /></actions>
     </cue>
 

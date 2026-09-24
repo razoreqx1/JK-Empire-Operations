@@ -17,11 +17,11 @@
       <actions>
         <do_if value="not global.$JKEOC_B328CapacityRecords?"><set_value name="global.$JKEOC_B328CapacityRecords" exact="[]" /></do_if>
         <remove_value name="global.$JKEOC_B327RebalancePending" />
-        <signal_cue_instantly cue="JKEOC_B328_CapacitySample" />
+        <do_if value="global.$JKEOC_FeatureAnalysisEnabled == 1"><signal_cue_instantly cue="JKEOC_B328_CapacitySample" /></do_if>
       </actions>
     </cue>
     <cue name="JKEOC_B328_CapacityScheduler" instantiate="true" namespace="this" checktime="player.age + 5min" checkinterval="5min">
-      <conditions><check_value value="global.$JKEOC_B328CapacityRecords?" /></conditions>
+      <conditions><check_value value="global.$JKEOC_FeatureAnalysisEnabled == 1 and global.$JKEOC_B328CapacityRecords?" /></conditions>
       <actions><signal_cue_instantly cue="JKEOC_B328_CapacitySample" /></actions>
     </cue>
     <cue name="JKEOC_B328_CapacitySample" instantiate="true" namespace="this">

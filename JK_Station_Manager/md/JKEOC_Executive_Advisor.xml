@@ -27,13 +27,13 @@
         <do_if value="not global.$JKEOC_B67Schema? or global.$JKEOC_B67Schema lt 1"><set_value name="global.$JKEOC_B67Schema" exact="1" /></do_if>
         <do_if value="not global.$JKEOC_B83DUndefinedCycles?"><set_value name="global.$JKEOC_B83DUndefinedCycles" exact="0" /></do_if>
         <set_value name="global.$JKEOC_B67NextCycle" exact="player.age" />
-        <signal_cue_instantly cue="JKEOC_B67_Analyze" />
+        <do_if value="global.$JKEOC_FeatureAnalysisEnabled == 1"><signal_cue_instantly cue="JKEOC_B67_Analyze" /></do_if>
         <debug_text text="'[JKEOC][B67][ADVISOR_READY] profiles=%1 schema=%2'.[global.$JKEOC_B67Profiles.count, global.$JKEOC_B67Schema]" filter="general" />
       </actions>
     </cue>
 
     <cue name="JKEOC_B67_Scheduler" instantiate="true" namespace="this" checktime="player.age + 5min" checkinterval="5min">
-      <conditions><check_value value="global.$JKEOC_B67Schema? and player.age ge global.$JKEOC_B67NextCycle" /></conditions>
+      <conditions><check_value value="global.$JKEOC_FeatureAnalysisEnabled == 1 and global.$JKEOC_B67Schema? and player.age ge global.$JKEOC_B67NextCycle" /></conditions>
       <actions><signal_cue_instantly cue="JKEOC_B67_Analyze" /></actions>
     </cue>
 
