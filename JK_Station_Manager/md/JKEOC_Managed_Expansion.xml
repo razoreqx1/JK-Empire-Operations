@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Managed_Expansion" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+    <!-- One persistent admission slot, independent of the menu and of advisory saves. -->
+    <library name="Reply" purpose="run_actions">
+      <params><param name="Record"/><param name="Message"/></params>
+      <actions>
+        <raise_lua_event name="'JKEOC_SettingsMenu.managed.state'" param="if $Record.$state? then $Record.$state else 'IDLE'"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.managed.message'" param="$Message"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.managed.token'" param="if $Record.$token? then $Record.$token else ''"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.managed.price'" param="if $Record.$price? then ($Record.$price / 1Cr)i else 0"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.managed.modules'" param="if $Record.$requested? then $Record.$requested else 0"/>
+        <raise_lua_event name="'JKEOC_SettingsMenu.managed.commit'"/>
+      </actions>
+    </library>
+    <library name="Inspect" purpose="run_actions">
+      <params><param name="Job"/></params>
+      <actions>
+        <set_value name="$Job.$done" exact="0"/>
+        <set_value name="$Job.$intact" exact="false"/>
+        <set_value name="$s" exact="@$Job.$station"/>
+        <do_if value="@$s.exists and $s.owner == faction.player and $Job.$witness? and $Job.$witness.count gt 0 and $Job.$witness.count le 4096">
+          <set_value name="$seq" exact="$s.plannedconstruction.sequence"/>
+          <set_value name="$Job.$intact" exact="$seq.count == $Job.$witness.count"/>
+          <do_if value="$Job.$intact">
+            <do_all exact="$seq.count" counter="$i">
+              <do_if value="$seq.{$i}.id != $Job.$witness.{$i}.{1} or $seq.{$i}.macro != $Job.$witness.{$i}.{2}"><set_value name="$Job.$intact" exact="false"/></do_if>
+              <do_if value="$i le $Job.$original.count and @$Job.$managed"><set_value name="$originalmodule" exact="@$s.planmodule.{$Job.$witness.{$i}.{1}}"/><do_if value="not @$originalmodule.exists or not $originalmodule.isoperational"><set_value name="$Job.$intact" exact="false"/></do_if></do_if>
+              <do_if value="$i gt $Job.$original.count">
+                <set_value name="$module" exact="@$s.planmodule.{$Job.$witness.{$i}.{1}}"/>
+                <do_if value="@$module.exists and $module.macro == $Job.$witness.{$i}.{2} and $module.isoperational"><set_value name="$Job.$done" operation="add" exact="1"/></do_if>
+              </do_if>
+            </do_all>
+          </do_if>
+          <do_if value="$Job.$intact and $Job.$done == $Job.$witness.count - $Job.$original.count and $Job.$done gt 0">
+            <set_value name="$Job.$state" exact="'COMPLETED'"/>
+            <set_value name="$Job.$message" exact="'COMPLETED: %1 additions at %2 are operational, including connections. The one-station EOC construction slot is free.'.[$Job.$done,$s.name]"/>
+          </do_if>
+          <do_elseif value="not $Job.$intact"><set_value name="$Job.$message" exact="'BLOCKED: native plan changed at %1. EOC has stopped spending and assigning ships. The one-station slot remains reserved; inspect the build plan. Missing modules are not completion.'.[$s.name]"/></do_elseif>
+        </do_if>
+        <do_else><set_value name="$Job.$message" exact="'BLOCKED: active station or construction evidence is unavailable. EOC retains the one-station slot and will not infer completion or repeat construction.'"/></do_else>
+      </actions>
+    </library>
+    <library name="Slot" purpose="run_actions">
+      <params><param name="Result"/></params>
+      <actions>
+        <!-- Adopt a still-retained pre406 accepted queue conservatively, never a guessed station. -->
+        <do_if value="not global.$JKEOC_B406Active? and @global.$JKEOC_B391Expansion.$state == 'QUEUED' and global.$JKEOC_B391Expansion.$sequence?">
+          <set_value name="global.$JKEOC_B406Active" exact="global.$JKEOC_B391Expansion"/>
+          <set_value name="$old" exact="global.$JKEOC_B406Active"/><set_value name="$old.$witness" exact="[]"/>
+          <do_all exact="$old.$sequence.count" counter="$i"><append_to_list name="$old.$witness" exact="[$old.$sequence.{$i}.id,$old.$sequence.{$i}.macro]"/></do_all>
+        </do_if>
+        <do_if value="global.$JKEOC_B406Active? and global.$JKEOC_B406Active.$state != 'COMPLETED'"><run_actions ref="Inspect"><param name="Job" value="global.$JKEOC_B406Active"/></run_actions></do_if>
+        <set_value name="$Result.$free" exact="not global.$JKEOC_B406Active? or global.$JKEOC_B406Active.$state == 'COMPLETED'"/>
+      </actions>
+    </library>
+    <cue name="Quote" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'planner.managed.quote'"/></conditions>
+      <actions>
+        <set_value name="$q" exact="table[$token=event.param3.$token,$state='BLOCKED',$managed=true,$requested=0,$price=0Cr,$contract=406]"/>
+        <set_value name="$slot" exact="table[]"/><run_actions ref="Slot"><param name="Result" value="$slot"/></run_actions>
+        <set_value name="$p" exact="if event.param3.$profile gt 0 and event.param3.$profile le global.$JKEOC_B67Profiles.count then global.$JKEOC_B67Profiles.{event.param3.$profile} else null"/>
+        <set_value name="$s" exact="@$p.$station"/>
+        <do_if value="$slot.$free and @$s.exists and $s == component.{event.param3.$station} and $s.owner == faction.player and $s.isoperational and $s.buildstorage.exists and event.param3.$rows.count gt 0 and event.param3.$rows.count le 96 and $q.$token != '' and @global.$JKEOC_B391Expansion.$state != 'GENERATING' and @global.$JKEOC_B391Expansion.$state != 'CRITICAL QUEUE'">
+          <set_value name="$q.$station" exact="$s"/><set_value name="$q.$base" exact="$s.plannedconstruction.sequence"/>
+          <set_value name="$q.$original" exact="[]"/><set_value name="$q.$plan" exact="table[]"/>
+          <set_value name="$valid" exact="$q.$base.count gt 0 and $q.$base.count le 4096"/>
+          <do_if value="$valid"><do_all exact="$q.$base.count" counter="$i">
+            <append_to_list name="$q.$original" exact="[$q.$base.{$i}.id,$q.$base.{$i}.macro]"/>
+            <set_value name="$module" exact="@$s.planmodule.{$q.$base.{$i}.id}"/>
+            <!-- No mixing a new managed budget with pre-existing unfinished construction. -->
+            <do_if value="not @$module.exists or not $module.isoperational"><set_value name="$valid" exact="false"/></do_if>
+          </do_all></do_if>
+          <set_value name="$q.$new" exact="[]"/>
+          <get_module_definition macro="$available" tags="[tag.module]" set="'factory'" multiple="true"/>
+          <do_for_each name="$row" in="event.param3.$rows">
+            <remove_value name="$macro"/>
+            <do_for_each name="$candidate" in="$available"><do_if value="$candidate.id == $row.{1}"><set_value name="$macro" exact="$candidate"/></do_if></do_for_each>
+            <do_if value="$macro? and player.blueprints.{$macro.ware}.any.exists and $row.{2} gt 0 and $row.{2} le 999 and $row.{2} == ($row.{2})i and $q.$requested + $row.{2} le 999">
+              <do_all exact="$row.{2}" counter="$n"><append_to_list name="$q.$new" exact="$macro"/></do_all>
+              <set_value name="$q.$requested" operation="add" exact="$row.{2}"/>
+            </do_if><do_else><set_value name="$valid" exact="false"/></do_else>
+          </do_for_each>
+          <get_module_definition macro="$allconnectors" tags="[tag.connection,tag.module]" set="'factory'" multiple="true"/>
+          <set_value name="$q.$connectors" exact="[]"/>
+          <do_for_each name="$connector" in="$allconnectors"><do_if value="player.blueprints.{$connector.ware}.any.exists"><append_to_list name="$q.$connectors" exact="$connector"/></do_if></do_for_each>
+          <do_if value="$valid and $q.$new.count gt 0 and $q.$connectors.count gt 0 and $q.$base.count + $q.$new.count le 4096">
+            <set_value name="$q.$state" exact="'GENERATING'"/><set_value name="global.$JKEOC_B391Expansion" exact="$q"/>
+            <run_actions ref="Reply"><param name="Record" value="$q"/><param name="Message" value="'DESIGNING: checking connected placement and native material costs. Nothing queued or paid. One EOC station may build at a time.'"/></run_actions>
+            <signal_cue_instantly cue="md.JKEOC_Approved_Station_Expansion.Generate" param="$q"/>
+          </do_if>
+          <do_else><run_actions ref="Reply"><param name="Record" value="$q"/><param name="Message" value="'BLOCKED: missing blueprint/connector, unfinished native construction, invalid quantity or native plan limit. Use 1-999 total additions and an idle station. Nothing queued or paid.'"/></run_actions></do_else>
+        </do_if>
+        <do_else><run_actions ref="Reply"><param name="Record" value="$q"/><param name="Message" value="if not $slot.$free then 'ONE STATION AT A TIME: %1 still owns the EOC construction slot. Calculate/save other plans, but wait for verified completion before adding modules elsewhere.'.[if @global.$JKEOC_B406Active.$station.exists then global.$JKEOC_B406Active.$station.name else 'Unavailable station'] else 'BLOCKED: station identity changed or a quote/submission is already pending. Nothing queued or paid.'"/></run_actions></do_else>
+      </actions>
+    </cue>
+    <cue name="Confirm" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'planner.managed.confirm'"/></conditions>
+      <actions>
+        <set_value name="$q" exact="@global.$JKEOC_B391Expansion"/><set_value name="$slot" exact="table[]"/>
+        <run_actions ref="Slot"><param name="Result" value="$slot"/></run_actions>
+        <set_value name="$message" exact="'NOT SUBMITTED: stale quote, insufficient funds, changed station, or the one-station slot is occupied. Refresh status; do not repeat an uncertain submission.'"/>
+        <do_if value="$slot.$free and @$q.$managed and @$q.$contract == 406 and $q.$state == 'QUOTED' and $q.$token == event.param3.$token and $q.$station == component.{event.param3.$station} and player.age le $q.$expires and player.money ge $q.$price and not $q.$plan.$expansionattempted?">
+          <set_value name="$check" exact="table[]"/><run_actions ref="md.JKEOC_Approved_Station_Expansion.ValidateBase"><param name="Record" value="$q"/><param name="Result" value="$check"/></run_actions>
+          <do_all exact="$q.$original.count" counter="$i"><set_value name="$module" exact="@$q.$station.planmodule.{$q.$original.{$i}.{1}}"/><do_if value="not @$module.exists or not $module.isoperational"><set_value name="$check.$valid" exact="false"/></do_if></do_all>
+          <do_for_each name="$macro" in="$q.$new"><do_if value="not player.blueprints.{$macro.ware}.any.exists"><set_value name="$check.$valid" exact="false"/></do_if></do_for_each>
+          <do_all exact="$q.$sequence.count" counter="$i"><do_if value="$i gt $q.$original.count and not player.blueprints.{$q.$sequence.{$i}.macro.ware}.any.exists"><set_value name="$check.$valid" exact="false"/></do_if></do_all>
+          <do_if value="$check.$valid">
+            <set_value name="$q.$witness" exact="[]"/>
+            <do_all exact="$q.$sequence.count" counter="$i"><append_to_list name="$q.$witness" exact="[$q.$sequence.{$i}.id,$q.$sequence.{$i}.macro]"/></do_all>
+            <set_value name="$q.$reserved" exact="0Cr"/><set_value name="$q.$transferred" exact="0Cr"/><set_value name="$q.$plan.$expansionattempted" exact="$q.$token"/>
+            <set_value name="$q.$state" exact="'CRITICAL QUEUE'"/><set_value name="global.$JKEOC_B406Active" exact="$q"/>
+            <add_build_to_expand_station object="$q.$station.buildstorage" buildobject="$q.$station" constructionplan="$q.$sequence" result="$build"/>
+            <do_if value="@$build.exists and $build.buildobject == $q.$station">
+              <set_value name="$q.$build" exact="$build"/><set_value name="$q.$state" exact="'QUEUED'"/>
+              <set_value name="$message" exact="'QUEUED at %1: EOC will fund the exact remaining native request within your approved ceiling, arrange eligible existing ships, and verify completion. Other EOC expansions are blocked until this finishes.'.[$q.$station.name]"/>
+              <signal_cue_instantly cue="Advance"/>
+            </do_if>
+            <do_else><set_value name="$message" exact="'QUEUE RESULT UNCERTAIN: the one-station slot remains reserved. No repeat submission or payment. Inspect the native station build plan.'"/></do_else>
+            <set_value name="$q.$message" exact="$message"/>
+          </do_if>
+        </do_if>
+        <run_actions ref="Reply"><param name="Record" value="$q"/><param name="Message" value="$message"/></run_actions>
+      </actions>
+    </cue>
+    <cue name="Status" instantiate="true" namespace="this">
+      <conditions><event_ui_triggered screen="'JKEOC_SettingsMenu'" control="'planner.managed.status'"/></conditions>
+      <actions>
+        <set_value name="$slot" exact="table[]"/><run_actions ref="Slot"><param name="Result" value="$slot"/></run_actions>
+        <set_value name="$q" exact="if global.$JKEOC_B406Active? then global.$JKEOC_B406Active else table[$state='IDLE']"/>
+        <run_actions ref="Reply"><param name="Record" value="$q"/><param name="Message" value="if $q.$message? then $q.$message else 'No active EOC expansion. Calculate modules, request a quote, then approve construction and its funding ceiling. One station at a time.'"/></run_actions>
+      </actions>
+    </cue>
+    <cue name="Advance" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions>
+      <actions>
+        <set_value name="$j" exact="@global.$JKEOC_B406Active"/>
+        <do_if value="$j? and $j.$state != 'COMPLETED'">
+          <run_actions ref="Inspect"><param name="Job" value="$j"/></run_actions>
+          <do_if value="$j.$intact and $j.$state != 'COMPLETED' and $j.$state != 'CRITICAL QUEUE' and @$j.$managed">
+            <set_value name="$s" exact="$j.$station"/><set_value name="$storage" exact="$s.buildstorage"/>
+            <do_if value="$storage.exists">
+              <set_value name="$shortfall" exact="[$storage.wantedmoney - $storage.money,0Cr].max"/>
+              <set_value name="$j.$message" exact="'ACTIVE: %1 | operational additions %2/%3. One-station slot reserved. Waiting for native construction and material deliveries.'.[$s.name,$j.$done,$j.$witness.count - $j.$original.count]"/>
+              <do_if value="$shortfall gt 0Cr and not @$j.$fundinguncertain and $j.$reserved + $shortfall le $j.$price and player.money ge $shortfall">
+                <!-- Reserve before mutation; an uncertain result is never refunded/repeated blindly. -->
+                <set_value name="$j.$reserved" operation="add" exact="$shortfall"/>
+                <transfer_money result="$paid" from="faction.player" to="$storage" amount="$shortfall"/>
+                <do_if value="$paid ge 0Cr and $paid le $shortfall"><set_value name="$j.$transferred" operation="add" exact="$paid"/></do_if>
+                <do_if value="$paid != $shortfall"><set_value name="$j.$fundinguncertain" exact="true"/><set_value name="$j.$message" exact="$j.$message + ' FUNDING NOT VERIFIED: automatic payments stopped. Reserved amount remains charged against the approval ceiling; inspect Construction Status.'"/></do_if>
+                <debug_text text="'[JKEOC][B406][EXPANSION_FUND] token=%1 station=%2 amount=%3 reserved=%4 ceiling=%5 native_result=%6'.[$j.$token,$s.name,$shortfall,$j.$reserved,$j.$price,$paid]" filter="general"/>
+              </do_if>
+              <do_elseif value="@$j.$fundinguncertain"><set_value name="$j.$message" exact="$j.$message + ' FUNDING NOT VERIFIED: automatic payments remain stopped after an incomplete transfer. No blind retry; inspect Construction Status.'"/></do_elseif>
+              <do_elseif value="$shortfall gt 0Cr"><set_value name="$j.$message" exact="'FUNDING BLOCKED: %1 needs %2. Available player funds or remaining approved ceiling are insufficient. No extra charge; slot remains occupied. Inspect Construction Status.'.[$s.name,$shortfall.formatted.default]"/></do_elseif>
+              <do_if value="$s.subordinates.{assignment.tradeforbuildstorage}.count == 0 and not $j.$traderattempted?">
+                <remove_value name="$trader"/>
+                <do_if value="global.$JKEOC_B76EligibleShips? and global.$JKEOC_B76EligibleShips.count le 4096"><do_for_each name="$ship" in="global.$JKEOC_B76EligibleShips">
+                  <do_if value="not $trader? and $ship.exists and $ship.owner == faction.player and $ship != player.ship and $ship.isoperational and $ship.isclass.ship and not $ship.isunit and not $ship.isclass.ship_xs and $ship.primarypurpose == purpose.trade and $ship.waretransport.indexof.{waretransport.container} and not $ship.commander and not $ship.subordinates.count and (not $ship.order? or $ship.order.id == 'Wait') and (not $ship.defaultorder? or $ship.defaultorder.id == 'Wait')"><set_value name="$trader" exact="$ship"/></do_if>
+                </do_for_each></do_if>
+                <do_if value="$trader?"><set_value name="$j.$traderattempted" exact="$trader"/><set_object_commander object="$trader" commander="$s" assignment="assignment.tradeforbuildstorage"/></do_if>
+                <do_else><set_value name="$j.$message" exact="$j.$message + ' MATERIAL TRANSPORT BLOCKED: register an idle container trader or assign build-storage trade manually.'"/></do_else>
+              </do_if>
+              <do_if value="$j.$traderattempted?">
+                <do_if value="$j.$traderattempted.exists and $j.$traderattempted.commander == $s and $j.$traderattempted.assignment == assignment.tradeforbuildstorage"><set_value name="$j.$message" exact="$j.$message + ' MATERIAL TRADER VERIFIED: ' + $j.$traderattempted.name + '. Assignment is not delivery.'"/></do_if>
+                <do_else><set_value name="$j.$message" exact="$j.$message + ' Trader assignment not verified; inspect the ship. No repeat assignment.'"/></do_else>
+              </do_if>
+              <do_if value="$storage.buildmodule? and not $storage.buildmodule.constructionvessel and not $j.$builderattempted?">
+                <find_ship name="$builders" primarypurpose="purpose.build" class="class.ship_xl" owner="faction.player" space="$s.sector" checkoperational="true" multiple="true" recursive="true"/>
+                <remove_value name="$builder"/>
+                <do_for_each name="$ship" in="$builders"><do_if value="not $builder? and $ship != player.ship and not $ship.commander and not $ship.subordinates.count and not $ship.constructionmodule and (not $ship.order? or $ship.order.id == 'Wait' or $ship.order.id == 'FindBuildTasks') and (not $ship.defaultorder? or $ship.defaultorder.id == 'Wait' or $ship.defaultorder.id == 'FindBuildTasks')"><set_value name="$builder" exact="$ship"/></do_if></do_for_each>
+                <do_if value="$builder?">
+                  <set_value name="$j.$builderattempted" exact="$builder"/>
+                  <do_if value="not $builder.defaultorder? or $builder.defaultorder.id != 'FindBuildTasks'"><create_order object="$builder" id="'FindBuildTasks'" default="true"><param name="maxjumps" value="0"/><param name="playeronly" value="true"/></create_order></do_if>
+                  <signal_cue_instantly cue="AttachBuilder" param="$j"/>
+                </do_if><do_else><set_value name="$j.$message" exact="$j.$message + ' BUILDER BLOCKED: move an idle player construction vessel into this sector or assign a builder manually.'"/></do_else>
+              </do_if>
+              <do_if value="$j.$builderattempted?">
+                <do_if value="$j.$builderattempted.exists and $storage.buildmodule.constructionvessel == $j.$builderattempted"><set_value name="$j.$message" exact="$j.$message + ' BUILDER VERIFIED: ' + $j.$builderattempted.name + '.'"/></do_if>
+                <do_else><set_value name="$j.$message" exact="$j.$message + ' Requested builder attachment not verified; no repeated reassignment.'"/></do_else>
+              </do_if>
+              <set_value name="$j.$message" exact="$j.$message + ' Funding transferred %1; reserved %2 of ceiling %3.'.[$j.$transferred.formatted.default,$j.$reserved.formatted.default,$j.$price.formatted.default]"/>
+            </do_if>
+          </do_if>
+        </do_if>
+      </actions>
+    </cue>
+    <cue name="AttachBuilder" instantiate="true" namespace="this">
+      <conditions><event_cue_signalled/></conditions><delay exact="1s"/>
+      <actions>
+        <set_value name="$j" exact="event.param"/><set_value name="$ship" exact="$j.$builderattempted"/>
+        <run_actions ref="Inspect"><param name="Job" value="$j"/></run_actions>
+        <do_if value="$j == global.$JKEOC_B406Active and $j.$intact and $j.$state == 'QUEUED' and $ship.exists and $ship.owner == faction.player and $ship != player.ship and $ship.isoperational and not $ship.commander and not $ship.subordinates.count and not $ship.constructionmodule and (not $ship.order? or $ship.order.id == 'FindBuildTasks') and $ship.defaultorder.id == 'FindBuildTasks' and $j.$station.exists and $j.$station.owner == faction.player and $j.$station.buildstorage.buildmodule? and not $j.$station.buildstorage.buildmodule.constructionvessel">
+          <signal_objects object="$ship" param="'request construction vessel'" param2="$j.$station.buildstorage.buildmodule"/>
+        </do_if>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

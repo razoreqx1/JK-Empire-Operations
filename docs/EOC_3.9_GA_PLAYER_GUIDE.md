@@ -1,6 +1,16 @@
-# EOC 3.9 Player Guide — Build 404
+# EOC 3.9 Player Guide — Build 409
 
-**Current edition:** EOC 3.9, Build 404, extension version 504. Retained older screenshots below are clearly labeled with the build they document.
+**Current edition:** EOC 3.9, Build 409, extension version 509. Retained older screenshots below are clearly labeled with the build they document.
+
+## Build sets and construction progress (Build409)
+
+In Plans, select the intended station and open **MODULE EXPANSION / ACTIVE EOC PROJECT**. Choose **ADD MORE MODULES**, select an owned blueprint, enter a quantity, then **ADD TO BUILD SET**. Repeat for other types; editable line items show the draft. Direct module selection does not calculate supporting production.
+
+Choose **DONE - REVIEW BUILD SET**, verify the quantities and funding ceiling, then separately **I AGREE - BUILD AND FUND THIS QUOTE**. Editing invalidates the quote. Drafting alone neither builds nor spends. On confirmed queue acceptance the approved draft clears and the exact station's construction page opens; failed submissions retain the draft.
+
+Only one EOC expansion station is reserved until all submitted additions are operational. Blocked deliveries retain that slot; other stations may plan and manual X4 construction is separate. Limits:999modules/96types. Eligible existing ships and normal native materials are required; approval is not guaranteed completion. Check builder, funding and missing-ware rows. Operational modules and unbuilt plans are separate; an older saved list needs a fresh baseline before submission.
+
+Human feedback confirmed the409handoff and visible progress, not final completion or every save/reload/compatibility path. Do not resubmit an existing active order merely to test this update. [Release details](RELEASE_NOTES_BUILD409.md).
 
 **Current accepted switch behavior:** Build 404 was tested live with all three feature switches independently changing state, surviving save/reload, restoring correctly when EOC reopened, and resuming their managers when enabled. Read the [Build 404 release notes](RELEASE_NOTES_BUILD404.md). The accepted Build 397 construction route remains unchanged; other unexercised native paths remain **RUNTIME ACCEPTANCE REQUIRED**.
 

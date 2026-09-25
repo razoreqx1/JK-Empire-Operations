@@ -1,0 +1,4 @@
+EOC3.9 TEST409 / version509
+After exact confirmed QUEUED reply, clears only the submitted draft and opens that station's existing construction progress page while the originating view is still active.
+Failed, stale, incomplete and status-only replies do not consume drafts. Delayed replies do not hijack another page/station. No new payment display, funding change, construction mutation, history schema or timer.
+Build408 scrolling picker and quantity retention preserved. RUNTIME ACCEPTANCE REQUIRED. Archive only; not installed or published.

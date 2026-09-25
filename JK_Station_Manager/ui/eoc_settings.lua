@@ -95,7 +95,7 @@ ffi.cdef[[
 
 local menu = {
     name = "JKEOC_SettingsMenu",
-    title = "EOC - EOC - VERSION 504 (BUILD 404)",
+    title = "EOC - EOC - VERSION 509 (BUILD 409)",
     page = "dashboard",
     selected = 1,
     analysisRunning = false,
@@ -731,13 +731,16 @@ end
 menu.rawSourceUpdate = {}
 menu.expansionStatus = nil
 menu.pendingExpansionRoute = nil
-function menu.expansionState(_, value) menu.expansionStatus = menu.expansionStatus or {}; menu.expansionStatus.state = text(value) end
-function menu.expansionMessage(_, value) menu.expansionStatus = menu.expansionStatus or {}; menu.expansionStatus.message = text(value) end
-function menu.expansionToken(_, value) menu.expansionStatus = menu.expansionStatus or {}; menu.expansionStatus.token = text(value) end
-function menu.expansionPrice(_, value) menu.expansionStatus = menu.expansionStatus or {}; menu.expansionStatus.price = tonumber(value) or 0 end
-function menu.expansionModules(_, value) menu.expansionStatus = menu.expansionStatus or {}; menu.expansionStatus.modules = tonumber(value) or 0 end
+function menu.expansionState(_, value) menu.expansionUpdate = {state=text(value)} end
+function menu.expansionMessage(_, value) if menu.expansionUpdate then menu.expansionUpdate.message = text(value) end end
+function menu.expansionToken(_, value) if menu.expansionUpdate then menu.expansionUpdate.token = text(value) end end
+function menu.expansionPrice(_, value) if menu.expansionUpdate then menu.expansionUpdate.price = tonumber(value) end end
+function menu.expansionModules(_, value) if menu.expansionUpdate then menu.expansionUpdate.modules = tonumber(value) end end
 function menu.expansionCommit()
-    menu.expansionStatus = menu.expansionStatus or { state="BLOCKED", message="No expansion result was returned." }
+    local reply = menu.expansionUpdate
+    menu.expansionUpdate = nil
+    if not reply or not reply.message or not reply.price or not reply.modules or not reply.token or reply.token == "" or reply.token ~= menu.expansionRequestToken then return end
+    menu.expansionStatus = reply
     local pending = menu.pendingExpansionRoute
     local state = string.upper(text(menu.expansionStatus.state, "BLOCKED"))
     if pending and text(menu.expansionStatus.token, "") == text(pending.token, "") then
@@ -1535,7 +1538,7 @@ local function constructionRefreshComplete()
         if visibleStation == targetName and (plannerEvidenceChanged or manualSavedListRefresh) then
             if caseData and menu.expansionReadiness and menu.expansionReadiness.station == targetName then menu.runExpansionReadiness(caseData, true) end
             for _, state in pairs(menu.plannerModuleDrafts or {}) do if not state.dirty then state.result = nil end end
-            menu.plannerRefreshStatus = manualSavedListRefresh and "MANUAL PROGRESS REFRESH COMPLETE: The exact saved-list station was read. Added/planned and remaining counts now use the latest available evidence." or "LIVE SAVED-LIST REFRESH: Construction, workforce, habitat, and provision evidence updated."
+            menu.plannerRefreshStatus = manualSavedListRefresh and "REFRESH COMPLETE: current station construction evidence was read. Operational modules and unbuilt plan entries are separate; neither proves this saved list completed." or "LIVE SAVED-LIST REFRESH: Construction, workforce, habitat, and provision evidence updated."
             menu.refresh()
         elseif visibleStation == targetName then
             DebugError("[JKEOC][B354][PLANNER_REFRESH_UNCHANGED_NO_REDRAW] station=" .. tostring(targetName))
@@ -1831,6 +1834,12 @@ local function init()
     RegisterEvent(menu.name .. ".expansion.price", menu.expansionPrice)
     RegisterEvent(menu.name .. ".expansion.modules", menu.expansionModules)
     RegisterEvent(menu.name .. ".expansion.commit", menu.expansionCommit)
+    RegisterEvent(menu.name .. ".managed.state", menu.managedState)
+    RegisterEvent(menu.name .. ".managed.message", menu.managedMessage)
+    RegisterEvent(menu.name .. ".managed.token", menu.managedToken)
+    RegisterEvent(menu.name .. ".managed.price", menu.managedPrice)
+    RegisterEvent(menu.name .. ".managed.modules", menu.managedModules)
+    RegisterEvent(menu.name .. ".managed.commit", menu.managedCommit)
     RegisterEvent(menu.name .. ".agreed.status", menu.agreedPlanStatus)
     RegisterEvent(menu.name .. ".route.begin", menu.routeBegin)
     RegisterEvent(menu.name .. ".recovery.probe.id", function(_,value) menu.recoveryProbe={id=tonumber(value)} end)
@@ -2046,7 +2055,8 @@ function menu.onShowMenu()
         local plan = {
             station=text(v(record, 1, "")), wareId=menu.supplyWareId(v(record, 2, "")), ware=text(v(record, 3, "")),
             status=text(v(record, 4, "SAVED")), saved=tonumber(v(record, 5, 0)) or 0,
-            evidence=text(v(record, 6, "")), rows=rows, warnings=v(record, 8, {})
+            evidence=text(v(record, 6, "")), rows=rows, warnings=v(record, 8, {}),
+            hasBuildBaseline=tonumber(v(record, 9, 0)) == 1, expansionAttempted=tonumber(v(record, 10, 0)) == 1
         }
         menu.agreedBuildPlans[menu.agreedPlanKey(plan.station, plan.wareId)] = plan
     end
@@ -3133,6 +3143,41 @@ function menu.savedPlanRefreshTarget(plan)
     return nil
 end
 
+function menu.savedBuildInventory(plan)
+    local station, matches = nil, 0
+    for _, profile in ipairs(menu.stations or {}) do
+        if text(v(profile, 1, "")) == plan.station then
+            station = menu.supplyStationId(profile); matches = matches + 1
+        end
+    end
+    if matches ~= 1 or not station then return nil, nil end
+    local ok, operational, unbuilt = pcall(menu.goalModuleInventory, station)
+    if ok then return operational, unbuilt end
+    return nil, nil
+end
+
+function menu.savedExpansionGate(plan, stale, evidenceLoaded)
+    local matches = 0
+    for _, profile in ipairs(menu.stations or {}) do if text(v(profile, 1, "")) == plan.station then matches = matches + 1 end end
+    if matches ~= 1 then return false, "STATION IDENTITY AMBIGUOUS OR MISSING: no construction request will be sent." end
+    if plan.expansionAttempted then return false, "ALREADY SUBMITTED OR RESULT UNCERTAIN: inspect the native build plan; this saved list cannot be submitted twice." end
+    if plan.hasBuildBaseline == false then return false, "OLDER SAVED LIST: recalculate and save a reviewed list to capture its native build-plan baseline. Existing work is preserved." end
+    if #(plan.warnings or {}) > 0 then return false, "SAVED SAFETY CONDITIONS: resolve the listed conditions and recheck the calculator." end
+    if stale then return false, "PLAN NEEDS REVIEW: current demand differs from this saved list. Recheck the calculator." end
+    if not evidenceLoaded then return false, "CURRENT EVIDENCE UNKNOWN: refresh this list or return to its calculator." end
+    local count = 0
+    for _, row in ipairs(plan.rows or {}) do
+        if row.kind == "MODULE" and (tonumber(row.agreed) or 0) > 0 then
+            if text(row.macro or "") == "" or text(row.macro) == "-" then return false, "EXACT MODULE ID MISSING: recheck the calculator and save again. No module will be guessed." end
+            if row.agreed ~= math.floor(row.agreed) then return false, "INVALID MODULE COUNT: recheck the calculator." end
+            count = count + row.agreed
+        end
+    end
+    if count == 0 then return false, "NO PRODUCTION ADDITIONS: this saved list requests no production modules." end
+    if count > 24 then return false, "SAFETY LIMIT: a single expansion may add at most 24 production modules." end
+    return true, "READY TO REQUEST A QUOTE: nothing queued. EOC will reject a changed native plan, an already-submitted list or invalid native data."
+end
+
 function menu.renderAgreedBuildList(tableWidget, plan, currentSimplePlan, commandKey, caseData, nativePlan)
     local rows, stale, evidenceLoaded = menu.agreedPlanAssessment(plan, currentSimplePlan)
     local projectScenario = string.find(string.upper(text(plan.status)), "PLAYER SCENARIO", 1, true) ~= nil
@@ -3168,19 +3213,22 @@ function menu.renderAgreedBuildList(tableWidget, plan, currentSimplePlan, comman
     menu.agreedBuildPage = math.max(1, math.min(tonumber(menu.agreedBuildPage) or 1, pageCount))
     local first = (menu.agreedBuildPage - 1) * pageSize + 1
     local last = math.min(#rows, first + pageSize - 1)
+    local operational, unbuilt = menu.savedBuildInventory(plan)
     for index = first, last do
         local row = rows[index]
         local display = ""
         if row.kind == "MODULE" then
-            display = row.progressKnown and ((row.module ~= "" and row.module or row.ware) .. " | AGREED ADD " .. tostring(row.agreed) .. " | EOC SEES ADDED/PLANNED ABOUT " .. tostring(row.progress) .. " | STILL NEED ABOUT " .. tostring(row.remaining)) or ((row.module ~= "" and row.module or row.ware) .. " | AGREED ADD " .. tostring(row.agreed) .. " | CURRENT PROGRESS NOT REFRESHED")
+            local macro = plan.rows[index].macro
+            local known = operational and unbuilt and macro and macro ~= "" and macro ~= "-"
+            display = (row.module ~= "" and row.module or row.ware) .. " | SAVED ADD " .. tostring(row.agreed) .. (known and (" | OPERATIONAL NOW " .. tostring(operational[macro] or 0) .. " | UNBUILT IN NATIVE PLAN " .. tostring(unbuilt[macro] or 0)) or " | CURRENT MODULE INVENTORY UNKNOWN") .. " | Station totals, not proof this saved list was built."
             if row.agreed == 0 then display = (row.module ~= "" and row.module or row.ware) .. " | AGREED ADD 0 | DO NOT ADD DUPLICATE CAPACITY" end
         elseif row.kind == "HABITAT" then
-            display = row.progressKnown and ((row.module ~= "" and row.module or "Compatible habitat") .. " | AGREED ADD " .. tostring(row.agreed) .. " | EOC SEES ADDED/PLANNED ABOUT " .. tostring(row.progress) .. " | STILL NEED ABOUT " .. tostring(row.remaining)) or ((row.module ~= "" and row.module or "Compatible habitat") .. " | AGREED ADD " .. tostring(row.agreed) .. " | CURRENT PROGRESS NOT REFRESHED")
+            display = (row.module ~= "" and row.module or "Compatible habitat") .. " | SAVED ADD " .. tostring(row.agreed) .. " | BUILD STATUS NOT VERIFIED: inspect the native station build plan."
         else
             display = row.ware .. " [" .. row.transport .. "] | NO PRODUCTION MODULE | PROVIDE ABOUT " .. formatNumber(row.requiredRate) .. "/h THROUGH THE RAW-SOURCE ROUTE"
         end
         local listRow = tableWidget:addRow(false)
-        listRow[1]:setColSpan(4):createText(display, { wordwrap = true, color = ((row.kind == "MODULE" or row.kind == "HABITAT") and row.remaining == 0) and investigationPassColor or investigationUnknownColor, font = Helper.headerFont })
+        listRow[1]:setColSpan(4):createText(display, { wordwrap = true, color = navigationStoryColor, font = Helper.headerFont })
         if row.kind == "HABITAT" then
             local supplyRow = tableWidget:addRow(false)
             local supplyEvidence = (row.provisions or "") ~= "" and ("Current " .. ((row.species or "") ~= "" and row.species or "workforce") .. " supplies: " .. row.provisions .. ".") or "Exact provision wares for this habitat are not proven by the current station-wide evidence."
@@ -3200,26 +3248,34 @@ function menu.renderAgreedBuildList(tableWidget, plan, currentSimplePlan, comman
             moreRow[1]:setColSpan(4):createText(tostring(conditionCount - 1) .. " additional saved safety condition(s) remain. Return to the calculator or open Advanced Evidence and Math.", { wordwrap = true, color = investigationUnknownColor })
         end
     end
-    local expansion = menu.expansionStatus
-    local buildableRows, buildableModules = 0, 0
-    for _, saved in ipairs(plan.rows or {}) do
-        if saved.kind == "MODULE" and (tonumber(saved.agreed) or 0) > 0 and text(saved.macro or "") ~= "-" then buildableRows = buildableRows + 1; buildableModules = buildableModules + (tonumber(saved.agreed) or 0) end
-    end
+    local planKey = menu.agreedPlanKey(plan.station, plan.wareId)
+    local expansion = menu.expansionPlanKey == planKey and menu.expansionStatus or nil
+    local canQuote, quoteReason = menu.savedExpansionGate(plan, stale, evidenceLoaded)
+    local busy = menu.expansionStatus and (menu.expansionStatus.state == "REQUESTED" or menu.expansionStatus.state == "GENERATING" or menu.expansionStatus.state == "CONFIRMING" or menu.expansionStatus.state == "CRITICAL QUEUE")
+    if busy then canQuote = false; quoteReason = "EXPANSION REQUEST PENDING: wait for its result; no duplicate request will be sent." end
     local expansionInfo = tableWidget:addRow(false)
-    expansionInfo[1]:setColSpan(4):createText("PLAYER-APPROVED EXPANSION: " .. (expansion and text(expansion.message) or "No quote prepared. EOC will revalidate the exact station, saved module macros, unchanged base plan, and native connected sequence before anything is queued."), { wordwrap=true, color=expansion and string.upper(text(expansion.state)) == "QUOTED" and investigationUnknownColor or navigationStoryColor })
+    expansionInfo[1]:setColSpan(4):createText("PLAYER-APPROVED EXPANSION: " .. (expansion and text(expansion.message) or quoteReason), { wordwrap=true, color=expansion and string.upper(text(expansion.state)) == "QUOTED" and investigationUnknownColor or navigationStoryColor })
     local expansionRow = tableWidget:addRow(true)
     expansionRow[1]:setColSpan(2)
     addButton(expansionRow, 1, "PREPARE EXACT EXPANSION QUOTE", function()
+        local _, currentStale, currentLoaded = menu.agreedPlanAssessment(plan, currentSimplePlan)
+        local allowed = menu.savedExpansionGate(plan, currentStale, currentLoaded)
+        local active = menu.expansionStatus and menu.expansionStatus.state
+        if not allowed or not menu.agreedBuildPlans or menu.agreedBuildPlans[planKey] ~= plan or active == "REQUESTED" or active == "GENERATING" or active == "CONFIRMING" or active == "CRITICAL QUEUE" then return end
+        menu.expansionPlanKey = planKey
         menu.expansionStatus = {state="REQUESTED", message="Preparing a connected native plan. No module has been queued."}
         local profileIndex=0; for _, profile in ipairs(menu.stations or {}) do if text(v(profile,1,"")) == plan.station then profileIndex=tonumber(v(profile,16,0)) or 0; break end end
-        raise("planner.expansion.quote", {station=plan.station, profile=profileIndex, ware=plan.wareId, token=tostring(math.floor(getElapsedTime()*1000)) .. ":" .. plan.station})
+        menu.expansionRequestToken = tostring(math.floor(getElapsedTime()*1000)) .. ":" .. planKey
+        raise("planner.expansion.quote", {station=plan.station, profile=profileIndex, ware=plan.wareId, token=menu.expansionRequestToken})
         menu.refresh()
-    end, conditionCount == 0 and not stale and evidenceLoaded and buildableRows > 0 and buildableModules <= 24)
+    end, canQuote)
     expansionRow[3]:setColSpan(2)
     addButton(expansionRow, 3, expansion and string.upper(text(expansion.state)) == "QUOTED" and ("CONFIRM QUEUE " .. tostring(expansion.modules or 0) .. " MODULE(S)") or "CONFIRMATION NOT READY", function()
-        if expansion and string.upper(text(expansion.state)) == "QUOTED" then
+        if expansion and menu.agreedBuildPlans and menu.agreedBuildPlans[planKey] == plan and menu.expansionStatus == expansion and menu.expansionPlanKey == planKey and string.upper(text(expansion.state)) == "QUOTED" then
             local profileIndex=0; for _, profile in ipairs(menu.stations or {}) do if text(v(profile,1,"")) == plan.station then profileIndex=tonumber(v(profile,16,0)) or 0; break end end
             menu.pendingExpansionRoute = { token=text(expansion.token, ""), station=plan.station, profile=profileIndex }
+            plan.expansionAttempted = true
+            expansion.state = "CONFIRMING"
             raise("planner.expansion.confirm", {token=expansion.token})
         end
     end, expansion and string.upper(text(expansion.state)) == "QUOTED", pendingChoiceBackground)
@@ -5124,7 +5180,7 @@ function menu.goalCheck()
         local inventoryOk,installed,planned=pcall(menu.goalModuleInventory,station)
         for _,item in ipairs(rows) do
             if item[1] == "MODULE" then
-                item[4]=item[4] .. (inventoryOk and (" [operational " .. tostring(installed[item[3]] or 0) .. "; persisted unbuilt entries " .. tostring(planned[item[3]] or 0) .. "]") or " [installed/planned inventory UNKNOWN]")
+                item[4]=item[4] .. (inventoryOk and (" [AT CALCULATION: operational " .. tostring(installed[item[3]] or 0) .. "; unbuilt in native plan " .. tostring(planned[item[3]] or 0) .. "]") or " [installed/planned inventory UNKNOWN]")
             end
         end
         local limits = "You can save this plan with these warnings. The calculation adds dedicated support for your chosen production; it does not assume your existing factories have spare capacity. Before building, compare this list with your station's build plan so you do not add support you already have available. Recipe output is a planning rate, not a promise of live output. Workforce bonuses and location effects have not been applied. Arrange storage of the right type and deliveries for every outside input. Check habitat food and medical supplies if you add workers. Construction materials, funding, builder availability and whether everything fits your plot still need your review. Multiple or unsupported recipes are left as outside supply rather than guessed. Saving remembers your choice; it does not build or order anything."
@@ -5160,6 +5216,7 @@ function menu.goalSave()
 end
 
 function menu.plannerOpenPlayerScenario(nativePlan, caseData, calculatorState)
+    menu.managedView=false
     local readiness = menu.expansionReadiness
     if not readiness or readiness.nativePlan ~= nativePlan or readiness.key ~= checklistCaseKey(caseData) or readiness.evidenceKey ~= expansionEvidenceKey(caseData) then
         menu.plannerSaveStatus = "SCENARIO NOT OPENED: Case evidence changed. Run the readiness check again."
@@ -5268,6 +5325,7 @@ function menu.goalSelectStation(_, value)
     for index,profile in ipairs(menu.stations or {}) do
         if tostring(v(profile,24,"")) == id then
             menu.selected=index
+            menu.managedBasket=nil; menu.managedAddedCalculation=nil; menu.managedChoosing=false; menu.managedPickerDraft=nil; menu.managedInvalidate()
             menu.goalResult=nil; menu.goalWorkingResult=nil; menu.goalSavedPreview=false
             menu.supplyDraft=nil; menu.supplyDrafts={}; menu.supplyPreview=nil; menu.supplyBatchPreview=nil
             menu.supplyApplyResult=nil; menu.supplySelectedWare=nil; menu.supplyStationDetailWare=nil
@@ -5378,7 +5436,306 @@ function menu.savedPlansCenter(tableWidget)
     end
 end
 
+-- Build406: a construction basket is a separate, explicitly approved transaction.
+-- Calculator/advisory saves never enqueue work. Native MD owns the durable job.
+function menu.managedInvalidate()
+    menu.managedRequestToken=nil; menu.managedPending=nil; menu.managedStatus=nil
+    menu.managedSubmission=nil
+end
+
+function menu.managedBasketRows(basket)
+    assert(type(basket)=="table" and type(basket.rows)=="table","No module basket")
+    local rows,total={},0
+    assert(#basket.rows>0 and #basket.rows<=96,"Use 1-96 distinct module types")
+    local seen={}
+    for _,item in ipairs(basket.rows) do
+        local count=menu.goalNumber(item.count)
+        assert(type(item.macro)=="string" and item.macro~="" and not seen[item.macro],"Invalid or repeated module identity")
+        assert(count and count>=1 and count<=999 and count==math.floor(count),"Use whole module counts from 1 to 999")
+        seen[item.macro]=true; total=total+count
+        rows[#rows+1]={item.macro,count}
+    end
+    assert(total<=999,"Maximum 999 modules per expansion, including calculated support")
+    return rows,total
+end
+
+function menu.managedAdd(rows)
+    local profile=selectedStation()
+    local id=profile and tostring(v(profile,24,"")) or ""
+    assert(id~="","Choose a station")
+    local prior=menu.managedBasket
+    assert(not prior or prior.station==id,"Basket belongs to another station; clear it first")
+    local basket={station=id,name=text(v(profile,1,"Station")),rows={}}
+    for _,item in ipairs(prior and prior.rows or {}) do basket.rows[#basket.rows+1]={macro=item.macro,name=item.name,count=item.count} end
+    for _,item in ipairs(rows) do
+        local found
+        for _,old in ipairs(basket.rows) do if old.macro==item.macro then found=old; break end end
+        if found then found.count=found.count+item.count
+        else basket.rows[#basket.rows+1]={macro=item.macro,name=item.name,count=item.count} end
+    end
+    menu.managedBasketRows(basket)
+    menu.managedBasket=basket; menu.managedInvalidate()
+end
+
+function menu.managedAddCalculation()
+    local ok,err=pcall(function()
+        local r,d,p=menu.goalResult,menu.goalDraft,selectedStation()
+        assert(r and d and p and not menu.goalSavedPreview and r[2]==tostring(v(p,24,"")),"Recalculate for this station first")
+        assert(d.ware==r[4] and d.macro==r[5] and tostring(d.quantity)==r[6] and d.mode==r[7] and d.policy==r[8],"Draft changed; recalculate")
+        assert(menu.managedAddedCalculation~=r,"This calculation is already in the basket; edit quantities there")
+        local rows={}
+        for _,item in ipairs(r[10]) do if item[1]=="MODULE" then rows[#rows+1]={macro=item[3],name=item[4],count=item[5]} end end
+        menu.managedAdd(rows); menu.managedAddedCalculation=r
+        menu.managedNotice="Added the calculated production and dedicated support. Review quantities; outside inputs, storage and workforce still need your review."
+        menu.managedView=true
+    end)
+    if not ok then menu.goalNotice=tostring(err) end
+    menu.refresh()
+end
+
+function menu.managedOwnedModules()
+    local count=menu.goalNumber(C.GetNumBlueprints("","",""))
+    assert(count and count<=4096,"Blueprint inventory unavailable or too large")
+    local list,seen={},{}
+    if count>0 then
+        local buffer=ffi.new("UIBlueprint[?]",count)
+        local actual=menu.goalNumber(C.GetBlueprints(buffer,count,"","",""))
+        assert(actual and actual<=count,"Blueprint inventory changed")
+        for i=0,actual-1 do
+            local macro=ffi.string(buffer[i].macro)
+            local name,library=GetMacroData(macro,"name","infolibrary")
+            if type(library)=="string" and string.sub(library,1,12)=="moduletypes_" and not seen[macro] then
+                seen[macro]=true; list[#list+1]={macro=macro,name=tostring(name or macro)}
+            end
+        end
+    end
+    table.sort(list,function(a,b) return a.name..a.macro<b.name..b.macro end)
+    return list
+end
+
+function menu.managedQuote()
+    local ok,err=pcall(function()
+        local basket,p=menu.managedBasket,selectedStation()
+        assert(p and basket and basket.station==tostring(v(p,24,"")),"Station changed; select the basket station")
+        local rows=menu.managedBasketRows(basket)
+        local station=menu.supplyStationId(p)
+        assert(station and C.IsComponentOperational(station) and GetComponentData(station,"isplayerowned")==true,"Station unavailable")
+        menu.managedSequence=(menu.managedSequence or 0)+1
+        menu.managedRequestToken="406:"..basket.station..":"..tostring(getElapsedTime())..":"..tostring(menu.managedSequence)
+        menu.managedPending="quote"; menu.managedQuotedBasket=basket
+        menu.managedStatus=nil; menu.managedNotice="Preparing exact placement and funding quote. Nothing submitted or paid."
+        raise("planner.managed.quote",{profile=tonumber(v(p,16,0)),station=station,rows=rows,token=menu.managedRequestToken})
+    end)
+    if not ok then menu.managedInvalidate(); menu.managedNotice=tostring(err) end
+    menu.refresh()
+end
+
+function menu.managedConfirm()
+    local r,b,p=menu.managedStatus,menu.managedBasket,selectedStation()
+    if not r or r.state~="QUOTED" or r.token~=menu.managedRequestToken or not b or b~=menu.managedQuotedBasket or not p or b.station~=tostring(v(p,24,"")) then return end
+    local station=menu.supplyStationId(p)
+    if not station then return end
+    -- Disable locally before dispatch. MD repeats every identity/budget/slot check.
+    r.state="SUBMITTING"; menu.managedPending="confirm"
+    menu.managedSubmission={token=r.token,basket=b,station=b.station,page=menu.page}
+    raise("planner.managed.confirm",{station=station,token=r.token})
+    menu.refresh()
+end
+
+function menu.managedRefresh()
+    menu.managedInvalidate(); menu.managedPending="status"
+    menu.managedNotice="Reading the retained EOC construction job; this does not submit construction."
+    raise("planner.managed.status",{})
+    menu.refresh()
+end
+
+function menu.managedState(_,value) menu.managedUpdate={state=text(value)} end
+function menu.managedMessage(_,value) if menu.managedUpdate then menu.managedUpdate.message=text(value) end end
+function menu.managedToken(_,value) if menu.managedUpdate then menu.managedUpdate.token=text(value) end end
+function menu.managedPrice(_,value) if menu.managedUpdate then menu.managedUpdate.price=menu.goalNumber(value) end end
+function menu.managedModules(_,value) if menu.managedUpdate then menu.managedUpdate.modules=menu.goalNumber(value) end end
+function menu.managedCommit()
+    local r=menu.managedUpdate; menu.managedUpdate=nil
+    if not r or not r.message or not r.token or r.price==nil or r.modules==nil then return end
+    if menu.managedPending=="status" then
+        if r.state=="QUOTED" or r.state=="GENERATING" then return end
+    elseif not menu.managedPending or r.token=="" or r.token~=menu.managedRequestToken then return end
+    local submitted=menu.managedSubmission
+    local confirmed=menu.managedPending=="confirm" and submitted and submitted.token==r.token
+    menu.managedStatus=r; menu.managedNotice=r.message
+    if confirmed and r.state=="QUEUED" then
+        menu.managedSubmission=nil
+        -- Consume only the exact approved draft; status reads and later drafts
+        -- are not acknowledgments of this submission.
+        if menu.managedBasket==submitted.basket then
+            local p=selectedStation()
+            local visible=menu.shown and not menu.minimized and not menu.closeInProgress and menu.frame and menu.page==submitted.page and menu.managedView and p and tostring(v(p,24,""))==submitted.station
+            menu.managedBasket=nil; menu.managedQuotedBasket=nil; menu.managedAddedCalculation=nil
+            menu.managedChoosing=false; menu.managedPickerDraft=nil; menu.managedEditor=nil; menu.managedDropdownOwner=nil
+            menu.managedRequestToken=nil; menu.managedPending=nil
+            if visible then
+                for index,station in ipairs(menu.stations or {}) do
+                    if tostring(v(station,24,""))==submitted.station then
+                        menu.selected=index; menu.managedView=false
+                        menu.constructionView="detail"; menu.constructionRefreshing=false; menu.constructionNextRefreshAt=0
+                        menu.constructionFundingPending=nil; menu.constructionBuilderPending=nil
+                        menu.constructionStatus="EXPANSION QUEUED: "..text(v(station,1,"Station"))..". Reading live construction progress; the approved draft has been cleared."
+                        menu.page="construction"; menu.activeTab="construction"
+                        menu.refresh()
+                        return
+                    end
+                end
+            end
+        end
+    elseif confirmed and r.state~="GENERATING" then
+        menu.managedSubmission=nil
+    end
+    if r.state~="GENERATING" then menu.managedPending=nil end
+    if menu.frame and (menu.page=="plans" or menu.page=="solution") and menu.managedView then menu.refresh() end
+end
+
+function menu.managedButton(row,column,label,handler,active)
+    local frame,page,view=menu.frame,menu.page,menu.managedView
+    addButton(row,column,label,function()
+        if active==false or menu.frame~=frame or menu.page~=page or menu.managedView~=view then return end
+        -- Text changes are already in the basket; retire the editor before a
+        -- button rebuilds its layer. Its later deactivation cannot undo them.
+        menu.managedEditor=nil; menu.managedDropdownOwner=nil
+        handler()
+    end,active)
+end
+
+-- Build408: native scrolling choices and a separate quantity draft never replace
+-- existing line items. All callbacks belong to their originating frame/basket.
+function menu.managedQuantity(cell,holder,key,basket)
+    local frame,page=menu.frame,menu.page
+    cell:createEditBox({height=Helper.standardButtonHeight}):setText(tostring(holder[key]))
+    local editor={frame=frame,page=page,basket=basket}
+    local function current()
+        return menu.managedEditor==editor and menu.frame==frame and menu.page==page and menu.managedView and menu.managedBasket==basket
+    end
+    cell.handlers.onEditBoxActivated=function()
+        if menu.frame~=frame or menu.page~=page or not menu.managedView or menu.managedBasket~=basket then return end
+        editor.original=holder[key]; menu.managedEditor=editor
+    end
+    cell.handlers.onTextChanged=function(_,value)
+        if not current() then return end
+        holder[key]=tostring(value or ""); menu.managedInvalidate()
+    end
+    cell.handlers.onEditBoxDeactivated=function(_,value,changed)
+        if not current() then return end
+        if changed then holder[key]=tostring(value or "") else holder[key]=editor.original end
+        menu.managedEditor=nil; menu.managedInvalidate()
+        menu.managedNotice="Quantity retained. Review the complete build set before approval."
+        menu.refresh()
+    end
+end
+
+function menu.managedPicker(tableWidget,basket)
+    local frame,page,picker=menu.frame,menu.page,menu.managedPickerDraft
+    if not picker then return end
+    local function current()
+        return menu.frame==frame and menu.page==page and menu.managedView and menu.managedChoosing and menu.managedPickerDraft==picker and menu.managedBasket==basket
+    end
+    local options={{id="__choose__",text="Choose a module (scroll the list)",icon="",displayremoveoption=false}}
+    local byMacro={}
+    for _,item in ipairs(menu.managedChoices or {}) do
+        byMacro[item.macro]=item
+        options[#options+1]={id=item.macro,text=item.name,icon="",displayremoveoption=false}
+    end
+    local row=tableWidget:addRow(true)
+    row[1]:setColSpan(4):createDropDown(options,{active=#options>1,startOption=picker.macro or "__choose__",height=Helper.standardButtonHeight}):setTextProperties({fontsize=Helper.standardFontSize})
+    local owner={frame=frame,page=page,basket=basket,picker=picker}
+    row[1].handlers.onDropDownActivated=function() if current() then menu.managedDropdownOwner=owner end end
+    row[1].handlers.onDropDownDeactivated=function()
+        if menu.managedDropdownOwner==owner then menu.managedDropdownOwner=nil end
+    end
+    row[1].handlers.onDropDownConfirmed=function(_,value)
+        if not current() or not byMacro[tostring(value or "")] then return end
+        menu.managedDropdownOwner=nil; menu.managedEditor=nil
+        picker.macro=tostring(value); menu.refresh()
+    end
+    row=tableWidget:addRow(true)
+    row[1]:createText("QUANTITY TO ADD",{wordwrap=false})
+    menu.managedQuantity(row[2],picker,"count",basket)
+    row[3]:setColSpan(2)
+    menu.managedButton(row,3,"ADD TO BUILD SET",function()
+        if not current() then return end
+        local item=byMacro[picker.macro or ""]
+        local ok,err=pcall(function()
+            assert(item,"Choose a module")
+            local count=menu.goalNumber(picker.count)
+            assert(count and count>=1 and count<=999 and count==math.floor(count),"Use a whole quantity from 1 to 999")
+            menu.managedAdd({{macro=item.macro,name=item.name,count=count}})
+        end)
+        if ok then
+            menu.managedChoosing=false; menu.managedPickerDraft=nil
+            menu.managedNotice="Added to your build set. Add more modules or review when done. Nothing built or spent."
+            menu.listPages=menu.listPages or {}; menu.listPages["managed.rows"]=1
+        else menu.managedNotice=tostring(err) end
+        menu.refresh()
+    end,byMacro[picker.macro or ""]~=nil)
+    row=tableWidget:addRow(true); row[1]:setColSpan(4)
+    menu.managedButton(row,1,"CLOSE MODULE LIST (keeps build set)",function()
+        if not current() then return end
+        menu.managedChoosing=false; menu.managedPickerDraft=nil; menu.refresh()
+    end,true)
+end
+
+function menu.managedCenter(tableWidget)
+    section(tableWidget,"YOUR BUILD SET - ONE EOC STATION AT A TIME")
+    local row=tableWidget:addRow(true); row[1]:setColSpan(4)
+    menu.managedButton(row,1,"BACK TO CALCULATOR (keeps basket)",function() menu.managedView=false; menu.managedChoosing=false; menu.managedPickerDraft=nil; menu.refresh() end,true)
+    row=tableWidget:addRow(false); row[1]:setColSpan(4):createText("Draft only: adding or editing modules does not build or spend. One EOC station stays reserved until all submitted additions finish; blocked deliveries keep the slot. Other stations can plan; manual X4 construction is separate. Limit: 999 modules / 96 types.",{wordwrap=true})
+    if menu.managedNotice then row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(menu.managedNotice,{wordwrap=true}) end
+    local basket=menu.managedBasket
+    if basket then
+        section(tableWidget,"ADDITIONS FOR "..basket.name)
+        local valid,_,total=pcall(menu.managedBasketRows,basket)
+        row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(valid and (#basket.rows.." module types | "..total.." modules in this build set") or "Invalid quantity: correct the line items before review.",{wordwrap=false})
+        -- One compact row per item; retain measured/pool bounds for large sets.
+        local first,last=menu.adaptiveListNavigation(tableWidget,"managed.rows",#basket.rows,{fixedRows=22,rowUnits=1,maximum=12})
+        for i=first,last do
+            local item=basket.rows[i]; row=tableWidget:addRow(true)
+            row[1]:setColSpan(2):createText(item.name,{wordwrap=false,mouseOverText=item.name})
+            menu.managedQuantity(row[3],item,"count",basket)
+            menu.managedButton(row,4,"REMOVE",function()
+                if menu.managedBasket~=basket then return end
+                table.remove(basket.rows,i)
+                if #basket.rows==0 then menu.managedBasket=nil end
+                menu.managedInvalidate(); menu.refresh()
+            end,true)
+        end
+    else
+        row=tableWidget:addRow(false); row[1]:setColSpan(4):createText("No modules added yet. Choose ADD MORE MODULES to start.",{wordwrap=false})
+    end
+    row=tableWidget:addRow(true); row[1]:setColSpan(2)
+    menu.managedButton(row,1,"ADD MORE MODULES",function()
+        local ok,result=pcall(menu.managedOwnedModules)
+        if ok then
+            menu.managedChoices=result; menu.managedChoosing=true
+            menu.managedPickerDraft={count=1}
+            if #result==0 then menu.managedNotice="No owned module blueprints found." end
+        else menu.managedNotice=tostring(result) end
+        menu.refresh()
+    end,not menu.managedChoosing)
+    row[3]:setColSpan(2); menu.managedButton(row,3,"REFRESH ACTIVE PROJECT",menu.managedRefresh,true)
+    if menu.managedChoosing then menu.managedPicker(tableWidget,basket) end
+    row=tableWidget:addRow(false); row[1]:setColSpan(4):createText("Review quotes the whole build set. Approval funds only native material shortfalls within the ceiling, using eligible existing ships. No free materials or ship purchases. Direct module picks do not calculate supporting production.",{wordwrap=true})
+    row=tableWidget:addRow(true); row[1]:setColSpan(2)
+    menu.managedButton(row,1,"DONE - REVIEW BUILD SET",menu.managedQuote,basket~=nil and not menu.managedPending and not menu.managedChoosing)
+    row[3]:setColSpan(2)
+    local reply=menu.managedStatus
+    menu.managedButton(row,3,"I AGREE - BUILD AND FUND THIS QUOTE",menu.managedConfirm,(not menu.managedChoosing and reply and reply.state=="QUOTED" and reply.token==menu.managedRequestToken and basket==menu.managedQuotedBasket) or false)
+    row=tableWidget:addRow(true); row[1]:setColSpan(4)
+    menu.managedButton(row,1,"CLEAR UNAPPROVED BASKET (does not cancel active construction)",function()
+        menu.managedBasket=nil; menu.managedAddedCalculation=nil; menu.managedChoosing=false; menu.managedPickerDraft=nil
+        menu.managedInvalidate(); menu.refresh()
+    end,basket~=nil)
+end
+
 function menu.playerPlans(tableWidget)
+    if menu.managedView then menu.managedCenter(tableWidget); return end
     if menu.goalShowingSaved then menu.savedPlansCenter(tableWidget); return end
     section(tableWidget,"PLAN MORE PRODUCTION")
     local row=tableWidget:addRow(false)
@@ -5451,10 +5808,10 @@ function menu.playerPlans(tableWidget)
     end
     local result=menu.goalResult
     if result then
-        section(tableWidget,"SCENARIO: " .. result[3] .. " / " .. result[4])
+        section(tableWidget,"ADVISORY ONLY - NOTHING QUEUED BY THIS CALCULATOR: " .. result[3] .. " / " .. result[4])
         pair(tableWidget,"ADDITIONAL RECIPE OUTPUT / H",result[14],"INSTALLED OUTPUT / INPUT / H",tostring(result[12]) .. " / " .. tostring(result[13]))
         row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(result[11],{wordwrap=true,color=investigationUnknownColor})
-        local first,last=menu.adaptiveListNavigation(tableWidget,"goal.rows",#result[10],{fixedRows=46,rowUnits=5,maximum=2})
+        local first,last=menu.adaptiveListNavigation(tableWidget,"goal.rows",#result[10],{fixedRows=50,rowUnits=5,maximum=2})
         for index=first,last do
             local item=result[10][index]
             local detail
@@ -5466,7 +5823,10 @@ function menu.playerPlans(tableWidget)
             row=tableWidget:addRow(false); row[1]:setColSpan(4):createText(tostring(index) .. ". " .. detail,{wordwrap=true})
         end
         if draft and not menu.goalSavedPreview then row=tableWidget:addRow(true); row[1]:setColSpan(4); addButton(row,1,"SAVE MY PLAN - KEEP THE WARNINGS",menu.goalSave,true) end
+        if draft and not menu.goalSavedPreview then row=tableWidget:addRow(true); row[1]:setColSpan(4); addButton(row,1,"ADD CALCULATED MODULES TO BUILD BASKET",menu.managedAddCalculation,menu.managedAddedCalculation~=result) end
     end
+    row=tableWidget:addRow(true); row[1]:setColSpan(4)
+    addButton(row,1,"MODULE EXPANSION / ACTIVE EOC PROJECT",function() menu.managedView=true; menu.managedRefresh() end,true)
     row=tableWidget:addRow(true); row[1]:setColSpan(4)
     addButton(row,1,"DETAILS: EOC REPAIR EVIDENCE AND OLDER BUILD LISTS",function() menu.goalRememberPosition(); captureNavigation("YOUR PLAN"); menu.solutionRepairEvidence=true; menu.page="solution"; menu.activeTab="solution"; menu.refresh() end,true)
 end
@@ -11435,6 +11795,12 @@ end
 function menu.refresh(preserveScroll)
     -- Native Helper owns shown/minimized; retained page names do not own a UI layer.
     if not menu.shown or menu.minimized or menu.closeInProgress then return end
+    local owner=menu.managedDropdownOwner
+    if owner and menu.frame==owner.frame and menu.page==owner.page and menu.managedView and menu.managedChoosing and menu.managedBasket==owner.basket and menu.managedPickerDraft==owner.picker then return end
+    menu.managedDropdownOwner=nil
+    local editor=menu.managedEditor
+    if editor and menu.frame==editor.frame and menu.page==editor.page and menu.managedView and menu.managedBasket==editor.basket then return end
+    menu.managedEditor=nil
     if menu.page=="plans" and menu.goalShowingSaved and menu.savedDropdownOwner==menu.mainTable and menu.savedDropdownOwner then
         return
     end

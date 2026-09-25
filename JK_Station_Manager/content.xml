@@ -2,12 +2,12 @@
 <content
   id="ws_3788882957"
   name="EOC - Executive Operations Center"
-  description="EOC 3.9 Build 404. Persistent independent controls for background analysis, remediation review, and automatic ship matching."
+  description="EOC 3.9 Build 409. Mixed-module build sets and confirmed station construction progress."
   author="RazorEQX"
-  version="504"
-  date="2026-09-24"
+  version="509"
+  date="2026-09-25"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 Build 404" description="Independent saved feature switches restore before first render and preserve unrelated controls." />
+  <text language="44" name="EOC 3.9 Build 409" description="Mixed-module build sets, retained quantities and confirmed construction progress." />
   <dependency id="ws_3477279743" optional="true" />
 </content>
