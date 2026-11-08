@@ -95,7 +95,7 @@ ffi.cdef[[
 
 local menu = {
     name = "JKEOC_SettingsMenu",
-    title = "EOC - EOC - VERSION 509 (BUILD 409)",
+    title = "EOC - EOC - VERSION 513 (BUILD 413)",
     page = "dashboard",
     selected = 1,
     analysisRunning = false,

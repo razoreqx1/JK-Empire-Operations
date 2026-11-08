@@ -1,0 +1,9 @@
+EOC 3.9 GA Build 413 / version 513
+
+Identity-only GA promotion of the runtime-tested Build412 package; no gameplay logic changed in Build413.
+
+Adds a dedicated Open EOC hotkey action through Native Hotkey API. Assign Control + E once in Options > Hotkey Management > Hotkey Bindings. X4 owns the saved binding and conflict warning; EOC does not rewrite the player's input profile or silently replace another control.
+The EOC menu title now shows VERSION 513 (BUILD 413).
+Retains Build411 idle construction guards and Build410 ship-registration safeguards unchanged.
+Human runtime acceptance confirms that the Native Hotkey API binding can be assigned and Control + E opens EOC in the tested game session.
+RUNTIME ACCEPTANCE REQUIRED for first-person opening, repeated use, close/reopen, reloadui, save/reload/profile persistence, clean closed-session logging, and broader mod-set compatibility. This package does not install itself or change saves. No new construction, money or ship authority.

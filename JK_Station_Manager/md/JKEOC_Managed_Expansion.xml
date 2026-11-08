@@ -16,6 +16,8 @@
     <library name="Inspect" purpose="run_actions">
       <params><param name="Job"/></params>
       <actions>
+        <!-- A supplied parameter can exist while its value is null. Never write through it. -->
+        <do_if value="$Job != null">
         <set_value name="$Job.$done" exact="0"/>
         <set_value name="$Job.$intact" exact="false"/>
         <set_value name="$s" exact="@$Job.$station"/>
@@ -39,6 +41,7 @@
           <do_elseif value="not $Job.$intact"><set_value name="$Job.$message" exact="'BLOCKED: native plan changed at %1. EOC has stopped spending and assigning ships. The one-station slot remains reserved; inspect the build plan. Missing modules are not completion.'.[$s.name]"/></do_elseif>
         </do_if>
         <do_else><set_value name="$Job.$message" exact="'BLOCKED: active station or construction evidence is unavailable. EOC retains the one-station slot and will not infer completion or repeat construction.'"/></do_else>
+        </do_if>
       </actions>
     </library>
     <library name="Slot" purpose="run_actions">
@@ -135,7 +138,7 @@
       <conditions><event_cue_signalled/></conditions>
       <actions>
         <set_value name="$j" exact="@global.$JKEOC_B406Active"/>
-        <do_if value="$j? and $j.$state != 'COMPLETED'">
+        <do_if value="$j != null and $j.$state != 'COMPLETED'">
           <run_actions ref="Inspect"><param name="Job" value="$j"/></run_actions>
           <do_if value="$j.$intact and $j.$state != 'COMPLETED' and $j.$state != 'CRITICAL QUEUE' and @$j.$managed">
             <set_value name="$s" exact="$j.$station"/><set_value name="$storage" exact="$s.buildstorage"/>
@@ -187,10 +190,13 @@
     <cue name="AttachBuilder" instantiate="true" namespace="this">
       <conditions><event_cue_signalled/></conditions><delay exact="1s"/>
       <actions>
-        <set_value name="$j" exact="event.param"/><set_value name="$ship" exact="$j.$builderattempted"/>
+        <set_value name="$j" exact="event.param"/>
+        <do_if value="$j != null and $j == @global.$JKEOC_B406Active and $j.$builderattempted?">
+        <set_value name="$ship" exact="$j.$builderattempted"/>
         <run_actions ref="Inspect"><param name="Job" value="$j"/></run_actions>
         <do_if value="$j == global.$JKEOC_B406Active and $j.$intact and $j.$state == 'QUEUED' and $ship.exists and $ship.owner == faction.player and $ship != player.ship and $ship.isoperational and not $ship.commander and not $ship.subordinates.count and not $ship.constructionmodule and (not $ship.order? or $ship.order.id == 'FindBuildTasks') and $ship.defaultorder.id == 'FindBuildTasks' and $j.$station.exists and $j.$station.owner == faction.player and $j.$station.buildstorage.buildmodule? and not $j.$station.buildstorage.buildmodule.constructionvessel">
           <signal_objects object="$ship" param="'request construction vessel'" param2="$j.$station.buildstorage.buildmodule"/>
+        </do_if>
         </do_if>
       </actions>
     </cue>

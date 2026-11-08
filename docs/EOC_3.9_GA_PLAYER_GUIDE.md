@@ -1,6 +1,17 @@
-# EOC 3.9 Player Guide — Build 409
+# EOC 3.9 Player Guide — Build 413
 
-**Current edition:** EOC 3.9, Build 409, extension version 509. Retained older screenshots below are clearly labeled with the build they document.
+**Current edition:** EOC 3.9, Build 413, extension version 513. Retained older screenshots below are clearly labeled with the build they document.
+
+## Dedicated Control+E access (Build413)
+
+Build413 adds a dedicated player-configurable Open EOC action through the required **Native Hotkey API**.
+
+1. Open **Options > Hotkey Management > Hotkey Bindings**.
+2. Find the EOC Open action and assign **Control+E**.
+3. If X4 reports an existing Control+E conflict, choose which action should keep that binding.
+4. Use Control+E in a supported game context to open EOC directly.
+
+X4 owns the saved binding and conflict resolution. EOC does not silently rewrite the player input profile. Runtime testing confirms assignment and direct opening in the tested session. First-person opening, repeated close/reopen, reloadui, save/reload persistence, clean closed-session logging, and broader mod compatibility remain **RUNTIME ACCEPTANCE REQUIRED**. See [Build413 release notes](RELEASE_NOTES_BUILD413.md).
 
 ## Build sets and construction progress (Build409)
 
@@ -44,7 +55,7 @@ The interface is organized around player tasks. The main tabs are **HOME**, **ST
 
 ### Steam Workshop
 
-Subscribe, let Steam finish downloading the extension, and enable it in X4 if necessary.
+Subscribe to EOC and the required **Native Hotkey API**, let Steam finish downloading both extensions, and enable them in X4 if necessary. UI Extensions and HUD remains recommended for the established interface integration.
 
 ### Manual installation
 
@@ -57,10 +68,10 @@ Do not add another folder layer.
 ### Open the menu
 
 1. Load a save and allow roughly ten seconds for initialization.
-2. Open the normal **Ship Interactions** menu.
-3. Select **OPEN EXECUTIVE OPERATIONS CENTER**.
+2. For direct access, assign Control+E under **Options > Hotkey Management > Hotkey Bindings**, then press Control+E.
+3. The retained route remains available through the normal **Ship Interactions** menu by selecting **OPEN EXECUTIVE OPERATIONS CENTER**.
 
-EOC includes its own Dock Interactions access route; a separate UI framework is not required.
+Native Hotkey API is required for the dedicated binding. EOC retains its Dock Interactions access route.
 
 ---
 

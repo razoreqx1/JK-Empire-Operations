@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="JKEOC_Hotkey_Access" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!--
+    Build 412 dedicated EOC access action.
+
+    Native Hotkey API owns key assignment and conflict detection because X4's
+    INPUT_ACTION enum is closed. The player assigns Control + E once from
+    Options > Hotkey Management > Hotkey Bindings. EOC never rewrites the
+    player's input profile and never steals an existing vanilla binding.
+  -->
+  <cues>
+    <cue name="JKEOC_Register_Open_EOC_Hotkey" instantiate="true">
+      <conditions>
+        <event_cue_signalled cue="md.HotkeyApi.Reloaded" />
+      </conditions>
+      <actions>
+        <signal_cue_instantly
+          cue="md.HotkeyApi.Register_Action"
+          param="table[$id='jk_eoc_open_menu', $version=1, $area='pilot;fps', $isObjectRequired=false, $name='Open EOC - Executive Operations Center (Ctrl+E)', $actionCue=JKEOC_Open_EOC_Hotkey]" />
+        <debug_text text="'[JKEOC][B412][HOTKEY_REGISTERED] id=jk_eoc_open_menu intended_binding=CTRL_E areas=pilot;fps profile_rewrite=0'" filter="general" />
+      </actions>
+    </cue>
+
+    <cue name="JKEOC_Open_EOC_Hotkey" instantiate="true" namespace="this">
+      <conditions>
+        <event_cue_signalled />
+      </conditions>
+      <actions>
+        <debug_text text="'[JKEOC][B412][HOTKEY_OPEN_REQUEST] id=jk_eoc_open_menu'" filter="general" />
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

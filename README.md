@@ -5,11 +5,13 @@ Transform your X4 empire from reactive management into intelligent operations.
 ## Current update
 
 - Version: 3.9
-- Engineering build: 409
-- Extension version: 5.09
-- Status: Build 409, accepted for the observed construction handoff and progress display. Final construction completion and broader native paths remain runtime-dependent. Steam distribution is handled separately; this is not a new GA promotion.
+- Engineering build: 413
+- Extension version: 5.13
+- Status: Build 413 GA. Runtime testing confirms that the dedicated Control+E binding can be assigned and opens EOC. First-person opening, repeated close/reopen, reloadui, save/reload persistence, clean closed-session logging, and broader mod compatibility remain runtime-dependent.
 - X4 compatibility: 8.x / 9.x
 - Steam Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3778882957
+
+Build 413 adds a dedicated Open EOC action through the required Native Hotkey API. Assign **Control+E** once under **Options > Hotkey Management > Hotkey Bindings**. X4 owns the saved binding and conflict warning; EOC does not silently rewrite the player input profile. See [Build413 release notes](docs/RELEASE_NOTES_BUILD413.md).
 
 Build 404 adds three independent one-click Global Settings switches for Background Empire Analysis, Automatic Remediation Review, and Automatic Ship Matching. Green is ON, yellow is OFF, and each click saves immediately without confirmation. OFF stops new scheduled work for that feature while preserving reports, cases, history, receipts, existing work, and manual actions.
 
@@ -20,6 +22,10 @@ Build 404 preserves Build 397's accepted case lifecycle, confirmed station-expan
 Automatic supply expansion is a separate opt-in. EOC uses eligible existing ships first and may purchase a suitable miner or freighter only within the player's saved limits, normal blueprint/shipyard/resource/delivery rules, and existing assignment safeguards. Assisted EOC remains available independently of Diagnostics. See the [automatic manager guide](docs/EOC_AUTOMATIC_MANAGER.md). Unexercised automatic outcomes, alternate saves, extended-session performance, and broader mod compatibility remain **RUNTIME ACCEPTANCE REQUIRED** where documented.
 
 Retained new features: question-based Home navigation, station-wide Fix All, explicit reviewed-report archiving, gains-versus-losses comparison and Home return buttons, with native station-reference and report-formatting corrections. See [Build 382 release notes](docs/RELEASE_NOTES_BUILD382.md) and the [illustrated player guide](docs/EOC_3.9_GA_PLAYER_GUIDE.md).
+
+## What is new in Build413
+
+Use the dedicated player-configurable Control+E action to open EOC directly. The binding is registered through Native Hotkey API and uses the existing EOC menu-open route. Build413 retains Build411's idle-construction guard, Build410's first-use ship registration safeguards, and Build409's mixed-module construction workflow unchanged.
 
 ## What is new in Build409
 

@@ -2,12 +2,13 @@
 <content
   id="ws_3788882957"
   name="EOC - Executive Operations Center"
-  description="EOC 3.9 Build 409. Mixed-module build sets and confirmed station construction progress."
+  description="EOC 3.9 GA Build 413. Adds a dedicated player-bindable Open EOC hotkey intended for Control + E; retains Build 411 safeguards. Partial runtime acceptance."
   author="RazorEQX"
-  version="509"
-  date="2026-09-25"
+  version="513"
+  date="2026-11-08"
   save="0"
   sync="false">
-  <text language="44" name="EOC 3.9 Build 409" description="Mixed-module build sets, retained quantities and confirmed construction progress." />
+  <text language="44" name="EOC 3.9 GA Build 413" description="Dedicated player-bindable Open EOC hotkey intended for Control + E, with Build 411 safeguards retained. Partial runtime acceptance." />
+  <dependency id="ws_3750545906" optional="false" name="Native Hotkey API" version="80009" />
   <dependency id="ws_3477279743" optional="true" />
 </content>
